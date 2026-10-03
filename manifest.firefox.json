@@ -1,0 +1,57 @@
+{
+  "manifest_version": 3,
+  "name": "SpeedySlate - Manga/Webtoon Auto-Translator",
+  "version": "1.0.0",
+  "description": "Siêu nhẹ & tối ưu: Dịch truyện tranh toonhey.com tự động cuộn bằng PaddleOCR cục bộ và AI API (Gemini, Groq, DeepSeek).",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "speedyslate@khanhnkq.dev",
+      "strict_min_version": "109.0"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "Cài đặt SpeedySlate",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://toonhey.com/*",
+        "*://*.toonhey.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "worker.js",
+        "icons/*",
+        "*.wasm"
+      ],
+      "matches": ["*://toonhey.com/*", "*://*.toonhey.com/*"]
+    }
+  ]
+}

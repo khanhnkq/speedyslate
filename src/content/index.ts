@@ -25,6 +25,16 @@ class SpeedySlateContentApp {
     // Đảm bảo người dùng luôn nhìn thấy nút điều khiển trên trang
     this.hud = new FloatingHud(3, {
       onTogglePlay: () => this.scroller?.toggle(),
+      onPreloadAllWithoutScroll: () => {
+        this.hud.log('🚀 Đang ép nạp toàn bộ ảnh (không cần cuộn)...');
+        ToonheyAdapter.forceLoadAll(this.images);
+        this.images.forEach((img, idx) => {
+          if (!img.dataset.slateStatus) {
+            this.queue?.enqueue({ index: idx, img });
+          }
+        });
+        this.hud.log(`📥 Đã đưa ${this.images.length} ảnh vào hàng đợi dịch.`);
+      },
       onPreloadAndReturn: () => {
         this.hud.log('🚀 Đang cuộn nạp toàn bộ ảnh của chương...');
         this.scroller?.preloadToBottomAndReturn(() => {

@@ -1,5 +1,6 @@
 export interface HudCallbacks {
   onTogglePlay: () => void;
+  onPreloadAllWithoutScroll: () => void;
   onPreloadAndReturn: () => void;
   onToggleTranslate: () => void;
   onSpeedChange: (speed: number) => void;
@@ -217,7 +218,18 @@ export class FloatingHud {
     `;
     this.preloadBtn.onclick = () => this.callbacks.onPreloadAndReturn();
 
+    // Button: Force load all without scrolling!
+    const loadAllBtn = document.createElement('button');
+    loadAllBtn.innerHTML = '📥 Nạp hết (Ko cuộn)';
+    loadAllBtn.title = 'Kích hoạt nạp toàn bộ ảnh và dịch ngầm ngay tại chỗ, không cần cuộn trang!';
+    loadAllBtn.style.cssText = `
+      background-color: #8854d0; color: #fff; border: none; border-radius: 8px;
+      padding: 6px 10px; font-weight: bold; cursor: pointer; font-size: 12px; flex: 1.2;
+    `;
+    loadAllBtn.onclick = () => this.callbacks.onPreloadAllWithoutScroll();
+
     row1.appendChild(this.translateBtn);
+    row1.appendChild(loadAllBtn);
     row1.appendChild(this.playBtn);
     row1.appendChild(this.preloadBtn);
 

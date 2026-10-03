@@ -5,6 +5,7 @@ import { FloatingHud } from './hud/hud';
 import { OverlayRenderer } from './overlay/overlay-renderer';
 import { OrderedTaskQueue, OcrTask, TranslationTask } from './priority-queue';
 import { ToonheyAdapter } from './toonhey-adapter';
+import { PageBadgeManager } from './page-badge';
 
 class SpeedySlateContentApp {
   private settings!: ExtensionSettings;
@@ -36,7 +37,12 @@ class SpeedySlateContentApp {
           chapterUrl: window.location.href
         });
         document.querySelectorAll('.speedyslate-bubble').forEach((el) => el.remove());
-        this.images.forEach((img) => delete img.dataset.slateStatus);
+        this.images.forEach((img, idx) => {
+          delete img.dataset.slateStatus;
+          if (img.parentElement) {
+            PageBadgeManager.updateBadge(img.parentElement, idx, 'idle');
+          }
+        });
         this.completedImages.clear();
         this.ocrQueue?.clear();
         this.translationQueue?.clear();
@@ -137,6 +143,10 @@ class SpeedySlateContentApp {
       if (!this.images.includes(img)) {
         ToonheyAdapter.wrapImage(img);
         this.images.push(img);
+        const index = this.images.length - 1;
+        if (img.parentElement) {
+          PageBadgeManager.ensureBadge(img.parentElement, index);
+        }
         newFound++;
       }
     }
@@ -177,8 +187,8 @@ class SpeedySlateContentApp {
           const url = img.dataset.src || img.getAttribute('data-src') || img.src;
           const cached = cache[url];
           if (cached) {
+            const wrapper = img.parentElement;
             if (Array.isArray(cached.dialogues) && cached.dialogues.length > 0) {
-              const wrapper = img.parentElement;
               if (wrapper) {
                 OverlayRenderer.renderDialogues(
                   wrapper,
@@ -188,9 +198,13 @@ class SpeedySlateContentApp {
                   (this.settings?.bubbleTheme || 'light') as BubbleTheme
                 );
                 img.dataset.slateStatus = 'translated';
+                PageBadgeManager.updateBadge(wrapper, i, 'translated', cached.dialogues.length);
               }
             } else {
               img.dataset.slateStatus = 'no_text';
+              if (wrapper) {
+                PageBadgeManager.updateBadge(wrapper, i, 'no_text');
+              }
             }
             this.markImageCompleted(img, false);
             newlyRestored++;
@@ -271,6 +285,7 @@ class SpeedySlateContentApp {
     }
 
     img.dataset.slateStatus = 'ocr_running';
+    PageBadgeManager.updateBadge(wrapper, task.index, 'ocr_running');
 
     let dataUrl: string | undefined;
     try {
@@ -304,18 +319,22 @@ class SpeedySlateContentApp {
             (this.settings?.bubbleTheme || 'light') as BubbleTheme
           );
           img.dataset.slateStatus = 'translated';
+          PageBadgeManager.updateBadge(wrapper, task.index, 'translated', resp.dialogues.length);
         } else {
           img.dataset.slateStatus = 'no_text';
+          PageBadgeManager.updateBadge(wrapper, task.index, 'no_text');
         }
         this.markImageCompleted(img);
         this.hud.log(`Trang #${task.index + 1}: Nap tu Cache (0ms)`);
       } else if (!resp.dialogues || resp.dialogues.length === 0) {
         img.dataset.slateStatus = 'no_text';
+        PageBadgeManager.updateBadge(wrapper, task.index, 'no_text');
         this.markImageCompleted(img);
         this.hud.log(`Trang #${task.index + 1}: Khong co chu`);
       } else {
         // Co chu -> Day vao hang doi dich Consumer (serialized rate limiter)
         img.dataset.slateStatus = 'ocr_done';
+        PageBadgeManager.updateBadge(wrapper, task.index, 'ocr_done', resp.dialogues.length);
         this.hud.log(`Trang #${task.index + 1}: Da quet ${resp.dialogues.length} cau thoai, dang cho dich...`);
         this.translationQueue.enqueue({
           index: task.index,
@@ -327,6 +346,7 @@ class SpeedySlateContentApp {
       }
     } else {
       img.dataset.slateStatus = 'error';
+      PageBadgeManager.updateBadge(wrapper, task.index, 'error');
       this.hud.log(`Loi OCR trang #${task.index + 1}: ${resp?.error || 'Loi khong xac dinh'}`, true);
     }
   }
@@ -342,6 +362,7 @@ class SpeedySlateContentApp {
     if (!wrapper) return;
 
     img.dataset.slateStatus = 'translating';
+    PageBadgeManager.updateBadge(wrapper, task.index, 'translating', task.dialogues.length);
     this.hud.log(`Trang #${task.index + 1}: Dang dich ${task.dialogues.length} cau thoai...`);
 
     const resp: any = await browser.runtime.sendMessage({
@@ -362,10 +383,12 @@ class SpeedySlateContentApp {
         (this.settings?.bubbleTheme || 'light') as BubbleTheme
       );
       img.dataset.slateStatus = 'translated';
+      PageBadgeManager.updateBadge(wrapper, task.index, 'translated', resp.dialogues.length);
       this.markImageCompleted(img);
       this.hud.log(`Trang #${task.index + 1}: Hoan tat ${resp.dialogues.length} cau thoai`);
     } else {
       img.dataset.slateStatus = 'error';
+      PageBadgeManager.updateBadge(wrapper, task.index, 'error');
       this.hud.log(`Loi dich trang #${task.index + 1}: ${resp?.error || 'Loi API'}`, true);
     }
   }

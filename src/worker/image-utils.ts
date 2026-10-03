@@ -7,17 +7,26 @@ import { BoundingBox } from '../shared/types';
 export class ImageUtils {
   /**
    * Resizes dimensions to be divisible by 32 (required by DBNet)
-   * while keeping max side within limit
+   * Preserves optimal width (768-960px) for tall webtoon comic strips
    */
   public static calculateDetResize(
     width: number,
-    height: number,
-    maxSide: number = 960
+    height: number
   ): { targetW: number; targetH: number; ratioW: number; ratioH: number } {
     let ratio = 1.0;
-    if (Math.max(width, height) > maxSide) {
-      ratio = maxSide / Math.max(width, height);
+
+    // For webtoons, keep width in optimal reading range 768-960px
+    if (width > 960) {
+      ratio = 960 / width;
+    } else if (width < 640 && height < 1200) {
+      ratio = Math.min(1.5, 768 / width);
     }
+
+    // Safety limit on height to prevent excessive memory on ultra-long strips
+    if (height * ratio > 2048) {
+      ratio = 2048 / height;
+    }
+
     let targetW = Math.round(width * ratio);
     let targetH = Math.round(height * ratio);
 

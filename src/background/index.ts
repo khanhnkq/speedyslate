@@ -9,6 +9,7 @@ import { TranslationProviderFactory } from '../services/translation/provider-fac
 import { ApiRateLimiter } from '../services/translation/rate-limiter';
 import { PaddleDetEngine } from '../worker/paddle-det';
 import { PaddleRecEngine } from '../worker/paddle-rec';
+import { BubbleAggregator } from '../worker/bubble-aggregator';
 
 // Configure ONNX Runtime for background environment
 ort.env.wasm.wasmPaths = browser.runtime.getURL('');
@@ -152,7 +153,8 @@ browser.runtime.onMessage.addListener(async (rawMsg: any) => {
 
         // 4. Chạy PaddleOCR cục bộ - Hoàn toàn không rate limit (0ms delay)
         const boxes = await detEngine.detectText(canvas, width, height);
-        const dialogues: DialogueItem[] = await recEngine.recognizeBoxes(canvas, boxes);
+        const rawLines = await recEngine.recognizeBoxes(canvas, boxes);
+        const dialogues: DialogueItem[] = BubbleAggregator.aggregateDialogues(rawLines, width, height);
 
         // Nếu không có chữ, lưu vào cache là [] để không phải quét lại khi F5
         if (dialogues.length === 0 && imageUrl) {
@@ -253,7 +255,8 @@ browser.runtime.onMessage.addListener(async (rawMsg: any) => {
 
         // 4. Chạy PaddleOCR
         const boxes = await detEngine.detectText(canvas, width, height);
-        const dialogues: DialogueItem[] = await recEngine.recognizeBoxes(canvas, boxes);
+        const rawLines = await recEngine.recognizeBoxes(canvas, boxes);
+        const dialogues: DialogueItem[] = BubbleAggregator.aggregateDialogues(rawLines, width, height);
 
         if (dialogues.length === 0) {
           if (imageUrl) {

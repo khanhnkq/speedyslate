@@ -2,6 +2,7 @@ import browser from 'webextension-polyfill';
 import { ModelDbService } from '../shared/model-db';
 import { API_PRESETS, OCR_MODEL_PRESETS } from '../shared/presets';
 import { StorageService } from '../shared/storage';
+import { TranslationCacheDb } from '../shared/translation-db';
 import { BubbleTheme, ExtensionSettings, ProviderType } from '../shared/types';
 
 class PopupController {
@@ -25,6 +26,10 @@ class PopupController {
   private testBtn = document.getElementById('btn-test-connection') as HTMLButtonElement;
   private testResult = document.getElementById('test-result') as HTMLElement;
 
+  // DOM Elements - Cache DB
+  private cacheStatsText = document.getElementById('cache-stats-text') as HTMLElement;
+  private clearCacheBtn = document.getElementById('btn-clear-cache') as HTMLButtonElement;
+
   // DOM Elements - Preferences & Save
   private themeSelect = document.getElementById('select-theme') as HTMLSelectElement;
   private speedInput = document.getElementById('input-speed') as HTMLInputElement;
@@ -40,6 +45,7 @@ class PopupController {
 
     this.attachEventListeners();
     await this.updateOcrModelStatus();
+    await this.updateCacheStats();
   }
 
   private renderOcrPresets(): void {
@@ -119,6 +125,12 @@ class PopupController {
     this.progressContainer.style.display = 'none';
   }
 
+  private async updateCacheStats(): Promise<void> {
+    if (!this.cacheStatsText) return;
+    const stats = await TranslationCacheDb.getCacheStats();
+    this.cacheStatsText.textContent = `${stats.count} ảnh trang truyện`;
+  }
+
   private attachEventListeners(): void {
     // OCR selection change
     this.ocrSelect.addEventListener('change', async () => {
@@ -157,6 +169,21 @@ class PopupController {
       await this.updateOcrModelStatus();
     });
 
+    // Clear Cache DB
+    this.clearCacheBtn.addEventListener('click', async () => {
+      if (!confirm('Bạn có chắc chắn muốn dọn sạch toàn bộ cache truyện đã lưu?')) return;
+      this.clearCacheBtn.disabled = true;
+      try {
+        await TranslationCacheDb.clearAllCache();
+        await this.updateCacheStats();
+        alert('✓ Đã dọn sạch toàn bộ cache bản dịch thành công!');
+      } catch (err: any) {
+        alert('Lỗi dọn cache: ' + err.message);
+      } finally {
+        this.clearCacheBtn.disabled = false;
+      }
+    });
+
     // Provider change
     this.providerSelect.addEventListener('change', () => {
       const type = this.providerSelect.value as ProviderType;
@@ -174,7 +201,6 @@ class PopupController {
       this.testResult.textContent = 'Đang kiểm tra...';
       this.testResult.className = 'test-result-text';
 
-      // Save temp config to test
       await this.saveCurrentFormToSettings();
 
       try {

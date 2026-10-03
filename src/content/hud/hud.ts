@@ -1,17 +1,21 @@
 export interface HudCallbacks {
   onTogglePlay: () => void;
+  onToggleTranslate: () => void;
   onSpeedChange: (speed: number) => void;
   onToggleVisibility: (visible: boolean) => void;
-  onOpenSettings: () => void;
+  onClearChapterCache: () => void;
 }
 
 export class FloatingHud {
   private container: HTMLElement;
   private playBtn!: HTMLButtonElement;
+  private translateBtn!: HTMLButtonElement;
   private speedInput!: HTMLInputElement;
   private progressLabel!: HTMLElement;
   private eyeBtn!: HTMLButtonElement;
+  private clearBtn!: HTMLButtonElement;
   private isVisible: boolean = true;
+  private isTranslating: boolean = true;
   private callbacks: HudCallbacks;
 
   constructor(initialSpeed: number, callbacks: HudCallbacks) {
@@ -30,8 +34,16 @@ export class FloatingHud {
 
   public setPlaying(isPlaying: boolean): void {
     if (this.playBtn) {
-      this.playBtn.innerHTML = isPlaying ? '⏸ Tạm dừng' : '▶ Tự cuộn';
+      this.playBtn.innerHTML = isPlaying ? '⏸ Dừng cuộn' : '▶ Tự cuộn';
       this.playBtn.style.backgroundColor = isPlaying ? '#ff4757' : '#2ed573';
+    }
+  }
+
+  public setTranslating(isTranslating: boolean): void {
+    this.isTranslating = isTranslating;
+    if (this.translateBtn) {
+      this.translateBtn.innerHTML = isTranslating ? '⚡ Đang dịch' : '⏸ Ngưng dịch';
+      this.translateBtn.style.backgroundColor = isTranslating ? '#3742fa' : '#747d8c';
     }
   }
 
@@ -41,7 +53,7 @@ export class FloatingHud {
       bottom: '24px',
       right: '24px',
       zIndex: '999999',
-      backgroundColor: 'rgba(24, 24, 27, 0.92)',
+      backgroundColor: 'rgba(24, 24, 27, 0.94)',
       backdropFilter: 'blur(8px)',
       color: '#ffffff',
       padding: '10px 14px',
@@ -51,12 +63,33 @@ export class FloatingHud {
       fontSize: '13px',
       display: 'flex',
       alignItems: 'center',
-      gap: '10px',
+      gap: '8px',
       border: '1px solid rgba(255,255,255,0.15)',
       userSelect: 'none'
     });
 
-    // 1. Play / Pause Button
+    // 1. Dịch / Ngưng dịch Button
+    this.translateBtn = document.createElement('button');
+    this.translateBtn.innerHTML = '⚡ Đang dịch';
+    this.translateBtn.title = 'Bật / Ngưng dịch truyện';
+    Object.assign(this.translateBtn.style, {
+      backgroundColor: '#3742fa',
+      color: '#ffffff',
+      border: 'none',
+      borderRadius: '8px',
+      padding: '6px 10px',
+      fontWeight: 'bold',
+      cursor: 'pointer',
+      fontSize: '12px',
+      transition: 'all 0.2s ease'
+    });
+    this.translateBtn.onclick = () => {
+      this.isTranslating = !this.isTranslating;
+      this.setTranslating(this.isTranslating);
+      this.callbacks.onToggleTranslate();
+    };
+
+    // 2. Play / Pause Auto-Scroll Button
     this.playBtn = document.createElement('button');
     this.playBtn.innerHTML = '▶ Tự cuộn';
     Object.assign(this.playBtn.style, {
@@ -64,7 +97,7 @@ export class FloatingHud {
       color: '#ffffff',
       border: 'none',
       borderRadius: '8px',
-      padding: '6px 12px',
+      padding: '6px 10px',
       fontWeight: 'bold',
       cursor: 'pointer',
       fontSize: '12px',
@@ -72,24 +105,24 @@ export class FloatingHud {
     });
     this.playBtn.onclick = () => this.callbacks.onTogglePlay();
 
-    // 2. Speed Slider
+    // 3. Speed Slider
     const speedWrapper = document.createElement('div');
     speedWrapper.style.display = 'flex';
     speedWrapper.style.alignItems = 'center';
-    speedWrapper.style.gap = '4px';
+    speedWrapper.style.gap = '3px';
 
     const speedLabel = document.createElement('span');
     speedLabel.textContent = `${initialSpeed}x`;
     speedLabel.style.fontSize = '11px';
     speedLabel.style.color = '#a4b0be';
-    speedLabel.style.minWidth = '22px';
+    speedLabel.style.minWidth = '20px';
 
     this.speedInput = document.createElement('input');
     this.speedInput.type = 'range';
     this.speedInput.min = '1';
     this.speedInput.max = '8';
     this.speedInput.value = String(initialSpeed);
-    this.speedInput.style.width = '60px';
+    this.speedInput.style.width = '55px';
     this.speedInput.style.cursor = 'pointer';
 
     this.speedInput.oninput = () => {
@@ -100,13 +133,14 @@ export class FloatingHud {
     speedWrapper.appendChild(this.speedInput);
     speedWrapper.appendChild(speedLabel);
 
-    // 3. Progress counter
+    // 4. Progress counter
     this.progressLabel = document.createElement('span');
     this.progressLabel.textContent = '📖 0/0';
     this.progressLabel.style.fontWeight = 'bold';
     this.progressLabel.style.color = '#eccc68';
+    this.progressLabel.style.fontSize = '12px';
 
-    // 4. Toggle Visibility (Eye) Button
+    // 5. Toggle Visibility (Eye) Button
     this.eyeBtn = document.createElement('button');
     this.eyeBtn.title = 'Ẩn / Hiện bản dịch';
     this.eyeBtn.textContent = '👁';
@@ -117,7 +151,7 @@ export class FloatingHud {
       color: '#ffffff',
       padding: '4px 8px',
       cursor: 'pointer',
-      fontSize: '14px'
+      fontSize: '13px'
     });
     this.eyeBtn.onclick = () => {
       this.isVisible = !this.isVisible;
@@ -125,9 +159,26 @@ export class FloatingHud {
       this.callbacks.onToggleVisibility(this.isVisible);
     };
 
+    // 6. Quick Clear Chapter Cache Button
+    this.clearBtn = document.createElement('button');
+    this.clearBtn.title = 'Xóa cache bản dịch của chương này để dịch lại';
+    this.clearBtn.textContent = '🧹';
+    Object.assign(this.clearBtn.style, {
+      background: 'rgba(255,255,255,0.1)',
+      border: 'none',
+      borderRadius: '6px',
+      color: '#ffffff',
+      padding: '4px 8px',
+      cursor: 'pointer',
+      fontSize: '13px'
+    });
+    this.clearBtn.onclick = () => this.callbacks.onClearChapterCache();
+
+    this.container.appendChild(this.translateBtn);
     this.container.appendChild(this.playBtn);
     this.container.appendChild(speedWrapper);
     this.container.appendChild(this.progressLabel);
     this.container.appendChild(this.eyeBtn);
+    this.container.appendChild(this.clearBtn);
   }
 }

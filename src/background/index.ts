@@ -10,7 +10,7 @@ import { PaddleRecEngine } from '../worker/paddle-rec';
 
 // Configure ONNX Runtime for background environment
 ort.env.wasm.wasmPaths = browser.runtime.getURL('');
-ort.env.wasm.numThreads = 2;
+ort.env.wasm.numThreads = 1; // Single-thread SIMD: 100% compatible with MV3 background
 ort.env.wasm.simd = true;
 
 let detEngine: PaddleDetEngine | null = null;
@@ -18,22 +18,22 @@ let recEngine: PaddleRecEngine | null = null;
 let activeModelId: string | null = null;
 let isInitializingModel = false;
 
-async function ensureModelLoaded(modelId: string): Promise<boolean> {
+async function ensureModelLoaded(modelId: string): Promise<void> {
   if (detEngine && recEngine && activeModelId === modelId) {
-    return true;
+    return;
   }
   if (isInitializingModel) {
     while (isInitializingModel) {
       await new Promise((r) => setTimeout(r, 100));
     }
-    return Boolean(detEngine && recEngine);
+    if (detEngine && recEngine && activeModelId === modelId) return;
   }
 
   isInitializingModel = true;
   try {
     const status = await ModelDbService.getModelStatus(modelId);
     if (status.status !== 'ready') {
-      return false;
+      throw new Error(`Model OCR "${modelId}" chưa được tải. Vui lòng mở popup tiện ích để tải model.`);
     }
 
     const buffers = await ModelDbService.getModelBuffers(modelId);
@@ -50,10 +50,9 @@ async function ensureModelLoaded(modelId: string): Promise<boolean> {
     detEngine = new PaddleDetEngine(detSession);
     recEngine = new PaddleRecEngine(recSession, buffers.keysText);
     activeModelId = modelId;
-    return true;
-  } catch (err) {
+  } catch (err: any) {
     console.error('[SpeedySlate Background] Model init error:', err);
-    return false;
+    throw new Error(`Lỗi nạp model OCR: ${err?.message || String(err)}`);
   } finally {
     isInitializingModel = false;
   }
@@ -114,9 +113,14 @@ browser.runtime.onMessage.addListener(async (rawMsg: any) => {
         // 2. Nạp Model OCR trong Background
         const settings = await StorageService.getSettings();
         const modelId = settings.activeOcrModelId || 'paddle-en-slim';
-        const ready = await ensureModelLoaded(modelId);
-        if (!ready || !detEngine || !recEngine) {
-          return { success: false, error: 'Model OCR chưa được tải trong extension. Vui lòng mở cài đặt để tải model.' };
+        try {
+          await ensureModelLoaded(modelId);
+        } catch (err: any) {
+          return { success: false, error: err.message };
+        }
+
+        if (!detEngine || !recEngine) {
+          return { success: false, error: 'Không thể khởi tạo engine OCR' };
         }
 
         // 3. Lấy ảnh và vẽ lên OffscreenCanvas

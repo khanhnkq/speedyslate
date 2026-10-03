@@ -16,16 +16,19 @@ class SpeedySlateContentApp {
   private mutationObserver: MutationObserver | null = null;
 
   constructor() {
-    // 1. Tạo và hiển thị Floating HUD 1-Mode đồng bộ ngay lập tức
+    // 1. Khởi tạo Anime Floating HUD ở trạng thái Chờ (Idle)
     this.hud = new FloatingHud({
-      onToggleTranslate: () => {
+      onToggleTranslate: async () => {
         if (!this.queue) return;
-        if (this.queue.getIsPaused()) {
-          this.queue.resume();
-          this.hud.log('▶ Đang tiếp tục tiến trình dịch...');
+
+        const currentState = this.hud.getState();
+        if (currentState === 'translating') {
+          // Bắt đầu dịch
+          await this.handleStartTranslating();
         } else {
+          // Tạm dừng dịch
           this.queue.pause();
-          this.hud.log('⏸ Đã tạm dừng dịch');
+          this.hud.log('⏸ Đã tạm dừng tiến trình dịch truyện');
         }
       },
       onToggleVisibility: (visible) => OverlayRenderer.setAllVisibility(visible),
@@ -38,11 +41,12 @@ class SpeedySlateContentApp {
         this.images.forEach((img) => delete img.dataset.slateStatus);
         this.translatedImagesCount = 0;
         this.hud.updateStatus(0, this.images.length);
+        this.hud.setState('idle');
         this.hud.log(`🧹 Đã xóa ${resp?.deleted || 0} bản dịch cache của chương này.`);
       }
     });
 
-    this.hud.log('⚡ SpeedySlate đang khởi tạo...');
+    this.hud.log('🌸 SpeedySlate đang khởi tạo...');
   }
 
   public async start(): Promise<void> {
@@ -54,36 +58,60 @@ class SpeedySlateContentApp {
       this.hud.log('⚠️ Đang dùng cấu hình mặc định');
     }
 
-    // 2. Khởi tạo hàng đợi ưu tiên từ trên xuống dưới (2 luồng song song)
+    // 2. Khởi tạo hàng đợi dịch tuần tự (mặc định PAUSED cho đến khi người dùng bấm dịch)
     this.queue = new OrderedTranslationQueue(async (task) => {
       await this.processImageTask(task);
     }, 2);
+    this.queue.pause();
 
-    // 3. Quét ảnh ban đầu và theo dõi DOM
+    // 3. Quét toàn bộ ảnh trong chương và theo dõi DOM
     this.detectImages();
     this.setupMutationObserver();
     this.setupIntersectionObserver();
 
-    // 4. Kiểm tra Model OCR từ Background (Cùng Extension Origin)
-    await this.checkModelStatusFromBackground();
+    // 4. Kiểm tra trạng thái Model OCR từ Background
+    await this.checkModelStatusFromBackground(false);
 
-    // 5. Đưa các ảnh đầu tiên vào hàng đợi
-    this.enqueueInitialImages();
+    this.hud.log(`🌸 Sẵn sàng! Tìm thấy ${this.images.length} ảnh truyện.`);
   }
 
-  private async checkModelStatusFromBackground(): Promise<void> {
+  private async handleStartTranslating(): Promise<void> {
+    // Kiểm tra model OCR
+    if (!this.isModelReady) {
+      await this.checkModelStatusFromBackground(true);
+      if (!this.isModelReady) {
+        this.hud.setState('idle');
+        return;
+      }
+    }
+
+    this.hud.log(`🍡 Bắt đầu dịch chương (${this.images.length} ảnh)...`);
+
+    // Kích hoạt nạp toàn bộ ảnh ngay tại chỗ
+    ToonheyAdapter.forceLoadAll(this.images);
+
+    // Nạp toàn bộ ảnh chưa dịch vào hàng đợi
+    this.enqueueAllImages();
+
+    // Kích hoạt chạy hàng đợi
+    this.queue.resume();
+  }
+
+  private async checkModelStatusFromBackground(showBannerIfMissing: boolean): Promise<void> {
     try {
       const resp: any = await browser.runtime.sendMessage({ action: 'CHECK_MODEL_STATUS' });
       if (resp?.success && resp.status?.status === 'ready') {
         this.isModelReady = true;
-        this.hud.log('✅ Model OCR đã sẵn sàng!');
+        this.hud.log('🌸 Model OCR đã sẵn sàng!');
       } else {
         this.isModelReady = false;
-        this.hud.log('⚠️ Chưa tải model OCR. Bấm icon tiện ích để tải (~10MB)', true);
-        this.showModelMissingBanner();
+        this.hud.log('⚠️ Chưa tải model OCR. Mở popup tiện ích để tải (~10MB)', true);
+        if (showBannerIfMissing) {
+          this.showModelMissingBanner();
+        }
       }
     } catch (err: any) {
-      this.hud.log(`❌ Lỗi kiểm tra model: ${err.message}`, true);
+      this.hud.log(`💥 Lỗi kiểm tra model: ${err.message}`, true);
     }
   }
 
@@ -101,7 +129,12 @@ class SpeedySlateContentApp {
 
     if (newFound > 0) {
       this.hud.updateStatus(this.translatedImagesCount, this.images.length);
-      this.hud.log(`🔍 Tìm thấy ${this.images.length} ảnh trong chương truyện.`);
+      this.hud.log(`🌸 Quét thấy ${this.images.length} ảnh truyện.`);
+
+      // Nếu đang trong tiến trình dịch thì tự động đưa các ảnh mới vào hàng đợi
+      if (this.hud.getState() === 'translating') {
+        this.enqueueAllImages();
+      }
     }
   }
 
@@ -122,7 +155,7 @@ class SpeedySlateContentApp {
           if (entry.isIntersecting) {
             const img = entry.target as HTMLImageElement;
             const index = this.images.indexOf(img);
-            if (index !== -1 && !img.dataset.slateStatus) {
+            if (index !== -1 && !img.dataset.slateStatus && this.hud.getState() === 'translating') {
               this.queue.enqueue({ index, img });
             }
           }
@@ -136,8 +169,8 @@ class SpeedySlateContentApp {
     }, 2000);
   }
 
-  private enqueueInitialImages(): void {
-    for (let i = 0; i < Math.min(3, this.images.length); i++) {
+  private enqueueAllImages(): void {
+    for (let i = 0; i < this.images.length; i++) {
       const img = this.images[i];
       if (!img.dataset.slateStatus) {
         this.queue.enqueue({ index: i, img });
@@ -147,7 +180,7 @@ class SpeedySlateContentApp {
 
   private async processImageTask(task: QueueTask): Promise<void> {
     if (!this.isModelReady) {
-      await this.checkModelStatusFromBackground();
+      await this.checkModelStatusFromBackground(true);
       if (!this.isModelReady) return;
     }
 
@@ -204,12 +237,12 @@ class SpeedySlateContentApp {
       if (resp.cached) {
         this.hud.log(`⚡ Ảnh #${task.index + 1}: Nạp từ Cache (0ms)`);
       } else if (resp.dialogues.length > 0) {
-        this.hud.log(`✅ Ảnh #${task.index + 1}: Dịch xong ${resp.dialogues.length} câu thoại`);
+        this.hud.log(`✨ Ảnh #${task.index + 1}: Xong ${resp.dialogues.length} câu thoại`);
       } else {
-        this.hud.log(`ℹ️ Ảnh #${task.index + 1}: Không có chữ`);
+        this.hud.log(`🍙 Ảnh #${task.index + 1}: Không có chữ`);
       }
     } else {
-      this.hud.log(`❌ Lỗi ảnh #${task.index + 1}: ${resp?.error || 'Lỗi không xác định'}`, true);
+      this.hud.log(`💥 Lỗi ảnh #${task.index + 1}: ${resp?.error || 'Lỗi không xác định'}`, true);
     }
   }
 
@@ -220,14 +253,14 @@ class SpeedySlateContentApp {
     banner.id = 'speedyslate-missing-banner';
     banner.style.cssText = `
       position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
-      background: #1e293b; color: #ffffff; padding: 12px 20px;
-      border-radius: 10px; z-index: 2147483647; box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+      background: linear-gradient(135deg, #1e1b4b, #311042); color: #ffffff; padding: 12px 20px;
+      border-radius: 12px; z-index: 2147483647; box-shadow: 0 10px 30px rgba(0,0,0,0.6);
       font-family: sans-serif; font-size: 13px; display: flex; align-items: center; gap: 12px;
-      border: 1px solid #3b82f6;
+      border: 1px solid #f472b6;
     `;
     banner.innerHTML = `
-      <span>⚠️ <b>SpeedySlate</b>: Bạn chưa tải model OCR (~10MB). Bấm vào icon tiện ích trên thanh công cụ để tải.</span>
-      <button style="background: #3b82f6; border: none; color: #fff; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">Đóng</button>
+      <span>🌸 <b>SpeedySlate</b>: Bạn chưa tải model OCR (~10MB). Bấm vào icon tiện ích trên thanh công cụ để tải nhé!</span>
+      <button style="background: #ec4899; border: none; color: #fff; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">Đóng</button>
     `;
     banner.querySelector('button')?.addEventListener('click', () => banner.remove());
     document.body?.appendChild(banner);

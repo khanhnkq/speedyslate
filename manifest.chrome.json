@@ -45,7 +45,8 @@
       "resources": [
         "worker.js",
         "icons/*",
-        "*.wasm"
+        "*.wasm",
+        "*.mjs"
       ],
       "matches": ["*://toonhey.com/*", "*://*.toonhey.com/*"]
     }

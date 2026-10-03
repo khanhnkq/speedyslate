@@ -68,14 +68,16 @@ export default defineConfig(({ mode }) => {
             console.log(`[Vite] Copied icons -> dist/${target}/icons`);
           }
 
-          // 4. Copy ONNX Runtime WebAssembly files (AMO compliance: local wasm only)
+          // 4. Copy ONNX Runtime WebAssembly and glue script files (AMO compliance: local wasm only)
           const onnxDist = resolve(__dirname, 'node_modules/onnxruntime-web/dist');
           if (fs.existsSync(onnxDist)) {
-            const wasmFiles = fs.readdirSync(onnxDist).filter((f) => f.endsWith('.wasm'));
-            for (const wasm of wasmFiles) {
-              fs.copyFileSync(resolve(onnxDist, wasm), resolve(outDir, wasm));
+            const files = fs.readdirSync(onnxDist).filter(
+              (f) => f.endsWith('.wasm') || (f.startsWith('ort-wasm') && f.endsWith('.mjs'))
+            );
+            for (const file of files) {
+              fs.copyFileSync(resolve(onnxDist, file), resolve(outDir, file));
             }
-            console.log(`[Vite] Copied ${wasmFiles.length} ONNX wasm files -> dist/${target}/`);
+            console.log(`[Vite] Copied ${files.length} ONNX wasm & mjs files -> dist/${target}/`);
           }
         }
       }

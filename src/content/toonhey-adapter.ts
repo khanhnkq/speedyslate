@@ -1,60 +1,115 @@
 /**
  * Adapter specifically crafted for toonhey.com and similar vertical webtoon readers
- * Supports instant force-loading of all lazy images without requiring any scrolling
+ * Robustly detects 100% of chapter images without being tripped by lazy-loading
  * Following Single Responsibility Principle (SRP)
  */
 export class ToonheyAdapter {
-  private static readonly SELECTORS = [
-    '.reading-content img',
-    '#reader-area img',
-    '#reader-container img',
-    '.entry-content img',
-    '.chapter-images img',
-    '.page-break img',
-    'div[id*="chapter"] img',
-    'div[class*="reading"] img',
-    'img[src*="toonhey"]',
-    'img[class*="chapter"]',
-    'img[data-src]',
-    'img[data-original]',
-    'img[data-lazy-src]'
+  private static readonly CONTAINER_SELECTORS = [
+    '.reading-content',
+    '#reader-area',
+    '#readerarea',
+    '#reader-container',
+    '.entry-content',
+    '.chapter-images',
+    '.chapter-body',
+    '.page-break',
+    'div[id*="chapter"]',
+    'div[class*="reading"]',
+    'div[class*="chapter"]',
+    'main',
+    'article'
   ];
 
   /**
    * Finds all comic strip images in the reader, even if lazy-loaded
    */
   public static getChapterImages(): HTMLImageElement[] {
-    for (const selector of this.SELECTORS) {
-      const images = Array.from(document.querySelectorAll<HTMLImageElement>(selector));
-      if (images.length > 0) {
-        // Exclude tiny icons, avatars or social buttons
-        const valid = images.filter((img) => {
-          const hasLazyAttr = Boolean(
-            img.dataset.src ||
-            img.getAttribute('data-src') ||
-            img.getAttribute('data-original') ||
-            img.getAttribute('data-lazy-src')
-          );
-          const isWideEnough = img.naturalWidth > 150 || img.width > 150;
-          return hasLazyAttr || isWideEnough;
-        });
+    let bestImages: HTMLImageElement[] = [];
 
-        if (valid.length > 0) return valid;
+    // 1. Check containers first to find the primary chapter gallery
+    for (const selector of this.CONTAINER_SELECTORS) {
+      const container = document.querySelector(selector);
+      if (container) {
+        const imgs = Array.from(container.querySelectorAll<HTMLImageElement>('img'));
+        const comicImgs = imgs.filter((img) => this.isLikelyComicImage(img));
+        if (comicImgs.length > bestImages.length) {
+          bestImages = comicImgs;
+        }
       }
     }
 
-    // Generic fallback: any tall image or image with lazy attributes on page
+    // If container search found 2 or more images, it's definitely the comic container
+    if (bestImages.length >= 2) {
+      return bestImages;
+    }
+
+    // 2. Global search across all img tags, filtering out headers, footers, sidebars, and ads
     const allImages = Array.from(document.querySelectorAll<HTMLImageElement>('img'));
-    return allImages.filter(
-      (img) =>
-        (img.dataset.src || img.getAttribute('data-src') || img.naturalHeight > 250 || img.height > 250) &&
-        !img.closest('header, footer, nav, aside')
+    const candidateImgs = allImages.filter((img) => this.isLikelyComicImage(img));
+
+    return candidateImgs.length > bestImages.length ? candidateImgs : bestImages;
+  }
+
+  /**
+   * Determines if an <img> tag is a comic panel rather than an icon, banner, or avatar
+   */
+  private static isLikelyComicImage(img: HTMLImageElement): boolean {
+    // 1. Exclude UI chrome
+    if (
+      img.closest(
+        'header, footer, nav, aside, #comments, .comments, .comment, #sidebar, .sidebar, #speedyslate-hud, .speedyslate-hud, #speedyslate-missing-banner'
+      )
+    ) {
+      return false;
+    }
+
+    if (img.classList.contains('speedyslate-ignore') || img.style.display === 'none') {
+      return false;
+    }
+
+    // 2. Exclude common UI assets
+    const src = (img.currentSrc || img.src || img.dataset.src || img.getAttribute('data-src') || '').toLowerCase();
+    const className = (img.className || '').toLowerCase();
+    const id = (img.id || '').toLowerCase();
+
+    const ignoredKeywords = [
+      'logo', 'avatar', 'icon', 'emoji', 'badge', 'button', 'social',
+      'banner_ad', 'advertisement', 'facebook', 'twitter', 'discord',
+      'tracker', 'gravatar', 'loading.gif', 'spinner', 'placeholder'
+    ];
+
+    for (const kw of ignoredKeywords) {
+      if (src.includes(kw) || className.includes(kw) || id.includes(kw)) {
+        return false;
+      }
+    }
+
+    if (src.endsWith('.svg') || src.includes('.svg?')) {
+      return false;
+    }
+
+    // 3. Reject only if image has already loaded and is definitely a tiny icon
+    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+      if (img.naturalWidth < 120 || img.naturalHeight < 120) {
+        return false;
+      }
+    }
+
+    // 4. Must have a source attribute or lazy attribute
+    const hasSource = Boolean(
+      img.src ||
+      img.dataset.src ||
+      img.getAttribute('data-src') ||
+      img.getAttribute('data-original') ||
+      img.getAttribute('data-lazy-src') ||
+      img.getAttribute('data-actual-src')
     );
+
+    return hasSource;
   }
 
   /**
    * Force-loads a single image by swapping lazy data-src attributes to active src
-   * Bypasses the need for viewport scrolling!
    */
   public static forceTriggerImage(img: HTMLImageElement): void {
     const realSrc =
@@ -68,13 +123,14 @@ export class ToonheyAdapter {
       img.src = realSrc;
     }
     img.loading = 'eager';
+    img.decoding = 'async';
     img.removeAttribute('data-src');
     img.removeAttribute('data-lazy-src');
     img.classList.remove('lazy', 'lazyload', 'loading');
   }
 
   /**
-   * Force-loads ALL images in the chapter simultaneously without any scrolling!
+   * Force-loads ALL images in the chapter simultaneously without requiring manual scrolling
    */
   public static forceLoadAll(images: HTMLImageElement[]): void {
     for (const img of images) {

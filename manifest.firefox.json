@@ -31,8 +31,12 @@
     {
       "matches": [
         "*://toonhey.com/*",
-        "*://*.toonhey.com/*"
+        "*://*.toonhey.com/*",
+        "*://*.toonhey.*/*",
+        "*://toonhey.*/*"
       ],
+      "all_frames": true,
+      "match_about_blank": true,
       "js": ["content.js"],
       "run_at": "document_idle"
     }

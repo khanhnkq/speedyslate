@@ -1,58 +1,181 @@
 import browser from 'webextension-polyfill';
+import * as ort from 'onnxruntime-web';
+import { ModelDbService } from '../shared/model-db';
 import { StorageService } from '../shared/storage';
+import { TranslationCacheDb } from '../shared/translation-db';
+import { DialogueItem } from '../shared/types';
 import { TranslationProviderFactory } from '../services/translation/provider-factory';
+import { PaddleDetEngine } from '../worker/paddle-det';
+import { PaddleRecEngine } from '../worker/paddle-rec';
 
-export interface BackgroundMessage {
-  action: 'TRANSLATE_TEXTS' | 'TEST_CONNECTION' | 'GET_SETTINGS' | 'PING';
-  texts?: string[];
-  targetLang?: string;
-  providerType?: any;
-  customConfig?: any;
+// Configure ONNX Runtime for background environment
+ort.env.wasm.wasmPaths = browser.runtime.getURL('');
+ort.env.wasm.numThreads = 2;
+ort.env.wasm.simd = true;
+
+let detEngine: PaddleDetEngine | null = null;
+let recEngine: PaddleRecEngine | null = null;
+let activeModelId: string | null = null;
+let isInitializingModel = false;
+
+async function ensureModelLoaded(modelId: string): Promise<boolean> {
+  if (detEngine && recEngine && activeModelId === modelId) {
+    return true;
+  }
+  if (isInitializingModel) {
+    while (isInitializingModel) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return Boolean(detEngine && recEngine);
+  }
+
+  isInitializingModel = true;
+  try {
+    const status = await ModelDbService.getModelStatus(modelId);
+    if (status.status !== 'ready') {
+      return false;
+    }
+
+    const buffers = await ModelDbService.getModelBuffers(modelId);
+    const sessionOpts: ort.InferenceSession.SessionOptions = {
+      executionProviders: ['wasm'],
+      graphOptimizationLevel: 'all'
+    };
+
+    const [detSession, recSession] = await Promise.all([
+      ort.InferenceSession.create(buffers.detBuffer, sessionOpts),
+      ort.InferenceSession.create(buffers.recBuffer, sessionOpts)
+    ]);
+
+    detEngine = new PaddleDetEngine(detSession);
+    recEngine = new PaddleRecEngine(recSession, buffers.keysText);
+    activeModelId = modelId;
+    return true;
+  } catch (err) {
+    console.error('[SpeedySlate Background] Model init error:', err);
+    return false;
+  } finally {
+    isInitializingModel = false;
+  }
 }
 
-// Listen for messages from Content Script and Popup
+async function getImageBitmapFromInput(dataUrl?: string, imageUrl?: string): Promise<ImageBitmap> {
+  if (dataUrl) {
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    return await createImageBitmap(blob);
+  }
+  if (imageUrl) {
+    // Background fetch bypasses CORS
+    const res = await fetch(imageUrl);
+    const blob = await res.blob();
+    return await createImageBitmap(blob);
+  }
+  throw new Error('Thiếu dữ liệu ảnh (dataUrl hoặc imageUrl)');
+}
+
 browser.runtime.onMessage.addListener(async (rawMsg: any) => {
-  const msg = rawMsg as BackgroundMessage;
+  const msg = rawMsg;
 
   try {
     switch (msg.action) {
       case 'PING':
         return { success: true, message: 'SpeedySlate Background Ready' };
 
-      case 'GET_SETTINGS': {
+      case 'CHECK_MODEL_STATUS': {
         const settings = await StorageService.getSettings();
-        return { success: true, settings };
+        const modelId = msg.modelId || settings.activeOcrModelId || 'paddle-en-slim';
+        const status = await ModelDbService.getModelStatus(modelId);
+        return { success: true, status };
       }
 
-      case 'TRANSLATE_TEXTS': {
-        if (!msg.texts || !msg.texts.length) {
-          return { success: true, translations: [] };
-        }
-        const settings = await StorageService.getSettings();
-        const provider = TranslationProviderFactory.createProvider(settings);
-        const targetLang = msg.targetLang || settings.targetLanguage || 'Tiếng Việt';
+      case 'CLEAR_CHAPTER_CACHE': {
+        const deleted = await TranslationCacheDb.clearChapterCache(msg.chapterUrl);
+        return { success: true, deleted };
+      }
 
-        const translations = await provider.translateDialogues(msg.texts, targetLang);
-        return { success: true, translations };
+      case 'TRANSLATE_IMAGE': {
+        const { imageUrl, chapterUrl, dataUrl } = msg;
+
+        // 1. Kiểm tra cache IndexedDB trước
+        if (imageUrl) {
+          const cached = await TranslationCacheDb.getTranslation(imageUrl);
+          if (cached && cached.dialogues?.length > 0) {
+            return {
+              success: true,
+              cached: true,
+              dialogues: cached.dialogues,
+              naturalWidth: cached.naturalWidth,
+              naturalHeight: cached.naturalHeight
+            };
+          }
+        }
+
+        // 2. Nạp Model OCR trong Background
+        const settings = await StorageService.getSettings();
+        const modelId = settings.activeOcrModelId || 'paddle-en-slim';
+        const ready = await ensureModelLoaded(modelId);
+        if (!ready || !detEngine || !recEngine) {
+          return { success: false, error: 'Model OCR chưa được tải trong extension. Vui lòng mở cài đặt để tải model.' };
+        }
+
+        // 3. Lấy ảnh và vẽ lên OffscreenCanvas
+        const bitmap = await getImageBitmapFromInput(dataUrl, imageUrl);
+        const width = bitmap.width;
+        const height = bitmap.height;
+
+        const canvas = new OffscreenCanvas(width, height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Không thể tạo 2D context');
+        ctx.drawImage(bitmap, 0, 0);
+        bitmap.close();
+
+        // 4. Chạy PaddleOCR
+        const boxes = await detEngine.detectText(canvas, width, height);
+        const dialogues: DialogueItem[] = await recEngine.recognizeBoxes(canvas, boxes);
+
+        if (dialogues.length === 0) {
+          return { success: true, cached: false, dialogues: [], naturalWidth: width, naturalHeight: height };
+        }
+
+        // 5. Dịch bằng API Text (Gemini / OpenAI-compatible)
+        const texts = dialogues.map((d) => d.originalText);
+        const provider = TranslationProviderFactory.createProvider(settings);
+        const targetLang = settings.targetLanguage || 'Tiếng Việt';
+        const translations = await provider.translateDialogues(texts, targetLang);
+
+        dialogues.forEach((d, i) => {
+          d.translatedText = translations[i] || d.originalText;
+        });
+
+        // 6. Lưu vào Cache DB
+        if (imageUrl) {
+          await TranslationCacheDb.saveTranslation(imageUrl, chapterUrl || '', dialogues, width, height);
+        }
+
+        return {
+          success: true,
+          cached: false,
+          dialogues,
+          naturalWidth: width,
+          naturalHeight: height
+        };
       }
 
       case 'TEST_CONNECTION': {
         const settings = await StorageService.getSettings();
-        const provider = TranslationProviderFactory.createProvider(
-          settings,
-          msg.providerType
-        );
+        const provider = TranslationProviderFactory.createProvider(settings, msg.providerType);
         const ok = await provider.testConnection();
         return { success: ok };
       }
 
       default:
-        return { success: false, error: 'Hành động không hợp lệ' };
+        return { success: false, error: 'Action không hợp lệ' };
     }
   } catch (err: any) {
     console.error('[SpeedySlate Background] Error:', err);
-    return { success: false, error: err?.message || 'Lỗi xử lý trong background script' };
+    return { success: false, error: err?.message || 'Lỗi xử lý trong background' };
   }
 });
 
-console.log('[SpeedySlate] Background Service Initialized');
+console.log('[SpeedySlate] Background AI Service Initialized');

@@ -1,20 +1,18 @@
 export interface HudCallbacks {
-  onTogglePlay: () => void;
-  onPreloadAllWithoutScroll: () => void;
-  onPreloadAndReturn: () => void;
   onToggleTranslate: () => void;
-  onSpeedChange: (speed: number) => void;
   onToggleVisibility: (visible: boolean) => void;
   onClearChapterCache: () => void;
 }
 
+/**
+ * Streamlined Floating HUD
+ * Dedicated 100% to Translation without unnecessary scroll buttons
+ * Following Single Responsibility Principle (SRP)
+ */
 export class FloatingHud {
   private container: HTMLElement;
   private miniBadge: HTMLElement;
-  private playBtn!: HTMLButtonElement;
-  private preloadBtn!: HTMLButtonElement;
   private translateBtn!: HTMLButtonElement;
-  private speedInput!: HTMLInputElement;
   private progressLabel!: HTMLElement;
   private eyeBtn!: HTMLButtonElement;
   private clearBtn!: HTMLButtonElement;
@@ -27,7 +25,7 @@ export class FloatingHud {
   private logs: string[] = [];
   private callbacks: HudCallbacks;
 
-  constructor(initialSpeed: number, callbacks: HudCallbacks) {
+  constructor(callbacks: HudCallbacks) {
     this.callbacks = callbacks;
 
     // 1. Mini Badge (shown when minimized)
@@ -38,11 +36,9 @@ export class FloatingHud {
     // 2. Main HUD Container
     this.container = document.createElement('div');
     this.container.id = 'speedyslate-hud-root';
-    this.render(initialSpeed);
+    this.render();
 
     this.makeDraggable(this.container);
-
-    // Ensure mounted even if DOM is not fully ready
     this.mountToBody();
   }
 
@@ -87,26 +83,15 @@ export class FloatingHud {
 
   public updateStatus(translatedCount: number, totalCount: number): void {
     if (this.progressLabel) {
-      this.progressLabel.textContent = `📖 ${translatedCount}/${totalCount}`;
-    }
-  }
-
-  public setPlaying(isPlaying: boolean, isPreloading: boolean = false): void {
-    if (this.playBtn) {
-      this.playBtn.innerHTML = isPlaying ? '⏸ Dừng cuộn' : '▶ Tự cuộn';
-      this.playBtn.style.backgroundColor = isPlaying ? '#ff4757' : '#2ed573';
-    }
-    if (this.preloadBtn) {
-      this.preloadBtn.disabled = isPlaying && !isPreloading;
-      this.preloadBtn.style.opacity = isPlaying && !isPreloading ? '0.5' : '1';
+      this.progressLabel.textContent = `📖 Đã dịch: ${translatedCount}/${totalCount}`;
     }
   }
 
   public setTranslating(isTranslating: boolean): void {
     this.isTranslating = isTranslating;
     if (this.translateBtn) {
-      this.translateBtn.innerHTML = isTranslating ? '⚡ Đang dịch' : '⏸ Ngưng dịch';
-      this.translateBtn.style.backgroundColor = isTranslating ? '#3742fa' : '#747d8c';
+      this.translateBtn.innerHTML = isTranslating ? '⚡ Đang dịch truyện' : '▶ Tiếp tục dịch';
+      this.translateBtn.style.backgroundColor = isTranslating ? '#2563eb' : '#4b5563';
     }
   }
 
@@ -140,7 +125,7 @@ export class FloatingHud {
     this.miniBadge.style.display = expand ? 'none' : 'flex';
   }
 
-  private render(initialSpeed: number): void {
+  private render(): void {
     Object.assign(this.container.style, {
       position: 'fixed',
       bottom: '90px', // Placed above Toonhey's bottom-right AUTO button!
@@ -159,7 +144,7 @@ export class FloatingHud {
       gap: '8px',
       border: '1px solid rgba(255,255,255,0.22)',
       userSelect: 'none',
-      width: '340px',
+      width: '320px',
       maxWidth: '90vw'
     });
 
@@ -185,15 +170,13 @@ export class FloatingHud {
     headerRow.appendChild(titleBox);
     headerRow.appendChild(minBtn);
 
-    // ROW 1: Action Buttons (Translate, Auto-scroll, Preload & Return)
-    const row1 = document.createElement('div');
-    row1.style.cssText = 'display: flex; align-items: center; gap: 6px; flex-wrap: wrap;';
-
+    // ROW 1: Dedicated 1-Mode Translate Button
     this.translateBtn = document.createElement('button');
-    this.translateBtn.innerHTML = '⚡ Đang dịch';
+    this.translateBtn.innerHTML = '⚡ Đang dịch truyện';
     this.translateBtn.style.cssText = `
-      background-color: #3742fa; color: #fff; border: none; border-radius: 8px;
-      padding: 6px 10px; font-weight: bold; cursor: pointer; font-size: 12px; flex: 1;
+      background-color: #2563eb; color: #fff; border: none; border-radius: 8px;
+      padding: 8px 12px; font-weight: bold; cursor: pointer; font-size: 13px;
+      width: 100%; transition: background-color 0.2s;
     `;
     this.translateBtn.onclick = () => {
       this.isTranslating = !this.isTranslating;
@@ -201,66 +184,12 @@ export class FloatingHud {
       this.callbacks.onToggleTranslate();
     };
 
-    this.playBtn = document.createElement('button');
-    this.playBtn.innerHTML = '▶ Tự cuộn';
-    this.playBtn.style.cssText = `
-      background-color: #2ed573; color: #fff; border: none; border-radius: 8px;
-      padding: 6px 10px; font-weight: bold; cursor: pointer; font-size: 12px; flex: 1;
-    `;
-    this.playBtn.onclick = () => this.callbacks.onTogglePlay();
-
-    this.preloadBtn = document.createElement('button');
-    this.preloadBtn.innerHTML = '🔄 Nạp & về đầu';
-    this.preloadBtn.title = 'Cuộn nhanh xuống đáy để nạp tất cả ảnh của chương, rồi tự quay lại đầu trang để đọc';
-    this.preloadBtn.style.cssText = `
-      background-color: #ffa502; color: #fff; border: none; border-radius: 8px;
-      padding: 6px 10px; font-weight: bold; cursor: pointer; font-size: 12px; flex: 1.2;
-    `;
-    this.preloadBtn.onclick = () => this.callbacks.onPreloadAndReturn();
-
-    // Button: Force load all without scrolling!
-    const loadAllBtn = document.createElement('button');
-    loadAllBtn.innerHTML = '📥 Nạp hết (Ko cuộn)';
-    loadAllBtn.title = 'Kích hoạt nạp toàn bộ ảnh và dịch ngầm ngay tại chỗ, không cần cuộn trang!';
-    loadAllBtn.style.cssText = `
-      background-color: #8854d0; color: #fff; border: none; border-radius: 8px;
-      padding: 6px 10px; font-weight: bold; cursor: pointer; font-size: 12px; flex: 1.2;
-    `;
-    loadAllBtn.onclick = () => this.callbacks.onPreloadAllWithoutScroll();
-
-    row1.appendChild(this.translateBtn);
-    row1.appendChild(loadAllBtn);
-    row1.appendChild(this.playBtn);
-    row1.appendChild(this.preloadBtn);
-
-    // ROW 2: Speed + Progress + Tool Buttons
+    // ROW 2: Status & Quick Action Icons
     const row2 = document.createElement('div');
     row2.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: 8px;';
 
-    const speedWrapper = document.createElement('div');
-    speedWrapper.style.cssText = 'display: flex; align-items: center; gap: 3px;';
-
-    const speedLabel = document.createElement('span');
-    speedLabel.textContent = `${initialSpeed}x`;
-    speedLabel.style.cssText = 'font-size: 11px; color: #a4b0be; min-width: 20px;';
-
-    this.speedInput = document.createElement('input');
-    this.speedInput.type = 'range';
-    this.speedInput.min = '1';
-    this.speedInput.max = '8';
-    this.speedInput.value = String(initialSpeed);
-    this.speedInput.style.cssText = 'width: 50px; cursor: pointer;';
-
-    this.speedInput.oninput = () => {
-      const spd = Number(this.speedInput.value);
-      speedLabel.textContent = `${spd}x`;
-      this.callbacks.onSpeedChange(spd);
-    };
-    speedWrapper.appendChild(this.speedInput);
-    speedWrapper.appendChild(speedLabel);
-
     this.progressLabel = document.createElement('span');
-    this.progressLabel.textContent = '📖 0/0';
+    this.progressLabel.textContent = '📖 Đã dịch: 0/0';
     this.progressLabel.style.cssText = 'font-weight: bold; color: #eccc68; font-size: 12px;';
 
     const toolsWrapper = document.createElement('div');
@@ -269,7 +198,7 @@ export class FloatingHud {
     this.eyeBtn = document.createElement('button');
     this.eyeBtn.title = 'Ẩn / Hiện bản dịch';
     this.eyeBtn.textContent = '👁';
-    this.eyeBtn.style.cssText = 'background: rgba(255,255,255,0.12); border: none; border-radius: 6px; color: #fff; padding: 4px 7px; cursor: pointer;';
+    this.eyeBtn.style.cssText = 'background: rgba(255,255,255,0.12); border: none; border-radius: 6px; color: #fff; padding: 4px 8px; cursor: pointer; font-size: 13px;';
     this.eyeBtn.onclick = () => {
       this.isVisible = !this.isVisible;
       this.eyeBtn.style.opacity = this.isVisible ? '1' : '0.4';
@@ -279,13 +208,13 @@ export class FloatingHud {
     this.clearBtn = document.createElement('button');
     this.clearBtn.title = 'Xóa cache bản dịch của chương này để dịch lại';
     this.clearBtn.textContent = '🧹';
-    this.clearBtn.style.cssText = 'background: rgba(255,255,255,0.12); border: none; border-radius: 6px; color: #fff; padding: 4px 7px; cursor: pointer;';
+    this.clearBtn.style.cssText = 'background: rgba(255,255,255,0.12); border: none; border-radius: 6px; color: #fff; padding: 4px 8px; cursor: pointer; font-size: 13px;';
     this.clearBtn.onclick = () => this.callbacks.onClearChapterCache();
 
     const logToggleBtn = document.createElement('button');
     logToggleBtn.title = 'Bật / Tắt xem lịch sử log';
     logToggleBtn.textContent = '📋';
-    logToggleBtn.style.cssText = 'background: rgba(255,255,255,0.12); border: none; border-radius: 6px; color: #fff; padding: 4px 7px; cursor: pointer;';
+    logToggleBtn.style.cssText = 'background: rgba(255,255,255,0.12); border: none; border-radius: 6px; color: #fff; padding: 4px 8px; cursor: pointer; font-size: 13px;';
     logToggleBtn.onclick = () => {
       this.showLogHistory = !this.showLogHistory;
       this.logListContainer.style.display = this.showLogHistory ? 'block' : 'none';
@@ -295,7 +224,6 @@ export class FloatingHud {
     toolsWrapper.appendChild(this.clearBtn);
     toolsWrapper.appendChild(logToggleBtn);
 
-    row2.appendChild(speedWrapper);
     row2.appendChild(this.progressLabel);
     row2.appendChild(toolsWrapper);
 
@@ -322,15 +250,12 @@ export class FloatingHud {
     `;
 
     this.container.appendChild(headerRow);
-    this.container.appendChild(row1);
+    this.container.appendChild(this.translateBtn);
     this.container.appendChild(row2);
     this.container.appendChild(logRow);
     this.container.appendChild(this.logListContainer);
   }
 
-  /**
-   * Draggable HUD implementation
-   */
   private makeDraggable(el: HTMLElement): void {
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
     const header = el.firstElementChild as HTMLElement;

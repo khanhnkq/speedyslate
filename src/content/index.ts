@@ -1,18 +1,13 @@
 import browser from 'webextension-polyfill';
-import { ModelDbService } from '../shared/model-db';
 import { StorageService } from '../shared/storage';
-import { TranslationCacheDb } from '../shared/translation-db';
-import { BubbleTheme, DialogueItem, ExtensionSettings } from '../shared/types';
+import { BubbleTheme, ExtensionSettings } from '../shared/types';
 import { FloatingHud } from './hud/hud';
 import { OverlayRenderer } from './overlay/overlay-renderer';
 import { OrderedTranslationQueue, QueueTask } from './priority-queue';
-import { AutoScroller } from './scroller';
 import { ToonheyAdapter } from './toonhey-adapter';
 
 class SpeedySlateContentApp {
   private settings!: ExtensionSettings;
-  private worker: Worker | null = null;
-  private scroller!: AutoScroller;
   private hud!: FloatingHud;
   private queue!: OrderedTranslationQueue;
   private images: HTMLImageElement[] = [];
@@ -21,45 +16,29 @@ class SpeedySlateContentApp {
   private mutationObserver: MutationObserver | null = null;
 
   constructor() {
-    // 1. Tạo và hiển thị Floating HUD NGAY LẬP TỨC (Synchronous & Top Priority)
-    // Đảm bảo người dùng luôn nhìn thấy nút điều khiển trên trang
-    this.hud = new FloatingHud(3, {
-      onTogglePlay: () => this.scroller?.toggle(),
-      onPreloadAllWithoutScroll: () => {
-        this.hud.log('🚀 Đang ép nạp toàn bộ ảnh (không cần cuộn)...');
-        ToonheyAdapter.forceLoadAll(this.images);
-        this.images.forEach((img, idx) => {
-          if (!img.dataset.slateStatus) {
-            this.queue?.enqueue({ index: idx, img });
-          }
-        });
-        this.hud.log(`📥 Đã đưa ${this.images.length} ảnh vào hàng đợi dịch.`);
-      },
-      onPreloadAndReturn: () => {
-        this.hud.log('🚀 Đang cuộn nạp toàn bộ ảnh của chương...');
-        this.scroller?.preloadToBottomAndReturn(() => {
-          this.hud.log('🎉 Đã nạp xong tất cả ảnh! Đã quay lại đầu trang để đọc.');
-        });
-      },
+    // 1. Tạo và hiển thị Floating HUD 1-Mode đồng bộ ngay lập tức
+    this.hud = new FloatingHud({
       onToggleTranslate: () => {
         if (!this.queue) return;
         if (this.queue.getIsPaused()) {
           this.queue.resume();
-          this.hud.log('▶ Tiếp tục tiến trình dịch');
+          this.hud.log('▶ Đang tiếp tục tiến trình dịch...');
         } else {
           this.queue.pause();
-          this.hud.log('⏸ Đã tạm ngưng dịch');
+          this.hud.log('⏸ Đã tạm dừng dịch');
         }
       },
-      onSpeedChange: (speed) => this.scroller?.setSpeed(speed),
       onToggleVisibility: (visible) => OverlayRenderer.setAllVisibility(visible),
       onClearChapterCache: async () => {
-        const deleted = await TranslationCacheDb.clearChapterCache(window.location.href);
+        const resp: any = await browser.runtime.sendMessage({
+          action: 'CLEAR_CHAPTER_CACHE',
+          chapterUrl: window.location.href
+        });
         document.querySelectorAll('.speedyslate-bubble').forEach((el) => el.remove());
         this.images.forEach((img) => delete img.dataset.slateStatus);
         this.translatedImagesCount = 0;
         this.hud.updateStatus(0, this.images.length);
-        this.hud.log(`🧹 Đã xóa ${deleted} bản dịch trong cache chương này.`);
+        this.hud.log(`🧹 Đã xóa ${resp?.deleted || 0} bản dịch cache của chương này.`);
       }
     });
 
@@ -72,42 +51,39 @@ class SpeedySlateContentApp {
     try {
       this.settings = await StorageService.getSettings();
     } catch {
-      this.hud.log('⚠️ Không thể đọc cài đặt, dùng mặc định');
+      this.hud.log('⚠️ Đang dùng cấu hình mặc định');
     }
 
-    // 2. Khởi tạo Scroller
-    this.scroller = new AutoScroller(this.settings?.autoScrollSpeed || 3, (running, isPreloading) => {
-      this.hud.setPlaying(running, isPreloading);
-    });
-
-    // 3. Khởi tạo Priority Queue
+    // 2. Khởi tạo hàng đợi ưu tiên từ trên xuống dưới (2 luồng song song)
     this.queue = new OrderedTranslationQueue(async (task) => {
       await this.processImageTask(task);
     }, 2);
 
-    // 4. Khởi tạo Web Worker
-    this.initWorker();
-
-    // 5. Quét ảnh ban đầu và lắng nghe DOM thay đổi (MutationObserver cho SPA/Lazy Load)
+    // 3. Quét ảnh ban đầu và theo dõi DOM
     this.detectImages();
     this.setupMutationObserver();
     this.setupIntersectionObserver();
 
-    // 6. Kiểm tra và nạp Model OCR từ IndexedDB
-    await this.checkAndLoadModel();
+    // 4. Kiểm tra Model OCR từ Background (Cùng Extension Origin)
+    await this.checkModelStatusFromBackground();
 
-    // Đưa các ảnh đầu tiên vào hàng đợi
+    // 5. Đưa các ảnh đầu tiên vào hàng đợi
     this.enqueueInitialImages();
   }
 
-  private initWorker(): void {
+  private async checkModelStatusFromBackground(): Promise<void> {
     try {
-      const workerUrl = browser.runtime.getURL('worker.js');
-      this.worker = new Worker(workerUrl, { type: 'module' });
-      this.hud.log('🔧 Web Worker đã kết nối');
+      const resp: any = await browser.runtime.sendMessage({ action: 'CHECK_MODEL_STATUS' });
+      if (resp?.success && resp.status?.status === 'ready') {
+        this.isModelReady = true;
+        this.hud.log('✅ Model OCR đã sẵn sàng!');
+      } else {
+        this.isModelReady = false;
+        this.hud.log('⚠️ Chưa tải model OCR. Bấm icon tiện ích để tải (~10MB)', true);
+        this.showModelMissingBanner();
+      }
     } catch (err: any) {
-      console.warn('[SpeedySlate] Lỗi khởi tạo Worker:', err);
-      this.hud.log(`⚠️ Worker: ${err.message}`, true);
+      this.hud.log(`❌ Lỗi kiểm tra model: ${err.message}`, true);
     }
   }
 
@@ -125,7 +101,7 @@ class SpeedySlateContentApp {
 
     if (newFound > 0) {
       this.hud.updateStatus(this.translatedImagesCount, this.images.length);
-      this.hud.log(`🔍 Tìm thấy ${this.images.length} ảnh truyện`);
+      this.hud.log(`🔍 Tìm thấy ${this.images.length} ảnh trong chương truyện.`);
     }
   }
 
@@ -155,7 +131,6 @@ class SpeedySlateContentApp {
       { root: null, rootMargin: '0px 0px 800px 0px', threshold: 0.01 }
     );
 
-    // Observe all detected images
     setInterval(() => {
       this.images.forEach((img) => observer.observe(img));
     }, 2000);
@@ -171,156 +146,70 @@ class SpeedySlateContentApp {
   }
 
   private async processImageTask(task: QueueTask): Promise<void> {
+    if (!this.isModelReady) {
+      await this.checkModelStatusFromBackground();
+      if (!this.isModelReady) return;
+    }
+
     const img = task.img;
     const imageUrl = img.src;
     const wrapper = img.parentElement;
     if (!wrapper) return;
 
-    // 1. Kiểm tra cache URL trước (Tránh dịch lại hoàn toàn!)
-    const cached = await TranslationCacheDb.getTranslation(imageUrl);
-    if (cached && cached.dialogues && cached.dialogues.length > 0) {
-      OverlayRenderer.renderDialogues(
-        wrapper,
-        cached.dialogues,
-        cached.naturalWidth || img.naturalWidth,
-        cached.naturalHeight || img.naturalHeight,
-        (this.settings?.bubbleTheme || 'light') as BubbleTheme
-      );
-      this.translatedImagesCount++;
-      this.hud.updateStatus(this.translatedImagesCount, this.images.length);
-      this.hud.log(`⚡ Ảnh #${task.index + 1}: Nạp tức thì từ Cache (0ms)`);
-      return;
-    }
-
-    if (!this.isModelReady) return;
-
-    // Chờ ảnh nạp xong
     if (!img.complete || img.naturalWidth === 0) {
+      ToonheyAdapter.forceTriggerImage(img);
       await new Promise((resolve) => {
         img.onload = resolve;
         img.onerror = resolve;
       });
     }
 
-    const naturalWidth = img.naturalWidth;
-    const naturalHeight = img.naturalHeight;
-    if (naturalWidth < 100 || naturalHeight < 100) return;
+    this.hud.log(`⏳ Đang xử lý ảnh #${task.index + 1}...`);
 
-    this.hud.log(`⏳ Quét OCR ảnh #${task.index + 1}...`);
-    const bitmap = await createImageBitmap(img);
-    const dialogues = await this.runOcrInWorker(bitmap, imageUrl);
+    let dataUrl: string | undefined;
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || img.width || 800;
+      canvas.height = img.naturalHeight || img.height || 1200;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0);
+        dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      }
+    } catch {
+      // Background will fetch imageUrl directly if canvas is tainted
+    }
 
-    if (dialogues.length === 0) {
+    const resp: any = await browser.runtime.sendMessage({
+      action: 'TRANSLATE_IMAGE',
+      imageUrl,
+      chapterUrl: window.location.href,
+      dataUrl
+    });
+
+    if (resp?.success && Array.isArray(resp.dialogues)) {
+      if (resp.dialogues.length > 0) {
+        OverlayRenderer.renderDialogues(
+          wrapper,
+          resp.dialogues,
+          resp.naturalWidth || img.naturalWidth || 800,
+          resp.naturalHeight || img.naturalHeight || 1200,
+          (this.settings?.bubbleTheme || 'light') as BubbleTheme
+        );
+      }
+
       this.translatedImagesCount++;
       this.hud.updateStatus(this.translatedImagesCount, this.images.length);
-      this.hud.log(`ℹ️ Ảnh #${task.index + 1}: Không có thoại`);
-      return;
-    }
 
-    this.hud.log(`💬 Ảnh #${task.index + 1}: Có ${dialogues.length} câu thoại, đang dịch...`);
-
-    // Gọi API dịch văn bản
-    const textsToTranslate = dialogues.map((d) => d.originalText);
-    const resp: any = await browser.runtime.sendMessage({
-      action: 'TRANSLATE_TEXTS',
-      texts: textsToTranslate,
-      targetLang: this.settings?.targetLanguage || 'Tiếng Việt'
-    });
-
-    if (resp?.success && Array.isArray(resp.translations)) {
-      dialogues.forEach((d, idx) => {
-        d.translatedText = resp.translations[idx] || d.originalText;
-      });
-
-      OverlayRenderer.renderDialogues(
-        wrapper,
-        dialogues,
-        naturalWidth,
-        naturalHeight,
-        (this.settings?.bubbleTheme || 'light') as BubbleTheme
-      );
-
-      await TranslationCacheDb.saveTranslation(
-        imageUrl,
-        window.location.href,
-        dialogues,
-        naturalWidth,
-        naturalHeight
-      );
-
-      this.hud.log(`✅ Ảnh #${task.index + 1}: Dịch thành công`);
+      if (resp.cached) {
+        this.hud.log(`⚡ Ảnh #${task.index + 1}: Nạp từ Cache (0ms)`);
+      } else if (resp.dialogues.length > 0) {
+        this.hud.log(`✅ Ảnh #${task.index + 1}: Dịch xong ${resp.dialogues.length} câu thoại`);
+      } else {
+        this.hud.log(`ℹ️ Ảnh #${task.index + 1}: Không có chữ`);
+      }
     } else {
-      this.hud.log(`❌ Lỗi dịch ảnh #${task.index + 1}: ${resp?.error || 'Lỗi API'}`, true);
-    }
-
-    this.translatedImagesCount++;
-    this.hud.updateStatus(this.translatedImagesCount, this.images.length);
-  }
-
-  private runOcrInWorker(bitmap: ImageBitmap, elementId: string): Promise<DialogueItem[]> {
-    const worker = this.worker;
-    if (!worker) return Promise.resolve([]);
-
-    return new Promise((resolve, reject) => {
-      const handler = (e: MessageEvent) => {
-        if (e.data.type === 'PROCESS_RESULT' && e.data.elementId === elementId) {
-          worker.removeEventListener('message', handler);
-          resolve(e.data.dialogues || []);
-        } else if (e.data.type === 'ERROR' && e.data.elementId === elementId) {
-          worker.removeEventListener('message', handler);
-          reject(new Error(e.data.error));
-        }
-      };
-      worker.addEventListener('message', handler);
-      worker.postMessage({ type: 'PROCESS_IMAGE', elementId, imageBitmap: bitmap }, [bitmap]);
-    });
-  }
-
-  private async checkAndLoadModel(): Promise<void> {
-    const modelId = this.settings?.activeOcrModelId || 'paddle-en-slim';
-    const status = await ModelDbService.getModelStatus(modelId);
-
-    if (status.status !== 'ready') {
-      this.hud.log('⚠️ Chưa tải model OCR. Mở icon tiện ích để tải.', true);
-      this.showModelMissingBanner();
-      return;
-    }
-
-    if (!this.worker) return;
-
-    try {
-      this.hud.log('🚀 Đang nạp model PaddleOCR vào Worker...');
-      const buffers = await ModelDbService.getModelBuffers(modelId);
-      this.worker.postMessage(
-        {
-          type: 'INIT_MODEL',
-          modelId,
-          detBuffer: buffers.detBuffer,
-          recBuffer: buffers.recBuffer,
-          keysText: buffers.keysText
-        },
-        [buffers.detBuffer, buffers.recBuffer]
-      );
-
-      await new Promise<void>((resolve, reject) => {
-        const handler = (e: MessageEvent) => {
-          if (e.data.type === 'INIT_RESULT' && e.data.success) {
-            this.worker?.removeEventListener('message', handler);
-            this.isModelReady = true;
-            resolve();
-          } else if (e.data.type === 'ERROR') {
-            this.worker?.removeEventListener('message', handler);
-            reject(new Error(e.data.error));
-          }
-        };
-        this.worker?.addEventListener('message', handler);
-      });
-
-      this.hud.log('✅ Model PaddleOCR đã sẵn sàng!');
-    } catch (err: any) {
-      console.error('[SpeedySlate] Không thể nạp model OCR:', err);
-      this.hud.log(`❌ Lỗi nạp model: ${err.message}`, true);
-      this.showModelMissingBanner();
+      this.hud.log(`❌ Lỗi ảnh #${task.index + 1}: ${resp?.error || 'Lỗi không xác định'}`, true);
     }
   }
 
@@ -337,7 +226,7 @@ class SpeedySlateContentApp {
       border: 1px solid #3b82f6;
     `;
     banner.innerHTML = `
-      <span>⚠️ <b>SpeedySlate</b>: Bạn chưa tải model OCR (~10MB). Bấm vào icon tiện ích để tải về và bắt đầu dịch.</span>
+      <span>⚠️ <b>SpeedySlate</b>: Bạn chưa tải model OCR (~10MB). Bấm vào icon tiện ích trên thanh công cụ để tải.</span>
       <button style="background: #3b82f6; border: none; color: #fff; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">Đóng</button>
     `;
     banner.querySelector('button')?.addEventListener('click', () => banner.remove());

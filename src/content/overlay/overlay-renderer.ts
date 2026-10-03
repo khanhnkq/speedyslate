@@ -34,9 +34,8 @@ export class OverlayRenderer {
       const isDark = theme === 'dark' || (theme === 'auto' && item.isDarkBackground);
       const bg = isDark ? '#111111' : '#ffffff';
       const textColor = isDark ? '#ffffff' : '#000000';
-      const borderColor = isDark ? '#ffffff' : '#000000';
 
-      // Inline styles for zero external CSS dependency & maximum isolation
+      // Inline styles: no borders or shadows so it blends seamlessly into the original comic balloon
       Object.assign(bubble.style, {
         position: 'absolute',
         top: `${topPct}%`,
@@ -45,10 +44,10 @@ export class OverlayRenderer {
         minHeight: `${heightPct}%`,
         backgroundColor: bg,
         color: textColor,
-        border: `1.5px solid ${borderColor}`,
-        borderRadius: '6px',
+        border: 'none',
+        borderRadius: '2px',
         boxSizing: 'border-box',
-        padding: '3px 4px',
+        padding: '1px 2px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -61,7 +60,7 @@ export class OverlayRenderer {
         transition: 'opacity 0.15s ease-in-out',
         userSelect: 'text',
         wordBreak: 'break-word',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+        boxShadow: 'none'
       });
 
       // Compute adaptive font size based on box dimensions and text length

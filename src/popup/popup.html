@@ -10,7 +10,9 @@
   <div class="popup-container">
     <header class="header">
       <div class="logo-title">
-        <span class="logo-icon">⚡</span>
+        <svg class="logo-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M13 2.5L5 13H12L11 21.5L19 11H12L13 2.5Z" fill="#ec4899" stroke="#ec4899" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
         <h1>SpeedySlate</h1>
       </div>
       <span class="badge">v1.0</span>
@@ -19,7 +21,7 @@
     <!-- SECTION 1: OCR MODEL MANAGEMENT -->
     <section class="card">
       <div class="card-title">
-        <span>📦 Model OCR Cục Bộ (0đ Chi Phí)</span>
+        <span>Mô hình OCR cục bộ (0đ Chi Phí)</span>
       </div>
       <div class="form-group">
         <label for="ocr-model-select">Chọn gói mô hình:</label>
@@ -36,15 +38,15 @@
         </div>
       </div>
       <div class="btn-group">
-        <button id="btn-download-model" class="btn btn-primary">⬇ Tải Model Về Máy</button>
-        <button id="btn-delete-model" class="btn btn-danger" style="display: none;">🗑 Xóa Model</button>
+        <button id="btn-download-model" class="btn btn-primary">Tải Model Về Máy</button>
+        <button id="btn-delete-model" class="btn btn-danger" style="display: none;">Xóa Model</button>
       </div>
     </section>
 
     <!-- SECTION 2: TRANSLATION API -->
     <section class="card">
       <div class="card-title">
-        <span>🔑 Cấu Hình API Dịch Thuật</span>
+        <span>Cấu hình API Dịch Thuật</span>
       </div>
 
       <div class="form-group">
@@ -71,7 +73,7 @@
       </div>
 
       <div class="test-row">
-        <button id="btn-test-connection" class="btn btn-secondary">⚡ Kiểm Tra Kết Nối</button>
+        <button id="btn-test-connection" class="btn btn-secondary">Kiểm tra kết nối</button>
         <span id="test-result" class="test-result-text"></span>
       </div>
     </section>
@@ -79,21 +81,21 @@
     <!-- SECTION 3: TRANSLATION CACHE DB MANAGEMENT -->
     <section class="card">
       <div class="card-title">
-        <span>🗄️ Bộ Nhớ Cache Truyện (URL-Based)</span>
+        <span>Bộ nhớ Cache Truyện (URL-Based)</span>
       </div>
       <div class="status-row">
         <span>Đã lưu theo URL:</span>
         <span id="cache-stats-text" style="font-weight: bold; color: #a4b0be;">0 trang</span>
       </div>
       <button id="btn-clear-cache" class="btn btn-secondary" style="width: 100%; margin-top: 4px;">
-        🧹 Dọn Dẹp Sạch Cache Truyện
+        Dọn dẹp sạch Cache truyện
       </button>
     </section>
 
     <!-- SECTION 4: DISPLAY & READING -->
     <section class="card">
       <div class="card-title">
-        <span>🎨 Tùy Chọn Hiển Thị & Cuộn</span>
+        <span>Tùy chọn hiển thị & Cuộn</span>
       </div>
       <div class="form-row">
         <div class="form-group half">
@@ -113,7 +115,7 @@
 
     <!-- SAVE FOOTER -->
     <footer class="footer">
-      <button id="btn-save-settings" class="btn btn-success">💾 Lưu Cài Đặt</button>
+      <button id="btn-save-settings" class="btn btn-success">Lưu Cài Đặt</button>
       <span id="save-status" class="save-status"></span>
     </footer>
   </div>

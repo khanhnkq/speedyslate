@@ -3,32 +3,30 @@ import { StorageService } from '../shared/storage';
 import { BubbleTheme, ExtensionSettings } from '../shared/types';
 import { FloatingHud } from './hud/hud';
 import { OverlayRenderer } from './overlay/overlay-renderer';
-import { OrderedTranslationQueue, QueueTask } from './priority-queue';
+import { OrderedTaskQueue, OcrTask, TranslationTask } from './priority-queue';
 import { ToonheyAdapter } from './toonhey-adapter';
 
 class SpeedySlateContentApp {
   private settings!: ExtensionSettings;
   private hud!: FloatingHud;
-  private queue!: OrderedTranslationQueue;
+  private ocrQueue!: OrderedTaskQueue<OcrTask>;
+  private translationQueue!: OrderedTaskQueue<TranslationTask>;
   private images: HTMLImageElement[] = [];
-  private translatedImagesCount: number = 0;
+  private completedImages = new Set<HTMLImageElement>();
   private isModelReady: boolean = false;
   private mutationObserver: MutationObserver | null = null;
 
   constructor() {
-    // 1. Khởi tạo Modern Glassmorphism HUD ở trạng thái Chờ (Idle)
+    // 1. Khoi tao Modern Glassmorphism HUD o trang thai Cho (Idle)
     this.hud = new FloatingHud({
       onToggleTranslate: async () => {
-        if (!this.queue) return;
-
         const currentState = this.hud.getState();
         if (currentState === 'translating') {
-          // Bắt đầu dịch
           await this.handleStartTranslating();
         } else {
-          // Tạm dừng dịch
-          this.queue.pause();
-          this.hud.log('Đã tạm dừng tiến trình dịch truyện');
+          this.ocrQueue?.pause();
+          this.translationQueue?.pause();
+          this.hud.log('Da tam dung tien trinh dich truyen');
         }
       },
       onToggleVisibility: (visible) => OverlayRenderer.setAllVisibility(visible),
@@ -39,49 +37,59 @@ class SpeedySlateContentApp {
         });
         document.querySelectorAll('.speedyslate-bubble').forEach((el) => el.remove());
         this.images.forEach((img) => delete img.dataset.slateStatus);
-        this.translatedImagesCount = 0;
+        this.completedImages.clear();
+        this.ocrQueue?.clear();
+        this.translationQueue?.clear();
         this.hud.updateStatus(0, this.images.length);
         this.hud.setState('idle');
-        this.hud.log(`Đã xóa ${resp?.deleted || 0} bản dịch cache của chương này`);
+        this.hud.log(`Da xoa ${resp?.deleted || 0} ban dich cache cua chuong nay`);
       }
     });
 
-    this.hud.log('SpeedySlate đang khởi tạo...');
+    this.hud.log('SpeedySlate dang khoi tao...');
   }
 
   public async start(): Promise<void> {
-    console.log('[SpeedySlate] Khởi chạy trên trang:', window.location.href);
+    console.log('[SpeedySlate] Khoi chay tren trang:', window.location.href);
 
     try {
       this.settings = await StorageService.getSettings();
     } catch {
-      this.hud.log('Đang dùng cấu hình mặc định');
+      this.hud.log('Dang dung cau hinh mac dinh');
     }
 
-    // 2. Khởi tạo hàng đợi dịch tuần tự (mặc định PAUSED cho đến khi người dùng bấm dịch)
-    this.queue = new OrderedTranslationQueue(async (task) => {
-      await this.processImageTask(task);
-    }, 2);
-    this.queue.pause();
+    // 2. Khoi tao 2 hang doi tach biet: OCR Producer (cuc bo) & Translation Consumer (API)
+    this.ocrQueue = new OrderedTaskQueue<OcrTask>(
+      async (task) => this.processOcrTask(task),
+      2,
+      (t) => t.img
+    );
+    this.ocrQueue.pause();
 
-    // 3. Quét toàn bộ ảnh trong chương và theo dõi DOM
+    this.translationQueue = new OrderedTaskQueue<TranslationTask>(
+      async (task) => this.processTranslationTask(task),
+      1,
+      (t) => t.img
+    );
+    this.translationQueue.pause();
+
+    // 3. Quet toan bo anh trong chuong va theo doi DOM
     this.detectImages();
     this.setupMutationObserver();
     this.setupIntersectionObserver();
 
-    // 4. Tự động khôi phục bản dịch từ Cache IndexedDB (nếu có sẵn) ngay lập tức (0ms)
+    // 4. Tu dong khoi phuc ban dich tu Cache IndexedDB ngay lap tuc (0ms)
     await this.restoreCachedTranslations();
 
-    // 5. Kiểm tra trạng thái Model OCR từ Background
+    // 5. Kiem tra trang thai Model OCR tu Background
     await this.checkModelStatusFromBackground(false);
 
-    if (this.translatedImagesCount < this.images.length) {
-      this.hud.log(`Sẵn sàng dịch. Tìm thấy ${this.images.length} trang truyện`);
+    if (this.completedImages.size < this.images.length) {
+      this.hud.log(`San sang dich. Tim thay ${this.images.length} trang truyen`);
     }
   }
 
   private async handleStartTranslating(): Promise<void> {
-    // Kiểm tra model OCR
     if (!this.isModelReady) {
       await this.checkModelStatusFromBackground(true);
       if (!this.isModelReady) {
@@ -90,16 +98,17 @@ class SpeedySlateContentApp {
       }
     }
 
-    this.hud.log(`Bắt đầu dịch chương (${this.images.length} trang)...`);
+    this.hud.log(`Bat dau dich chuong (${this.images.length} trang)...`);
 
-    // Kích hoạt nạp toàn bộ ảnh ngay tại chỗ
+    // Kich hoat nap toan bo anh ngay tai cho
     ToonheyAdapter.forceLoadAll(this.images);
 
-    // Nạp toàn bộ ảnh chưa dịch vào hàng đợi
+    // Nap toan bo anh chua dich vao hang doi OCR
     this.enqueueAllImages();
 
-    // Kích hoạt chạy hàng đợi
-    this.queue.resume();
+    // Kich hoat chay dong thoi ca 2 hang doi
+    this.ocrQueue.resume();
+    this.translationQueue.resume();
   }
 
   private async checkModelStatusFromBackground(showBannerIfMissing: boolean): Promise<void> {
@@ -107,16 +116,16 @@ class SpeedySlateContentApp {
       const resp: any = await browser.runtime.sendMessage({ action: 'CHECK_MODEL_STATUS' });
       if (resp?.success && resp.status?.status === 'ready') {
         this.isModelReady = true;
-        this.hud.log('Model OCR đã sẵn sàng');
+        this.hud.log('Model OCR da san sang');
       } else {
         this.isModelReady = false;
-        this.hud.log('Chưa tải model OCR. Mở popup tiện ích để tải (~10MB)', true);
+        this.hud.log('Chua tai model OCR. Mo popup tien ich de tai (~10MB)', true);
         if (showBannerIfMissing) {
           this.showModelMissingBanner();
         }
       }
     } catch (err: any) {
-      this.hud.log(`Lỗi kiểm tra model: ${err.message}`, true);
+      this.hud.log(`Loi kiem tra model: ${err.message}`, true);
     }
   }
 
@@ -133,10 +142,9 @@ class SpeedySlateContentApp {
     }
 
     if (newFound > 0) {
-      this.hud.updateStatus(this.translatedImagesCount, this.images.length);
-      this.hud.log(`Đã phát hiện ${this.images.length} trang truyện`);
+      this.hud.updateStatus(this.completedImages.size, this.images.length);
+      this.hud.log(`Da phat hien ${this.images.length} trang truyen`);
 
-      // Nếu đang trong tiến trình dịch thì tự động đưa các ảnh mới vào hàng đợi
       if (this.hud.getState() === 'translating') {
         this.enqueueAllImages();
       } else {
@@ -164,31 +172,35 @@ class SpeedySlateContentApp {
 
         for (let i = 0; i < this.images.length; i++) {
           const img = this.images[i];
-          if (img.dataset.slateStatus) continue;
+          if (this.completedImages.has(img)) continue;
 
           const url = img.dataset.src || img.getAttribute('data-src') || img.src;
           const cached = cache[url];
-          if (cached && Array.isArray(cached.dialogues) && cached.dialogues.length > 0) {
-            const wrapper = img.parentElement;
-            if (wrapper) {
-              OverlayRenderer.renderDialogues(
-                wrapper,
-                cached.dialogues,
-                cached.naturalWidth || img.naturalWidth || 800,
-                cached.naturalHeight || img.naturalHeight || 1200,
-                (this.settings?.bubbleTheme || 'light') as BubbleTheme
-              );
-              img.dataset.slateStatus = 'translated';
-              newlyRestored++;
-              this.translatedImagesCount++;
+          if (cached) {
+            if (Array.isArray(cached.dialogues) && cached.dialogues.length > 0) {
+              const wrapper = img.parentElement;
+              if (wrapper) {
+                OverlayRenderer.renderDialogues(
+                  wrapper,
+                  cached.dialogues,
+                  cached.naturalWidth || img.naturalWidth || 800,
+                  cached.naturalHeight || img.naturalHeight || 1200,
+                  (this.settings?.bubbleTheme || 'light') as BubbleTheme
+                );
+                img.dataset.slateStatus = 'translated';
+              }
+            } else {
+              img.dataset.slateStatus = 'no_text';
             }
+            this.markImageCompleted(img, false);
+            newlyRestored++;
           }
         }
 
         if (newlyRestored > 0) {
-          this.hud.updateStatus(this.translatedImagesCount, this.images.length);
-          this.hud.log(`Đã nạp tức thì ${newlyRestored} trang từ Cache (0ms)`);
-          if (this.translatedImagesCount >= this.images.length) {
+          this.hud.updateStatus(this.completedImages.size, this.images.length);
+          this.hud.log(`Da nap tuc thi ${newlyRestored} trang tu Cache (0ms)`);
+          if (this.completedImages.size >= this.images.length) {
             this.hud.setState('completed');
           }
         }
@@ -215,8 +227,8 @@ class SpeedySlateContentApp {
           if (entry.isIntersecting) {
             const img = entry.target as HTMLImageElement;
             const index = this.images.indexOf(img);
-            if (index !== -1 && !img.dataset.slateStatus && this.hud.getState() === 'translating') {
-              this.queue.enqueue({ index, img });
+            if (index !== -1 && !this.completedImages.has(img) && this.hud.getState() === 'translating') {
+              this.ocrQueue.enqueue({ index, img });
             }
           }
         });
@@ -232,17 +244,17 @@ class SpeedySlateContentApp {
   private enqueueAllImages(): void {
     for (let i = 0; i < this.images.length; i++) {
       const img = this.images[i];
-      if (!img.dataset.slateStatus) {
-        this.queue.enqueue({ index: i, img });
+      if (!this.completedImages.has(img)) {
+        this.ocrQueue.enqueue({ index: i, img });
       }
     }
   }
 
-  private async processImageTask(task: QueueTask): Promise<void> {
-    if (!this.isModelReady) {
-      await this.checkModelStatusFromBackground(true);
-      if (!this.isModelReady) return;
-    }
+  /**
+   * Stage 1: Fast local WebAssembly OCR Pipeline (runs at 100% CPU speed, 0ms artificial delay)
+   */
+  private async processOcrTask(task: OcrTask): Promise<void> {
+    if (this.completedImages.has(task.img)) return;
 
     const img = task.img;
     const imageUrl = img.src;
@@ -254,10 +266,11 @@ class SpeedySlateContentApp {
       await new Promise((resolve) => {
         img.onload = resolve;
         img.onerror = resolve;
+        setTimeout(resolve, 3000);
       });
     }
 
-    this.hud.log(`Đang xử lý trang #${task.index + 1}...`);
+    img.dataset.slateStatus = 'ocr_running';
 
     let dataUrl: string | undefined;
     try {
@@ -270,39 +283,99 @@ class SpeedySlateContentApp {
         dataUrl = canvas.toDataURL('image/jpeg', 0.85);
       }
     } catch {
-      // Background will fetch imageUrl directly if canvas is tainted
+      // Background will fetch directly if canvas is tainted
     }
 
     const resp: any = await browser.runtime.sendMessage({
-      action: 'TRANSLATE_IMAGE',
+      action: 'OCR_IMAGE',
       imageUrl,
       chapterUrl: window.location.href,
       dataUrl
     });
 
-    if (resp?.success && Array.isArray(resp.dialogues)) {
-      if (resp.dialogues.length > 0) {
-        OverlayRenderer.renderDialogues(
-          wrapper,
-          resp.dialogues,
-          resp.naturalWidth || img.naturalWidth || 800,
-          resp.naturalHeight || img.naturalHeight || 1200,
-          (this.settings?.bubbleTheme || 'light') as BubbleTheme
-        );
-      }
-
-      this.translatedImagesCount++;
-      this.hud.updateStatus(this.translatedImagesCount, this.images.length);
-
+    if (resp?.success) {
       if (resp.cached) {
-        this.hud.log(`Trang #${task.index + 1}: Nạp từ Cache (0ms)`);
-      } else if (resp.dialogues.length > 0) {
-        this.hud.log(`Trang #${task.index + 1}: Hoàn tất ${resp.dialogues.length} câu thoại`);
+        if (resp.dialogues && resp.dialogues.length > 0) {
+          OverlayRenderer.renderDialogues(
+            wrapper,
+            resp.dialogues,
+            resp.naturalWidth || img.naturalWidth || 800,
+            resp.naturalHeight || img.naturalHeight || 1200,
+            (this.settings?.bubbleTheme || 'light') as BubbleTheme
+          );
+          img.dataset.slateStatus = 'translated';
+        } else {
+          img.dataset.slateStatus = 'no_text';
+        }
+        this.markImageCompleted(img);
+        this.hud.log(`Trang #${task.index + 1}: Nap tu Cache (0ms)`);
+      } else if (!resp.dialogues || resp.dialogues.length === 0) {
+        img.dataset.slateStatus = 'no_text';
+        this.markImageCompleted(img);
+        this.hud.log(`Trang #${task.index + 1}: Khong co chu`);
       } else {
-        this.hud.log(`Trang #${task.index + 1}: Không có chữ`);
+        // Co chu -> Day vao hang doi dich Consumer (serialized rate limiter)
+        img.dataset.slateStatus = 'ocr_done';
+        this.hud.log(`Trang #${task.index + 1}: Da quet ${resp.dialogues.length} cau thoai, dang cho dich...`);
+        this.translationQueue.enqueue({
+          index: task.index,
+          img: task.img,
+          dialogues: resp.dialogues,
+          naturalWidth: resp.naturalWidth || img.naturalWidth || 800,
+          naturalHeight: resp.naturalHeight || img.naturalHeight || 1200
+        });
       }
     } else {
-      this.hud.log(`Lỗi trang #${task.index + 1}: ${resp?.error || 'Lỗi không xác định'}`, true);
+      img.dataset.slateStatus = 'error';
+      this.hud.log(`Loi OCR trang #${task.index + 1}: ${resp?.error || 'Loi khong xac dinh'}`, true);
+    }
+  }
+
+  /**
+   * Stage 2: Rate-limited API Translation Consumer (Gemini/Groq spacing & backoff)
+   */
+  private async processTranslationTask(task: TranslationTask): Promise<void> {
+    if (this.completedImages.has(task.img)) return;
+
+    const img = task.img;
+    const wrapper = img.parentElement;
+    if (!wrapper) return;
+
+    img.dataset.slateStatus = 'translating';
+    this.hud.log(`Trang #${task.index + 1}: Dang dich ${task.dialogues.length} cau thoai...`);
+
+    const resp: any = await browser.runtime.sendMessage({
+      action: 'TRANSLATE_DIALOGUES',
+      imageUrl: img.src,
+      chapterUrl: window.location.href,
+      dialogues: task.dialogues,
+      naturalWidth: task.naturalWidth,
+      naturalHeight: task.naturalHeight
+    });
+
+    if (resp?.success && Array.isArray(resp.dialogues)) {
+      OverlayRenderer.renderDialogues(
+        wrapper,
+        resp.dialogues,
+        task.naturalWidth,
+        task.naturalHeight,
+        (this.settings?.bubbleTheme || 'light') as BubbleTheme
+      );
+      img.dataset.slateStatus = 'translated';
+      this.markImageCompleted(img);
+      this.hud.log(`Trang #${task.index + 1}: Hoan tat ${resp.dialogues.length} cau thoai`);
+    } else {
+      img.dataset.slateStatus = 'error';
+      this.hud.log(`Loi dich trang #${task.index + 1}: ${resp?.error || 'Loi API'}`, true);
+    }
+  }
+
+  private markImageCompleted(img: HTMLImageElement, checkAllDone: boolean = true): void {
+    this.completedImages.add(img);
+    this.hud.updateStatus(this.completedImages.size, this.images.length);
+    if (checkAllDone && this.completedImages.size >= this.images.length && this.hud.getState() === 'translating') {
+      this.hud.setState('completed');
+      this.hud.log(`Da hoan tat dich toan bo chuong (${this.images.length} trang)`);
     }
   }
 
@@ -319,14 +392,14 @@ class SpeedySlateContentApp {
       border: 1px solid rgba(168, 85, 247, 0.4);
     `;
     banner.innerHTML = `
-      <span><b>SpeedySlate</b>: Bạn chưa tải model OCR (~10MB). Mở popup cài đặt tiện ích để tải model.</span>
-      <button style="background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; color: #fff; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 12px;">Đóng</button>
+      <span><b>SpeedySlate</b>: Ban chua tai model OCR (~10MB). Mo popup cai dat tien ich de tai model.</span>
+      <button style="background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; color: #fff; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 12px;">Dong</button>
     `;
     banner.querySelector('button')?.addEventListener('click', () => banner.remove());
     document.body?.appendChild(banner);
   }
 }
 
-// Khởi chạy ngay lập tức
+// Khoi chay ngay lap tuc
 const app = new SpeedySlateContentApp();
-app.start().catch((err) => console.error('[SpeedySlate] Lỗi khởi động:', err));
+app.start().catch((err) => console.error('[SpeedySlate] Loi khoi dong:', err));

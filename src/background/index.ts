@@ -101,12 +101,113 @@ browser.runtime.onMessage.addListener(async (rawMsg: any) => {
         if (Array.isArray(imageUrls)) {
           for (const url of imageUrls) {
             const cached = await TranslationCacheDb.getTranslation(url);
-            if (cached && cached.dialogues?.length > 0) {
+            if (cached) {
               results[url] = cached;
             }
           }
         }
         return { success: true, translations: results };
+      }
+
+      case 'OCR_IMAGE': {
+        const { imageUrl, dataUrl, chapterUrl } = msg;
+
+        // 1. Kiểm tra cache IndexedDB trước
+        if (imageUrl) {
+          const cached = await TranslationCacheDb.getTranslation(imageUrl);
+          if (cached) {
+            return {
+              success: true,
+              cached: true,
+              dialogues: cached.dialogues || [],
+              naturalWidth: cached.naturalWidth,
+              naturalHeight: cached.naturalHeight
+            };
+          }
+        }
+
+        // 2. Nạp Model OCR trong Background
+        const settings = await StorageService.getSettings();
+        const modelId = settings.activeOcrModelId || 'paddle-en-slim';
+        try {
+          await ensureModelLoaded(modelId);
+        } catch (err: any) {
+          return { success: false, error: err.message };
+        }
+
+        if (!detEngine || !recEngine) {
+          return { success: false, error: 'Không thể khởi tạo engine OCR' };
+        }
+
+        // 3. Lấy ảnh và vẽ lên OffscreenCanvas
+        const bitmap = await getImageBitmapFromInput(dataUrl, imageUrl);
+        const width = bitmap.width;
+        const height = bitmap.height;
+
+        const canvas = new OffscreenCanvas(width, height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Không thể tạo 2D context');
+        ctx.drawImage(bitmap, 0, 0);
+        bitmap.close();
+
+        // 4. Chạy PaddleOCR cục bộ - Hoàn toàn không rate limit (0ms delay)
+        const boxes = await detEngine.detectText(canvas, width, height);
+        const dialogues: DialogueItem[] = await recEngine.recognizeBoxes(canvas, boxes);
+
+        // Nếu không có chữ, lưu vào cache là [] để không phải quét lại khi F5
+        if (dialogues.length === 0 && imageUrl) {
+          await TranslationCacheDb.saveTranslation(imageUrl, chapterUrl || '', [], width, height);
+        }
+
+        return {
+          success: true,
+          cached: false,
+          dialogues,
+          naturalWidth: width,
+          naturalHeight: height
+        };
+      }
+
+      case 'TRANSLATE_DIALOGUES': {
+        const { imageUrl, chapterUrl, dialogues, naturalWidth, naturalHeight } = msg;
+        if (!Array.isArray(dialogues) || dialogues.length === 0) {
+          return { success: true, dialogues: [] };
+        }
+
+        // Dịch bằng API Text (Gemini / OpenAI-compatible) với Rate Limiter an toàn
+        const settings = await StorageService.getSettings();
+        const texts = dialogues.map((d: DialogueItem) => d.originalText);
+        const provider = TranslationProviderFactory.createProvider(settings);
+        const targetLang = settings.targetLanguage || 'Tiếng Việt';
+
+        // Xác định khoảng cách giãn cách tối thiểu (ms) theo provider hoặc settings
+        const minDelayMs = settings.rateLimitDelayMs !== undefined
+          ? settings.rateLimitDelayMs
+          : (API_PRESETS[settings.activeProvider]?.defaultDelayMs ?? 1200);
+
+        const translations = await ApiRateLimiter.throttle(minDelayMs, () =>
+          provider.translateDialogues(texts, targetLang)
+        );
+
+        dialogues.forEach((d: DialogueItem, i: number) => {
+          d.translatedText = translations[i] || d.originalText;
+        });
+
+        // Lưu vào Cache DB
+        if (imageUrl) {
+          await TranslationCacheDb.saveTranslation(
+            imageUrl,
+            chapterUrl || '',
+            dialogues,
+            naturalWidth || 800,
+            naturalHeight || 1200
+          );
+        }
+
+        return {
+          success: true,
+          dialogues
+        };
       }
 
       case 'TRANSLATE_IMAGE': {
@@ -155,15 +256,17 @@ browser.runtime.onMessage.addListener(async (rawMsg: any) => {
         const dialogues: DialogueItem[] = await recEngine.recognizeBoxes(canvas, boxes);
 
         if (dialogues.length === 0) {
+          if (imageUrl) {
+            await TranslationCacheDb.saveTranslation(imageUrl, chapterUrl || '', [], width, height);
+          }
           return { success: true, cached: false, dialogues: [], naturalWidth: width, naturalHeight: height };
         }
 
-        // 5. Dịch bằng API Text (Gemini / OpenAI-compatible) với Rate Limiter an toàn
+        // 5. Dịch bằng API Text với Rate Limiter
         const texts = dialogues.map((d) => d.originalText);
         const provider = TranslationProviderFactory.createProvider(settings);
         const targetLang = settings.targetLanguage || 'Tiếng Việt';
 
-        // Xác định khoảng cách giãn cách tối thiểu (ms) theo provider hoặc settings
         const minDelayMs = settings.rateLimitDelayMs !== undefined
           ? settings.rateLimitDelayMs
           : (API_PRESETS[settings.activeProvider]?.defaultDelayMs ?? 1200);

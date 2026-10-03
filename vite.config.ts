@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 import fs from 'fs';
+import * as esbuild from 'esbuild';
 
 export default defineConfig(({ mode }) => {
   const target = mode === 'firefox' ? 'firefox' : 'chrome';
@@ -15,12 +16,11 @@ export default defineConfig(({ mode }) => {
         input: {
           popup: resolve(__dirname, 'src/popup/popup.html'),
           background: resolve(__dirname, 'src/background/index.ts'),
-          content: resolve(__dirname, 'src/content/index.ts'),
           worker: resolve(__dirname, 'src/worker/ocr.worker.ts')
         },
         output: {
           entryFileNames: (chunkInfo) => {
-            if (['background', 'content', 'worker'].includes(chunkInfo.name)) {
+            if (['background', 'worker'].includes(chunkInfo.name)) {
               return '[name].js';
             }
             return 'assets/[name].js';
@@ -32,9 +32,23 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       {
-        name: 'copy-extension-assets',
+        name: 'bundle-content-script-iife',
         closeBundle() {
-          // 1. Copy manifest
+          // 1. Bundle content script as self-contained IIFE (NO external imports! Crucial for WebExtension content_scripts)
+          const contentSrc = resolve(__dirname, 'src/content/index.ts');
+          const contentOut = resolve(outDir, 'content.js');
+          esbuild.buildSync({
+            entryPoints: [contentSrc],
+            bundle: true,
+            outfile: contentOut,
+            format: 'iife',
+            target: 'es2022',
+            minify: false,
+            sourcemap: false
+          });
+          console.log(`[Vite/esbuild] Bundled self-contained IIFE content.js -> dist/${target}/content.js`);
+
+          // 2. Copy manifest
           const manifestSrc = resolve(__dirname, `manifest.${target}.json`);
           const manifestDest = resolve(outDir, 'manifest.json');
           if (fs.existsSync(manifestSrc)) {
@@ -42,7 +56,7 @@ export default defineConfig(({ mode }) => {
             console.log(`[Vite] Copied manifest.${target}.json -> dist/${target}/manifest.json`);
           }
 
-          // 2. Copy icons
+          // 3. Copy icons
           const iconsSrcDir = resolve(__dirname, 'public/icons');
           const iconsDestDir = resolve(outDir, 'icons');
           if (fs.existsSync(iconsSrcDir)) {
@@ -54,7 +68,7 @@ export default defineConfig(({ mode }) => {
             console.log(`[Vite] Copied icons -> dist/${target}/icons`);
           }
 
-          // 3. Copy ONNX Runtime WebAssembly files (AMO compliance: local wasm only)
+          // 4. Copy ONNX Runtime WebAssembly files (AMO compliance: local wasm only)
           const onnxDist = resolve(__dirname, 'node_modules/onnxruntime-web/dist');
           if (fs.existsSync(onnxDist)) {
             const wasmFiles = fs.readdirSync(onnxDist).filter((f) => f.endsWith('.wasm'));

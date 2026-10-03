@@ -4,7 +4,9 @@ import { ModelDbService } from '../shared/model-db';
 import { StorageService } from '../shared/storage';
 import { TranslationCacheDb } from '../shared/translation-db';
 import { DialogueItem } from '../shared/types';
+import { API_PRESETS } from '../shared/presets';
 import { TranslationProviderFactory } from '../services/translation/provider-factory';
+import { ApiRateLimiter } from '../services/translation/rate-limiter';
 import { PaddleDetEngine } from '../worker/paddle-det';
 import { PaddleRecEngine } from '../worker/paddle-rec';
 
@@ -156,11 +158,19 @@ browser.runtime.onMessage.addListener(async (rawMsg: any) => {
           return { success: true, cached: false, dialogues: [], naturalWidth: width, naturalHeight: height };
         }
 
-        // 5. Dịch bằng API Text (Gemini / OpenAI-compatible)
+        // 5. Dịch bằng API Text (Gemini / OpenAI-compatible) với Rate Limiter an toàn
         const texts = dialogues.map((d) => d.originalText);
         const provider = TranslationProviderFactory.createProvider(settings);
         const targetLang = settings.targetLanguage || 'Tiếng Việt';
-        const translations = await provider.translateDialogues(texts, targetLang);
+
+        // Xác định khoảng cách giãn cách tối thiểu (ms) theo provider hoặc settings
+        const minDelayMs = settings.rateLimitDelayMs !== undefined
+          ? settings.rateLimitDelayMs
+          : (API_PRESETS[settings.activeProvider]?.defaultDelayMs ?? 1200);
+
+        const translations = await ApiRateLimiter.throttle(minDelayMs, () =>
+          provider.translateDialogues(texts, targetLang)
+        );
 
         dialogues.forEach((d, i) => {
           d.translatedText = translations[i] || d.originalText;

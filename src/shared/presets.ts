@@ -10,6 +10,7 @@ export const API_PRESETS: Record<ProviderType, {
   defaultModel: string;
   suggestedModels: string[];
   requiresApiKey: boolean;
+  defaultDelayMs: number;
 }> = {
   gemini: {
     name: 'Google Gemini',
@@ -21,7 +22,8 @@ export const API_PRESETS: Record<ProviderType, {
       'gemini-2.5-flash',
       'gemini-2.0-flash'
     ],
-    requiresApiKey: true
+    requiresApiKey: true,
+    defaultDelayMs: 2600
   },
   groq: {
     name: 'Groq (Ultra-Fast LPU)',
@@ -33,7 +35,8 @@ export const API_PRESETS: Record<ProviderType, {
       'qwen/qwen3.8-27b',
       'llama-3.3-70b-versatile'
     ],
-    requiresApiKey: true
+    requiresApiKey: true,
+    defaultDelayMs: 1200
   },
   deepseek: {
     name: 'DeepSeek',
@@ -43,7 +46,8 @@ export const API_PRESETS: Record<ProviderType, {
       'deepseek-chat',
       'deepseek-reasoner'
     ],
-    requiresApiKey: true
+    requiresApiKey: true,
+    defaultDelayMs: 1000
   },
   openrouter: {
     name: 'OpenRouter',
@@ -55,7 +59,8 @@ export const API_PRESETS: Record<ProviderType, {
       'meta-llama/llama-3.3-70b-instruct',
       'deepseek/deepseek-chat'
     ],
-    requiresApiKey: true
+    requiresApiKey: true,
+    defaultDelayMs: 1200
   },
   openai: {
     name: 'OpenAI Official',
@@ -65,7 +70,8 @@ export const API_PRESETS: Record<ProviderType, {
       'gpt-4o-mini',
       'gpt-4o'
     ],
-    requiresApiKey: true
+    requiresApiKey: true,
+    defaultDelayMs: 1000
   },
   ollama: {
     name: 'Local Ollama (Offline)',
@@ -76,14 +82,16 @@ export const API_PRESETS: Record<ProviderType, {
       'qwen2.5:7b',
       'llama3.2:3b'
     ],
-    requiresApiKey: false
+    requiresApiKey: false,
+    defaultDelayMs: 0
   },
   custom: {
     name: 'Tùy chỉnh (Custom Endpoint)',
     baseUrl: 'http://localhost:8000/v1',
     defaultModel: 'custom-model',
     suggestedModels: ['custom-model'],
-    requiresApiKey: false
+    requiresApiKey: false,
+    defaultDelayMs: 1000
   }
 };
 
@@ -173,5 +181,6 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   bubbleTheme: 'light',
   autoScrollSpeed: 3,
   autoPrefetch: true,
-  activeOcrModelId: 'paddle-en-slim'
+  activeOcrModelId: 'paddle-en-slim',
+  rateLimitDelayMs: 1200
 };

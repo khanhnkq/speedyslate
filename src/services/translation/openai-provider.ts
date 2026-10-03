@@ -39,15 +39,33 @@ CRITICAL: You must return ONLY a JSON object with a single key "translations" co
     // Add json_object response_format if not using older models
     payload.response_format = { type: 'json_object' };
 
-    const resp = await fetch(endpoint, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload)
-    });
+    let resp: Response | null = null;
+    const maxRetries = 3;
 
-    if (!resp.ok) {
-      const errText = await resp.text();
-      let msg = `API lỗi (${resp.status})`;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      resp = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      });
+
+      if (resp.status === 429 && attempt < maxRetries) {
+        const retryAfterSec = Number(resp.headers.get('retry-after'));
+        const backoffMs = !isNaN(retryAfterSec) && retryAfterSec > 0
+          ? retryAfterSec * 1000
+          : 2500 * Math.pow(2, attempt) + Math.random() * 500;
+
+        console.warn(`[OpenAI/Groq API] 429 Rate limited. Đang chờ ${Math.round(backoffMs)}ms trước khi thử lại (lần ${attempt + 1}/${maxRetries})...`);
+        await new Promise((r) => setTimeout(r, backoffMs));
+        continue;
+      }
+
+      break;
+    }
+
+    if (!resp || !resp.ok) {
+      const errText = resp ? await resp.text() : 'Không thể kết nối';
+      let msg = `API lỗi (${resp?.status || 0})`;
       try {
         const json = JSON.parse(errText);
         if (json.error?.message) {

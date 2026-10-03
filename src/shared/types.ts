@@ -56,6 +56,7 @@ export interface ExtensionSettings {
   autoScrollSpeed: number; // pixels per step (1 to 10)
   autoPrefetch: boolean;
   activeOcrModelId: string;
+  rateLimitDelayMs?: number; // Minimum spacing between API translation requests in ms
 }
 
 export interface OcrModelPreset {

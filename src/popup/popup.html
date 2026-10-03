@@ -72,6 +72,11 @@
         <input type="password" id="input-api-key" placeholder="Nhập API Key...">
       </div>
 
+      <div class="form-group" id="group-rate-limit">
+        <label for="input-rate-limit">Giãn cách gọi API (ms) - Chống Rate Limit 429:</label>
+        <input type="number" id="input-rate-limit" min="0" max="10000" step="100" placeholder="1200">
+      </div>
+
       <div class="test-row">
         <button id="btn-test-connection" class="btn btn-secondary">Kiểm tra kết nối</button>
         <span id="test-result" class="test-result-text"></span>

@@ -23,6 +23,7 @@ class PopupController {
   private modelPresetSelect = document.getElementById('select-model-preset') as HTMLSelectElement;
   private customModelInput = document.getElementById('input-custom-model') as HTMLInputElement;
   private apiKeyInput = document.getElementById('input-api-key') as HTMLInputElement;
+  private rateLimitInput = document.getElementById('input-rate-limit') as HTMLInputElement;
   private testBtn = document.getElementById('btn-test-connection') as HTMLButtonElement;
   private testResult = document.getElementById('test-result') as HTMLElement;
 
@@ -100,6 +101,9 @@ class PopupController {
       this.modelPresetSelect.value = currentModel;
     }
     this.customModelInput.value = currentModel;
+
+    const defaultDelay = preset.defaultDelayMs ?? 1200;
+    this.rateLimitInput.value = String(this.settings.rateLimitDelayMs ?? defaultDelay);
   }
 
   private loadDisplayPreferences(): void {
@@ -188,6 +192,10 @@ class PopupController {
     this.providerSelect.addEventListener('change', () => {
       const type = this.providerSelect.value as ProviderType;
       this.updateProviderForm(type);
+      const p = API_PRESETS[type];
+      if (p) {
+        this.rateLimitInput.value = String(p.defaultDelayMs);
+      }
     });
 
     // Model preset change
@@ -240,6 +248,7 @@ class PopupController {
     this.settings.activeOcrModelId = this.ocrSelect.value;
     this.settings.bubbleTheme = this.themeSelect.value as BubbleTheme;
     this.settings.autoScrollSpeed = Number(this.speedInput.value) || 3;
+    this.settings.rateLimitDelayMs = Number(this.rateLimitInput.value) || 1200;
 
     this.settings.providers[curType] = {
       type: curType,

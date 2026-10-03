@@ -95,23 +95,23 @@ export const OCR_MODEL_PRESETS: OcrModelPreset[] = [
   {
     id: 'paddle-en-slim',
     name: 'PaddleOCR English Slim (Khuyên dùng Toonhey)',
-    description: 'Chuyên biệt cho thoại tiếng Anh trên Toonhey.com. Cực nhẹ (~7MB), nhận diện nhanh và chuẩn xác.',
-    totalSizeMb: 7.0,
+    description: 'Chuyên biệt cho thoại tiếng Anh trên Toonhey.com. Cực nhẹ (~10MB), nhận diện nhanh và chuẩn xác.',
+    totalSizeMb: 10.2,
     files: {
-      detUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/ch_PP-OCRv4_det.onnx',
-      recUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/en_PP-OCRv3_rec.onnx',
-      keysUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/en_dict.txt'
+      detUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/detection/v3/det.onnx',
+      recUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/languages/english/rec.onnx',
+      keysUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/languages/english/dict.txt'
     }
   },
   {
     id: 'paddle-multilingual',
-    name: 'PaddleOCR Multilingual (Hàn / Nhật / Trung / Anh)',
-    description: 'Dành cho độc giả đọc bản RAW tiếng Hàn, tiếng Nhật, tiếng Trung. Dung lượng ~13MB.',
-    totalSizeMb: 13.0,
+    name: 'PaddleOCR Korean / Raw Manhwa',
+    description: 'Dành cho độc giả đọc bản RAW tiếng Hàn (Manhwa). Dung lượng ~15MB.',
+    totalSizeMb: 15.4,
     files: {
-      detUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/ch_PP-OCRv4_det.onnx',
-      recUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/ch_PP-OCRv4_rec.onnx',
-      keysUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/ppocr_keys_v1.txt'
+      detUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/detection/v3/det.onnx',
+      recUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/languages/korean/rec.onnx',
+      keysUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/languages/korean/dict.txt'
     }
   }
 ];

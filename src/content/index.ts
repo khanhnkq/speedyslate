@@ -36,41 +36,49 @@ class SpeedySlateContentApp {
     }, 2);
 
     // 4. Setup Scroller & Floating HUD
-    this.scroller = new AutoScroller(this.settings.autoScrollSpeed, (running) => {
-      this.hud.setPlaying(running);
+    this.scroller = new AutoScroller(this.settings.autoScrollSpeed, (running, isPreloading) => {
+      this.hud.setPlaying(running, isPreloading);
     });
 
     this.hud = new FloatingHud(this.settings.autoScrollSpeed, {
       onTogglePlay: () => this.scroller.toggle(),
+      onPreloadAndReturn: () => {
+        this.hud.log('🚀 Đang cuộn nạp toàn bộ ảnh của chương...');
+        this.scroller.preloadToBottomAndReturn(() => {
+          this.hud.log('🎉 Đã nạp xong tất cả ảnh! Đã quay lại đầu trang để đọc.');
+        });
+      },
       onToggleTranslate: () => {
         if (this.queue.getIsPaused()) {
           this.queue.resume();
+          this.hud.log('▶ Tiếp tục tiến trình dịch');
         } else {
           this.queue.pause();
+          this.hud.log('⏸ Đã tạm ngưng dịch');
         }
       },
       onSpeedChange: (speed) => this.scroller.setSpeed(speed),
       onToggleVisibility: (visible) => OverlayRenderer.setAllVisibility(visible),
       onClearChapterCache: async () => {
         const deleted = await TranslationCacheDb.clearChapterCache(window.location.href);
-        // Clear all bubbles on current page to allow fresh re-translation
         document.querySelectorAll('.speedyslate-bubble').forEach((el) => el.remove());
         this.images.forEach((img) => delete img.dataset.slateStatus);
         this.translatedImagesCount = 0;
         this.hud.updateStatus(0, this.images.length);
-        alert(`Đã xóa ${deleted} bản dịch trong cache của chương này. Sẵn sàng dịch lại.`);
+        this.hud.log(`🧹 Đã xóa ${deleted} bản dịch trong cache chương này.`);
       }
     });
 
     this.hud.updateStatus(0, this.images.length);
+    this.hud.log(`🔍 Tìm thấy ${this.images.length} ảnh trong chương truyện.`);
 
-    // 5. Setup IntersectionObserver to enqueue images as they approach viewport
+    // 5. Setup IntersectionObserver
     this.setupIntersectionObserver();
 
     // 6. Check OCR Model in IndexedDB
     await this.checkAndLoadModel();
 
-    // Enqueue top visible images immediately
+    // Enqueue initial visible images
     this.enqueueInitialImages();
   }
 
@@ -107,7 +115,6 @@ class SpeedySlateContentApp {
   }
 
   private enqueueInitialImages(): void {
-    // Luôn đưa 3 ảnh đầu tiên ở trên cùng vào hàng đợi trước
     for (let i = 0; i < Math.min(3, this.images.length); i++) {
       const img = this.images[i];
       if (!img.dataset.slateStatus) {
@@ -134,12 +141,13 @@ class SpeedySlateContentApp {
       );
       this.translatedImagesCount++;
       this.hud.updateStatus(this.translatedImagesCount, this.images.length);
+      this.hud.log(`⚡ Ảnh #${task.index + 1}: Nạp tức thì từ Cache (0ms)`);
       return;
     }
 
     if (!this.isModelReady) return;
 
-    // Chờ ảnh tải đầy đủ kích thước
+    // Chờ ảnh nạp đủ kích thước
     if (!img.complete || img.naturalWidth === 0) {
       await new Promise((resolve) => {
         img.onload = resolve;
@@ -151,17 +159,20 @@ class SpeedySlateContentApp {
     const naturalHeight = img.naturalHeight;
     if (naturalWidth < 100 || naturalHeight < 100) return;
 
-    // 2. Chạy OCR cục bộ trong Web Worker
+    this.hud.log(`⏳ Quét OCR ảnh #${task.index + 1}...`);
     const bitmap = await createImageBitmap(img);
     const dialogues = await this.runOcrInWorker(bitmap, imageUrl);
 
     if (dialogues.length === 0) {
       this.translatedImagesCount++;
       this.hud.updateStatus(this.translatedImagesCount, this.images.length);
+      this.hud.log(`ℹ️ Ảnh #${task.index + 1}: Không có thoại`);
       return;
     }
 
-    // 3. Gọi Background Script dịch Text qua API
+    this.hud.log(`💬 Ảnh #${task.index + 1}: Có ${dialogues.length} câu thoại, đang dịch...`);
+
+    // Gọi API dịch văn bản
     const textsToTranslate = dialogues.map((d) => d.originalText);
     const resp: any = await browser.runtime.sendMessage({
       action: 'TRANSLATE_TEXTS',
@@ -174,7 +185,6 @@ class SpeedySlateContentApp {
         d.translatedText = resp.translations[idx] || d.originalText;
       });
 
-      // 4. Render hộp thoại đè ảnh
       OverlayRenderer.renderDialogues(
         wrapper,
         dialogues,
@@ -183,7 +193,6 @@ class SpeedySlateContentApp {
         this.settings.bubbleTheme as BubbleTheme
       );
 
-      // 5. Lưu vào IndexedDB theo URL ảnh để không dịch lại lần sau
       await TranslationCacheDb.saveTranslation(
         imageUrl,
         window.location.href,
@@ -191,6 +200,10 @@ class SpeedySlateContentApp {
         naturalWidth,
         naturalHeight
       );
+
+      this.hud.log(`✅ Ảnh #${task.index + 1}: Dịch thành công`);
+    } else {
+      this.hud.log(`❌ Lỗi dịch ảnh #${task.index + 1}: ${resp?.error || 'Lỗi API'}`, true);
     }
 
     this.translatedImagesCount++;
@@ -218,11 +231,13 @@ class SpeedySlateContentApp {
     const status = await ModelDbService.getModelStatus(modelId);
 
     if (status.status !== 'ready') {
+      this.hud.log('⚠️ Chưa tải model OCR. Mở tiện ích để tải model.', true);
       this.showModelMissingBanner();
       return;
     }
 
     try {
+      this.hud.log('🚀 Đang nạp model PaddleOCR vào Worker...');
       const buffers = await ModelDbService.getModelBuffers(modelId);
       this.worker.postMessage(
         {
@@ -249,9 +264,10 @@ class SpeedySlateContentApp {
         this.worker.addEventListener('message', handler);
       });
 
-      console.log('[SpeedySlate] Model OCR sẵn sàng');
-    } catch (err) {
+      this.hud.log('✅ Model PaddleOCR đã sẵn sàng!');
+    } catch (err: any) {
       console.error('[SpeedySlate] Không thể nạp model OCR:', err);
+      this.hud.log(`❌ Lỗi nạp model: ${err.message}`, true);
       this.showModelMissingBanner();
     }
   }
@@ -266,7 +282,7 @@ class SpeedySlateContentApp {
       border: 1px solid #70a1ff;
     `;
     banner.innerHTML = `
-      <span>⚠️ <b>SpeedySlate</b>: Bạn chưa tải model OCR (~7MB). Bấm vào icon tiện ích để tải về và bắt đầu dịch.</span>
+      <span>⚠️ <b>SpeedySlate</b>: Bạn chưa tải model OCR (~10MB). Bấm vào icon tiện ích để tải về và bắt đầu dịch.</span>
       <button style="background: #70a1ff; border: none; color: #fff; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-weight: bold;">Đóng</button>
     `;
     banner.querySelector('button')?.addEventListener('click', () => banner.remove());

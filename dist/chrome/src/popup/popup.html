@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cài đặt SpeedySlate</title>
+  <script type="module" crossorigin src="/assets/popup.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/translation-db.js">
+  <link rel="stylesheet" crossorigin href="/assets/popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <header class="header">
+      <div class="logo-title">
+        <svg class="logo-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M13 2.5L5 13H12L11 21.5L19 11H12L13 2.5Z" fill="#ec4899" stroke="#ec4899" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h1>SpeedySlate</h1>
+      </div>
+      <span class="badge">v1.0</span>
+    </header>
+
+    <!-- SECTION 1: OCR MODEL MANAGEMENT -->
+    <section class="card">
+      <div class="card-title">
+        <span>Mô hình OCR cục bộ (0đ Chi Phí)</span>
+      </div>
+      <div class="form-group">
+        <label for="ocr-model-select">Chọn gói mô hình:</label>
+        <select id="ocr-model-select"></select>
+      </div>
+      <div class="model-status-box">
+        <div class="status-row">
+          <span>Trạng thái:</span>
+          <span id="model-status-badge" class="status-badge">Đang kiểm tra...</span>
+        </div>
+        <div id="progress-container" class="progress-bar-container" style="display: none;">
+          <div id="progress-bar" class="progress-bar-fill"></div>
+          <span id="progress-text" class="progress-text">0%</span>
+        </div>
+      </div>
+      <div class="btn-group">
+        <button id="btn-download-model" class="btn btn-primary">Tải Model Về Máy</button>
+        <button id="btn-delete-model" class="btn btn-danger" style="display: none;">Xóa Model</button>
+      </div>
+    </section>
+
+    <!-- SECTION 2: TRANSLATION API -->
+    <section class="card">
+      <div class="card-title">
+        <span>Cấu hình API Dịch Thuật</span>
+      </div>
+
+      <div class="form-group">
+        <label for="provider-select">Nhà cung cấp (Preset):</label>
+        <select id="provider-select"></select>
+      </div>
+
+      <div class="form-group" id="group-base-url">
+        <label for="input-base-url">Base URL:</label>
+        <input type="text" id="input-base-url" placeholder="https://api.groq.com/openai/v1">
+      </div>
+
+      <div class="form-group">
+        <label for="select-model">Tên Model (Điền sẵn hoặc tự gõ):</label>
+        <div class="combobox-wrapper">
+          <select id="select-model-preset"></select>
+          <input type="text" id="input-custom-model" placeholder="Nhập tên model..." style="margin-top: 6px;">
+        </div>
+      </div>
+
+      <div class="form-group" id="group-api-key">
+        <label for="input-api-key">API Key:</label>
+        <input type="password" id="input-api-key" placeholder="Nhập API Key...">
+      </div>
+
+      <div class="form-group" id="group-rate-limit">
+        <label for="input-rate-limit">Giãn cách gọi API (ms) - Chống Rate Limit 429:</label>
+        <input type="number" id="input-rate-limit" min="0" max="10000" step="100" placeholder="1200">
+      </div>
+
+      <div class="test-row">
+        <button id="btn-test-connection" class="btn btn-secondary">Kiểm tra kết nối</button>
+        <span id="test-result" class="test-result-text"></span>
+      </div>
+    </section>
+
+    <!-- SECTION 3: TRANSLATION CACHE DB MANAGEMENT -->
+    <section class="card">
+      <div class="card-title">
+        <span>Bộ nhớ Cache Truyện (URL-Based)</span>
+      </div>
+      <div class="status-row">
+        <span>Đã lưu theo URL:</span>
+        <span id="cache-stats-text" style="font-weight: bold; color: #a4b0be;">0 trang</span>
+      </div>
+      <button id="btn-clear-cache" class="btn btn-secondary" style="width: 100%; margin-top: 4px;">
+        Dọn dẹp sạch Cache truyện
+      </button>
+    </section>
+
+    <!-- SECTION 4: DISPLAY & READING -->
+    <section class="card">
+      <div class="card-title">
+        <span>Tùy chọn hiển thị & Cuộn</span>
+      </div>
+      <div class="form-row">
+        <div class="form-group half">
+          <label for="select-theme">Màu hộp thoại:</label>
+          <select id="select-theme">
+            <option value="light">Nền Trắng (Chữ Đen)</option>
+            <option value="dark">Nền Đen (Chữ Trắng)</option>
+            <option value="auto">Tự động nhận diện</option>
+          </select>
+        </div>
+        <div class="form-group half">
+          <label for="input-speed">Tốc độ cuộn:</label>
+          <input type="number" id="input-speed" min="1" max="10" value="3">
+        </div>
+      </div>
+    </section>
+
+    <!-- SAVE FOOTER -->
+    <footer class="footer">
+      <button id="btn-save-settings" class="btn btn-success">Lưu Cài Đặt</button>
+      <span id="save-status" class="save-status"></span>
+    </footer>
+  </div>
+
+</body>
+</html>

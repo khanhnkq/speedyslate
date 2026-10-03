@@ -93,6 +93,20 @@ browser.runtime.onMessage.addListener(async (rawMsg: any) => {
         return { success: true, deleted };
       }
 
+      case 'GET_CHAPTER_TRANSLATIONS': {
+        const { imageUrls } = msg;
+        const results: Record<string, any> = {};
+        if (Array.isArray(imageUrls)) {
+          for (const url of imageUrls) {
+            const cached = await TranslationCacheDb.getTranslation(url);
+            if (cached && cached.dialogues?.length > 0) {
+              results[url] = cached;
+            }
+          }
+        }
+        return { success: true, translations: results };
+      }
+
       case 'TRANSLATE_IMAGE': {
         const { imageUrl, chapterUrl, dataUrl } = msg;
 

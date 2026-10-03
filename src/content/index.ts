@@ -69,10 +69,15 @@ class SpeedySlateContentApp {
     this.setupMutationObserver();
     this.setupIntersectionObserver();
 
-    // 4. Kiểm tra trạng thái Model OCR từ Background
+    // 4. Tự động khôi phục bản dịch từ Cache IndexedDB (nếu có sẵn) ngay lập tức (0ms)
+    await this.restoreCachedTranslations();
+
+    // 5. Kiểm tra trạng thái Model OCR từ Background
     await this.checkModelStatusFromBackground(false);
 
-    this.hud.log(`Sẵn sàng dịch. Tìm thấy ${this.images.length} trang truyện`);
+    if (this.translatedImagesCount < this.images.length) {
+      this.hud.log(`Sẵn sàng dịch. Tìm thấy ${this.images.length} trang truyện`);
+    }
   }
 
   private async handleStartTranslating(): Promise<void> {
@@ -134,7 +139,62 @@ class SpeedySlateContentApp {
       // Nếu đang trong tiến trình dịch thì tự động đưa các ảnh mới vào hàng đợi
       if (this.hud.getState() === 'translating') {
         this.enqueueAllImages();
+      } else {
+        this.restoreCachedTranslations();
       }
+    }
+  }
+
+  private async restoreCachedTranslations(): Promise<void> {
+    if (this.images.length === 0) return;
+
+    const urls = this.images
+      .map((img) => img.dataset.src || img.getAttribute('data-src') || img.src)
+      .filter(Boolean);
+
+    try {
+      const resp: any = await browser.runtime.sendMessage({
+        action: 'GET_CHAPTER_TRANSLATIONS',
+        imageUrls: urls
+      });
+
+      if (resp?.success && resp.translations) {
+        const cache = resp.translations;
+        let newlyRestored = 0;
+
+        for (let i = 0; i < this.images.length; i++) {
+          const img = this.images[i];
+          if (img.dataset.slateStatus) continue;
+
+          const url = img.dataset.src || img.getAttribute('data-src') || img.src;
+          const cached = cache[url];
+          if (cached && Array.isArray(cached.dialogues) && cached.dialogues.length > 0) {
+            const wrapper = img.parentElement;
+            if (wrapper) {
+              OverlayRenderer.renderDialogues(
+                wrapper,
+                cached.dialogues,
+                cached.naturalWidth || img.naturalWidth || 800,
+                cached.naturalHeight || img.naturalHeight || 1200,
+                (this.settings?.bubbleTheme || 'light') as BubbleTheme
+              );
+              img.dataset.slateStatus = 'translated';
+              newlyRestored++;
+              this.translatedImagesCount++;
+            }
+          }
+        }
+
+        if (newlyRestored > 0) {
+          this.hud.updateStatus(this.translatedImagesCount, this.images.length);
+          this.hud.log(`Đã nạp tức thì ${newlyRestored} trang từ Cache (0ms)`);
+          if (this.translatedImagesCount >= this.images.length) {
+            this.hud.setState('completed');
+          }
+        }
+      }
+    } catch {
+      // Quiet fallback if cache check fails
     }
   }
 

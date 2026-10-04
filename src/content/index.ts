@@ -29,6 +29,9 @@ class SpeedySlateContentApp {
         if (currentState === 'translating') {
           await this.handleStartTranslating();
         } else {
+          try {
+            sessionStorage.setItem('speedyslate_translating', 'false');
+          } catch {}
           this.ocrQueue?.pause();
           this.translationQueue?.pause();
           this.hud.log('Da tam dung tien trinh dich truyen');
@@ -100,6 +103,14 @@ class SpeedySlateContentApp {
 
     if (this.completedImages.size < this.images.length) {
       this.hud.log(`San sang dich. Tim thay ${this.images.length} trang truyen`);
+
+      // Tu dong tiep tuc dich neu dang trong phien doc lien tuc (vi du lat trang nHentai hoac chuyen chuong)
+      try {
+        if (sessionStorage.getItem('speedyslate_translating') === 'true') {
+          this.hud.setState('translating');
+          await this.handleStartTranslating();
+        }
+      } catch {}
     }
   }
 
@@ -114,6 +125,9 @@ class SpeedySlateContentApp {
     this.completedImages.clear();
     this.ocrQueue?.clear();
     this.translationQueue?.clear();
+    try {
+      sessionStorage.setItem('speedyslate_translating', 'false');
+    } catch {}
     this.hud.updateStatus(0, this.images.length);
     this.hud.setState('idle');
   }
@@ -147,6 +161,10 @@ class SpeedySlateContentApp {
         this.completedImages.delete(img);
       }
     }
+
+    try {
+      sessionStorage.setItem('speedyslate_translating', 'true');
+    } catch {}
 
     this.hud.log(`Bat dau dich chuong (${this.images.length} trang)...`);
 

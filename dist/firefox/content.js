@@ -1859,9 +1859,14 @@
   // src/content/toonhey-adapter.ts
   var ToonheyAdapter = class {
     static CONTAINER_SELECTORS = [
+      "#image-container",
+      // nHentai reader
+      ".image-container",
       "#reader-area",
+      // WordPress Manga / Toonhey
       "#readerarea",
       ".reading-content",
+      // Toonily & Madara WordPress theme
       "#reader-container",
       ".reader-container",
       ".chapter-images",
@@ -1894,6 +1899,13 @@
       ".related",
       ".related-manga",
       ".related-posts",
+      ".related-container",
+      // nHentai related galleries
+      "#related-container",
+      "#caption",
+      // nHentai page caption
+      "#pagination",
+      ".pagination",
       "#trending",
       ".trending",
       ".popular",
@@ -1917,7 +1929,7 @@
         if (container && !this.isInsideExcludedZone(container)) {
           const imgs = Array.from(container.querySelectorAll("img"));
           const validComicPanels = imgs.filter((img) => this.isGenuineComicPanel(img));
-          if (validComicPanels.length >= 2) {
+          if (validComicPanels.length >= 1) {
             return validComicPanels;
           }
         }
@@ -1927,7 +1939,7 @@
       if (candidatePanels.length === 0) return [];
       const containerCounts = /* @__PURE__ */ new Map();
       for (const img of candidatePanels) {
-        const parentContainer = img.closest("div, section");
+        const parentContainer = img.closest("div, section, article");
         if (parentContainer && !this.isInsideExcludedZone(parentContainer)) {
           const list = containerCounts.get(parentContainer) || [];
           list.push(img);
@@ -1940,7 +1952,17 @@
           bestGroup = group;
         }
       }
-      return bestGroup.length >= 2 ? bestGroup : candidatePanels;
+      if (bestGroup.length >= 2) return bestGroup;
+      if (candidatePanels.length >= 2) return candidatePanels;
+      if (candidatePanels.length === 1) {
+        const single = candidatePanels[0];
+        const w = single.naturalWidth || single.width || 0;
+        const h = single.naturalHeight || single.height || 0;
+        if (w >= 300 || h >= 300) {
+          return candidatePanels;
+        }
+      }
+      return [];
     }
     /**
      * Strictly determines if an <img> element is a comic panel of the current episode
@@ -1955,9 +1977,14 @@
       const anchor = img.closest("a");
       if (anchor && anchor.href) {
         const anchorHref = anchor.href.toLowerCase();
-        const currentPath = window.location.pathname.toLowerCase();
-        if (!anchorHref.includes(currentPath) && (anchorHref.includes("/manga/") || anchorHref.includes("/en/"))) {
-          return false;
+        const currentPath = window.location.pathname.toLowerCase().replace(/\/+$/, "");
+        const pathSegments = currentPath.split("/").filter(Boolean);
+        const seriesPrefix = pathSegments.length > 1 ? "/" + pathSegments.slice(0, pathSegments.length - 1).join("/") : currentPath;
+        const isNextPageOrSameSeries = anchorHref.includes(currentPath) || seriesPrefix.length > 3 && anchorHref.includes(seriesPrefix);
+        if (!isNextPageOrSameSeries) {
+          if (anchorHref.includes("/manga/") || anchorHref.includes("/webtoon/") || anchorHref.includes("/series/") || anchorHref.includes("/comic/") || anchorHref.includes("/g/") || anchorHref.includes("/en/")) {
+            return false;
+          }
         }
       }
       const src = (img.currentSrc || img.src || img.dataset.src || img.getAttribute("data-src") || "").toLowerCase();
@@ -2696,6 +2723,10 @@
           if (currentState === "translating") {
             await this.handleStartTranslating();
           } else {
+            try {
+              sessionStorage.setItem("speedyslate_translating", "false");
+            } catch {
+            }
             this.ocrQueue?.pause();
             this.translationQueue?.pause();
             this.hud.log("Da tam dung tien trinh dich truyen");
@@ -2753,6 +2784,13 @@
       await this.checkModelStatusFromBackground(false);
       if (this.completedImages.size < this.images.length) {
         this.hud.log(`San sang dich. Tim thay ${this.images.length} trang truyen`);
+        try {
+          if (sessionStorage.getItem("speedyslate_translating") === "true") {
+            this.hud.setState("translating");
+            await this.handleStartTranslating();
+          }
+        } catch {
+        }
       }
     }
     resetPageTranslations() {
@@ -2766,6 +2804,10 @@
       this.completedImages.clear();
       this.ocrQueue?.clear();
       this.translationQueue?.clear();
+      try {
+        sessionStorage.setItem("speedyslate_translating", "false");
+      } catch {
+      }
       this.hud.updateStatus(0, this.images.length);
       this.hud.setState("idle");
     }
@@ -2792,6 +2834,10 @@
           delete img.dataset.slateStatus;
           this.completedImages.delete(img);
         }
+      }
+      try {
+        sessionStorage.setItem("speedyslate_translating", "true");
+      } catch {
       }
       this.hud.log(`Bat dau dich chuong (${this.images.length} trang)...`);
       ToonheyAdapter.forceLoadAll(this.images);

@@ -23,6 +23,7 @@
   "author": "khanhnkq",
   "license": "MIT",
   "dependencies": {
+    "@tabler/icons-webfont": "^3.48.0",
     "onnxruntime-web": "^1.21.0",
     "webextension-polyfill": "^0.12.0"
   },

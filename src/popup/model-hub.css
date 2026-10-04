@@ -1,30 +1,21 @@
-/*
- * SpeedySlate — Model Hub Styles
- * Minimalist Anime Editorial Model Cards
- */
-
-.storage-tag {
-  font-family: 'DM Mono', monospace;
-  font-size: 10px;
-  color: var(--ink2);
-  background: #EAEAE8;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
+/* ==========================================================================
+   SpeedySlate — Model Hub Styles (Dark & Crimson Brutalism)
+   ========================================================================== */
 
 .model-cards-container {
   display: flex;
   flex-direction: column;
   gap: 7px;
-  max-height: 250px;
+  max-height: 220px;
   overflow-y: auto;
   padding-right: 2px;
+  margin-bottom: 8px;
 }
 
 .model-card {
-  background: #FFFFFF;
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
@@ -35,13 +26,14 @@
 }
 
 .model-card:hover {
-  border-color: #C4B5FD;
+  border-color: var(--border-hover);
+  background: var(--bg-card-hover);
 }
 
 .model-card.active {
-  border-color: var(--accent);
-  background: #FAF5FF;
-  box-shadow: 0 0 0 1px var(--accent);
+  border-color: var(--accent-red);
+  background: #17151D;
+  box-shadow: 0 0 10px var(--accent-glow);
 }
 
 .model-card-top {
@@ -60,10 +52,10 @@
 }
 
 .model-radio-circle {
-  width: 12px;
-  height: 12px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
-  border: 1.5px solid var(--line);
+  border: 1.5px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -72,9 +64,9 @@
 }
 
 .model-card.active .model-radio-circle {
-  border-color: var(--accent);
-  background: var(--accent);
-  box-shadow: inset 0 0 0 2px #fff;
+  border-color: var(--accent-red);
+  background: var(--accent-red);
+  box-shadow: inset 0 0 0 2px var(--bg-card);
 }
 
 .model-title-block {
@@ -84,128 +76,122 @@
 }
 
 .model-title {
+  font-family: var(--font-heading);
   font-size: 11px;
-  font-weight: 600;
-  color: var(--ink);
+  font-weight: 700;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .model-size-label {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
-  color: var(--ink2);
+  color: var(--text-muted);
 }
 
 .model-card-badge {
-  font-size: 9.5px;
-  font-family: 'DM Mono', monospace;
-  padding: 1.5px 5px;
-  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
-  font-weight: 500;
 }
 
 .model-card-badge.ready {
-  background: #E8F5E9;
-  color: #2E7D32;
+  background: rgba(229, 46, 61, 0.15);
+  color: #FFA5AC;
+  border: 1px solid rgba(229, 46, 61, 0.35);
 }
 
 .model-card-badge.not_downloaded {
-  background: #F5F5F4;
-  color: #78716C;
-}
-
-.model-card-badge.downloading {
-  background: #EDE9FE;
-  color: var(--accent);
+  background: #1C1C24;
+  color: var(--text-dim);
+  border: 1px solid var(--border-color);
 }
 
 .model-desc {
   font-size: 10px;
-  color: var(--ink2);
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  color: var(--text-muted);
+  line-height: 1.35;
 }
 
 .model-card-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  margin-top: 1px;
-  padding-top: 4px;
-  border-top: 1px dashed #EAEAE8;
+  justify-content: flex-end;
+  margin-top: 2px;
 }
 
 .btn-card-action {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  font-family: var(--font-heading);
   font-size: 10px;
-  font-weight: 500;
-  padding: 3px 7px;
-  border-radius: 4px;
-  border: 1px solid var(--line);
-  background: #fff;
-  color: var(--ink);
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: #111116;
+  color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.15s;
-  font-family: inherit;
+  transition: all 0.15s ease;
 }
 
 .btn-card-action:hover {
-  background: #F5F5F4;
+  background: #1C1C24;
+  color: var(--text-primary);
+  border-color: var(--border-hover);
 }
 
 .btn-card-download {
-  border-color: var(--accent);
-  color: var(--accent);
-  font-weight: 600;
+  border-color: rgba(229, 46, 61, 0.4);
+  background: var(--accent-subtle);
+  color: var(--accent-red);
 }
 
 .btn-card-download:hover {
-  background: #FAF5FF;
-}
-
-.btn-card-delete {
-  border-color: #E2E2E0;
-  color: #DC2626;
+  background: var(--accent-red);
+  color: #FFFFFF;
+  border-color: var(--accent-red);
+  box-shadow: 0 0 8px var(--accent-glow);
 }
 
 .btn-card-delete:hover {
-  background: #FEF2F2;
-  border-color: #FCA5A5;
+  border-color: #FF4D4F;
+  color: #FF4D4F;
 }
 
 .card-progress-bar-wrap {
-  flex: 1;
   display: flex;
   align-items: center;
   gap: 6px;
+  width: 100%;
 }
 
 .card-progress-track {
   flex: 1;
-  height: 4px;
-  background: #EAEAE8;
-  border-radius: 2px;
+  height: 5px;
+  background: #24242C;
+  border-radius: 4px;
   overflow: hidden;
 }
 
 .card-progress-fill {
   height: 100%;
   width: 0%;
-  background: var(--accent);
-  transition: width 0.15s;
+  background: var(--accent-red);
+  box-shadow: 0 0 6px var(--accent-glow);
+  transition: width 0.15s ease;
 }
 
 .card-progress-label {
-  font-family: 'DM Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 9px;
-  color: var(--ink2);
+  color: var(--accent-red);
+  min-width: 28px;
+  text-align: right;
 }

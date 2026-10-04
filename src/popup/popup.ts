@@ -234,7 +234,30 @@ class PopupController {
     }
   }
 
+  private initTabs(): void {
+    const tabBtns = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
+    const tabPanes = document.querySelectorAll<HTMLElement>('.tab-pane');
+
+    tabBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const targetId = btn.getAttribute('data-tab');
+        if (!targetId) return;
+
+        tabBtns.forEach((b) => b.classList.remove('active'));
+        tabPanes.forEach((p) => p.classList.remove('active'));
+
+        btn.classList.add('active');
+        const targetPane = document.getElementById(targetId);
+        if (targetPane) {
+          targetPane.classList.add('active');
+        }
+      });
+    });
+  }
+
   private attachEventListeners(): void {
+    this.initTabs();
+
     // Translation Mode radio toggle
     const onModeChange = () => {
       const mode = this.radioModeVision?.checked ? 'vision_ai' : 'hybrid_ocr';

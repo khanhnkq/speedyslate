@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SpeedySlate - Manga/Webtoon Auto-Translator",
   "version": "1.0.0",
-  "description": "Siêu nhẹ & tối ưu: Dịch truyện tranh toonhey.com tự động cuộn bằng PaddleOCR cục bộ và AI API (Gemini, Groq, DeepSeek).",
+  "description": "Siêu nhẹ & tối ưu: Dịch truyện tranh tự động (Toonhey, Toonily, nHentai...) bằng PaddleOCR cục bộ và AI API (Gemini, Groq, DeepSeek).",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -25,7 +25,15 @@
     {
       "matches": [
         "*://toonhey.com/*",
-        "*://*.toonhey.com/*"
+        "*://*.toonhey.com/*",
+        "*://toonily.com/*",
+        "*://*.toonily.com/*",
+        "*://toonily.me/*",
+        "*://*.toonily.me/*",
+        "*://toonily.net/*",
+        "*://*.toonily.net/*",
+        "*://nhentai.net/*",
+        "*://*.nhentai.net/*"
       ],
       "all_frames": true,
       "match_about_blank": true,
@@ -52,7 +60,18 @@
         "*.wasm",
         "*.mjs"
       ],
-      "matches": ["*://toonhey.com/*", "*://*.toonhey.com/*"]
+      "matches": [
+        "*://toonhey.com/*",
+        "*://*.toonhey.com/*",
+        "*://toonily.com/*",
+        "*://*.toonily.com/*",
+        "*://toonily.me/*",
+        "*://*.toonily.me/*",
+        "*://toonily.net/*",
+        "*://*.toonily.net/*",
+        "*://nhentai.net/*",
+        "*://*.nhentai.net/*"
+      ]
     }
   ]
 }

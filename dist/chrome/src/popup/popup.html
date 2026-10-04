@@ -6,7 +6,7 @@
     <title>SpeedySlate</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet" />
     <script type="module" crossorigin src="/assets/popup.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill.js">
@@ -18,263 +18,236 @@
     <div class="popup-container">
       <!-- HEADER -->
       <header class="header">
-        <div class="logo-row">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <path d="M13 2.5L5 13H12L11 21.5L19 11H12L13 2.5Z" fill="#A855F7" />
-          </svg>
-          <span class="logo-name">SpeedySlate</span>
+        <div class="brand-row">
+          <div class="brand-logo">
+            <span class="logo-mark"><i class="ti ti-bolt"></i></span>
+            <span class="brand-title">SPEEDYSLATE</span>
+          </div>
+          <span class="brand-badge">PRO v1.0</span>
         </div>
-        <span class="version-tag">v1.0</span>
+
+        <!-- TAB NAVIGATION (PANELS) -->
+        <nav class="tab-nav">
+          <button class="tab-btn active" data-tab="tab-modes" type="button">
+            <i class="ti ti-switch-horizontal"></i>
+            <span>MODES</span>
+          </button>
+          <button class="tab-btn" data-tab="tab-engine" type="button">
+            <i class="ti ti-cpu"></i>
+            <span>ENGINE</span>
+          </button>
+          <button class="tab-btn" data-tab="tab-api" type="button">
+            <i class="ti ti-key"></i>
+            <span>API</span>
+          </button>
+          <button class="tab-btn" data-tab="tab-system" type="button">
+            <i class="ti ti-adjustments"></i>
+            <span>SYSTEM</span>
+          </button>
+        </nav>
       </header>
 
-      <!-- SECTION: TRANSLATION MODE (RADIO 2 MODES) -->
-      <section class="section">
-        <p class="section-label">Chế độ dịch thuật</p>
-        <div class="mode-selector-grid">
-          <label class="mode-card-option" id="mode-hybrid-label">
-            <input
-              type="radio"
-              name="translationMode"
-              value="hybrid_ocr"
-              id="radio-mode-hybrid"
-              checked />
-            <div class="mode-card-content">
-              <div class="mode-card-header">
-                <span class="mode-badge-icon">⚡</span>
-                <span class="mode-card-title">Hybrid OCR + Text</span>
+      <!-- TAB CONTENT CONTAINER -->
+      <main class="tab-content-wrap">
+        <!-- 1. TAB: MODES -->
+        <div class="tab-pane active" id="tab-modes">
+          <div class="panel-section-title">CHẾ ĐỘ | MODES</div>
+          <div class="mode-grid">
+            <label class="mode-card" id="mode-hybrid-label">
+              <input type="radio" name="translationMode" value="hybrid_ocr" id="radio-mode-hybrid" checked />
+              <div class="mode-card-body">
+                <div class="mode-card-header">
+                  <div class="mode-title-wrap">
+                    <i class="ti ti-bolt mode-icon"></i>
+                    <span class="mode-name">Hybrid OCR</span>
+                  </div>
+                  <span class="mode-chip">95% Token Saver</span>
+                </div>
+                <p class="mode-summary">Quét chữ cục bộ bằng ONNX. Siêu tốc, bảo mật, tương thích mọi API dịch.</p>
               </div>
-              <p class="mode-card-desc">
-                Bóc chữ cục bộ bằng ONNX. Tiết kiệm 95% token, siêu nhanh, dùng
-                được với mọi model.
-              </p>
-            </div>
-          </label>
+            </label>
 
-          <label class="mode-card-option" id="mode-vision-label">
-            <input
-              type="radio"
-              name="translationMode"
-              value="vision_ai"
-              id="radio-mode-vision" />
-            <div class="mode-card-content">
-              <div class="mode-card-header">
-                <span class="mode-badge-icon">👁️</span>
-                <span class="mode-card-title">Multimodal Vision AI</span>
+            <label class="mode-card" id="mode-vision-label">
+              <input type="radio" name="translationMode" value="vision_ai" id="radio-mode-vision" />
+              <div class="mode-card-body">
+                <div class="mode-card-header">
+                  <div class="mode-title-wrap">
+                    <i class="ti ti-eye mode-icon"></i>
+                    <span class="mode-name">Multimodal Vision</span>
+                  </div>
+                  <span class="mode-chip chip-red">Direct AI</span>
+                </div>
+                <p class="mode-summary">Gửi toàn bộ ảnh cho Vision AI dịch ngữ cảnh tranh. Không cần tải ONNX.</p>
               </div>
-              <p class="mode-card-desc">
-                Gửi ảnh cho AI đọc ngữ cảnh tranh &amp; màu nền (đen/trắng).
-                Không dịch SFX, không cần tải ONNX.
-              </p>
+            </label>
+          </div>
+        </div>
+
+        <!-- 2. TAB: ENGINE (OCR MODELS) -->
+        <div class="tab-pane" id="tab-engine">
+          <section id="section-ocr-models">
+            <div id="vision-mode-notice" class="vision-notice-card" style="display: none">
+              <i class="ti ti-info-circle"></i>
+              <span>Vision AI đang bật. Model OCR tạm nghỉ để tiết kiệm RAM.</span>
             </div>
-          </label>
-        </div>
-      </section>
+            <div class="panel-section-title">
+              <span>MÔ HÌNH | OCR ENGINE</span>
+              <span id="model-storage-used" class="pill-storage">0 MB đã lưu</span>
+            </div>
 
-      <div class="divider"></div>
+            <!-- Interactive Model Cards -->
+            <div id="ocr-model-cards" class="model-cards-container"></div>
 
-      <!-- SECTION: OCR MODEL -->
-      <section class="section" id="section-ocr-models">
-        <div
-          id="vision-mode-notice"
-          class="vision-mode-notice"
-          style="display: none">
-          <span
-            ><b>Chế độ Vision AI đang kích hoạt</b>: AI trực tiếp đọc ảnh và
-            dịch toàn diện. Mô hình OCR cục bộ dưới đây được tạm ngưng để tiết
-            kiệm tài nguyên máy.</span
-          >
-        </div>
-        <div class="section-header-row">
-          <p class="section-label">Mô hình OCR</p>
-          <span id="model-storage-used" class="storage-tag">0 MB đã lưu</span>
+            <!-- Engine Specs Grid -->
+            <div class="specs-grid">
+              <div class="spec-card">
+                <span class="spec-label">MODEL ĐANG CHỌN</span>
+                <span id="model-status-badge" class="spec-val">Đang kiểm tra…</span>
+              </div>
+              <div class="spec-card">
+                <span class="spec-label">BACKEND ONNX</span>
+                <span id="ocr-backend-badge" class="spec-val muted">Chưa nạp</span>
+              </div>
+            </div>
+
+            <!-- WebGPU Acceleration Switch -->
+            <div class="toggle-card">
+              <div class="toggle-meta">
+                <i class="ti ti-gpu toggle-icon"></i>
+                <div class="toggle-text-block">
+                  <span class="toggle-name">WebGPU Acceleration</span>
+                  <span class="toggle-desc">Tăng tốc xử lý ONNX qua phần cứng GPU</span>
+                </div>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="toggle-webgpu" checked />
+                <span class="switch-track"></span>
+              </label>
+            </div>
+          </section>
         </div>
 
-        <!-- Interactive Model Cards List -->
-        <div id="ocr-model-cards" class="model-cards-container">
-          <!-- Rendered dynamically by popup.ts -->
-        </div>
+        <!-- 3. TAB: API (TRANSLATION SERVICE) -->
+        <div class="tab-pane" id="tab-api">
+          <div class="panel-section-title">DỊCH THUẬT | AI API</div>
 
-        <!-- Status grid: 2 cells -->
-        <div class="status-grid">
-          <div class="status-cell">
-            <span class="status-key">Model đang chọn</span>
-            <span id="model-status-badge" class="status-val"
-              >Đang kiểm tra…</span
-            >
+          <div class="form-group">
+            <label class="form-label" for="provider-select">
+              <i class="ti ti-server"></i> NHÀ CUNG CẤP
+            </label>
+            <select id="provider-select" class="form-select"></select>
           </div>
-          <div class="status-cell">
-            <span class="status-key">Backend OCR</span>
-            <span id="ocr-backend-badge" class="status-val muted"
-              >Chưa nạp</span
-            >
+
+          <div class="form-group" id="group-base-url">
+            <label class="form-label" for="input-base-url">
+              <i class="ti ti-link"></i> BASE URL
+            </label>
+            <input type="text" id="input-base-url" class="form-input" placeholder="https://api.groq.com/openai/v1" />
           </div>
-        </div>
 
-        <!-- WebGPU toggle -->
-        <div class="toggle-row">
-          <div class="toggle-info">
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#A855F7"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-            </svg>
-            <span class="toggle-text">WebGPU tăng tốc</span>
+          <div class="form-group">
+            <label class="form-label" for="select-model-preset">
+              <i class="ti ti-brain"></i> MODEL NAME
+            </label>
+            <div class="input-stack">
+              <select id="select-model-preset" class="form-select"></select>
+              <input type="text" id="input-custom-model" class="form-input" placeholder="Hoặc tự nhập tên model…" />
+            </div>
           </div>
-          <label class="switch">
-            <input type="checkbox" id="toggle-webgpu" checked />
-            <span class="switch-track"></span>
-          </label>
-        </div>
-      </section>
 
-      <div class="divider"></div>
+          <div class="form-group" id="group-api-key">
+            <div class="form-label-row">
+              <label class="form-label" for="input-api-key">
+                <i class="ti ti-key"></i> API KEYS (XOAY VÒNG)
+              </label>
+              <span id="api-key-count-badge" class="pill-badge">0 key</span>
+            </div>
+            <textarea
+              id="input-api-key"
+              class="form-textarea"
+              rows="3"
+              placeholder="Nhập 1 hoặc nhiều API Key (mỗi dòng 1 key hoặc cách nhau bằng dấu phẩy) để tự động xoay vòng round-robin..."
+              spellcheck="false"></textarea>
+          </div>
 
-      <!-- SECTION: TRANSLATION API -->
-      <section class="section">
-        <p class="section-label">API Dịch Thuật</p>
+          <div class="form-group" id="group-rate-limit">
+            <label class="form-label" for="input-rate-limit">
+              <i class="ti ti-clock"></i> DELAY REQUEST (MS)
+            </label>
+            <input type="number" id="input-rate-limit" class="form-input" min="0" max="10000" step="100" placeholder="1200" />
+          </div>
 
-        <div class="field-row">
-          <label class="field-label" for="provider-select">Nhà cung cấp</label>
-          <select id="provider-select" class="select-input"></select>
-        </div>
-
-        <div class="field-row" id="group-base-url">
-          <label class="field-label" for="input-base-url">Base URL</label>
-          <input
-            type="text"
-            id="input-base-url"
-            class="text-input"
-            placeholder="https://api.groq.com/openai/v1" />
-        </div>
-
-        <div class="field-row">
-          <label class="field-label" for="select-model-preset">Model</label>
-          <div class="combo-stack">
-            <select id="select-model-preset" class="select-input"></select>
-            <input
-              type="text"
-              id="input-custom-model"
-              class="text-input"
-              placeholder="Hoặc nhập tên model…" />
+          <div class="action-btn-row">
+            <button id="btn-test-connection" class="btn btn-secondary" type="button">
+              <i class="ti ti-plug-connected"></i> Kiểm tra kết nối
+            </button>
+            <span id="test-result" class="inline-feedback"></span>
           </div>
         </div>
 
-        <div class="field-row" id="group-api-key">
-          <div class="field-label-row">
-            <label class="field-label" for="input-api-key">API Key (Hỗ trợ nhiều key)</label>
-            <span id="api-key-count-badge" class="sub-tag">0 key</span>
+        <!-- 4. TAB: SYSTEM (CACHE, DISPLAY & LOGS) -->
+        <div class="tab-pane" id="tab-system">
+          <div class="panel-section-title">HỆ THỐNG | PREFERENCES</div>
+
+          <!-- Display Preferences -->
+          <div class="two-col-grid">
+            <div class="form-group">
+              <label class="form-label" for="select-theme">
+                <i class="ti ti-palette"></i> MÀU BÓNG THOẠI
+              </label>
+              <select id="select-theme" class="form-select">
+                <option value="light">Nền Trắng</option>
+                <option value="dark">Nền Đen</option>
+                <option value="auto">Tự động</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="input-speed">
+                <i class="ti ti-arrow-down"></i> TỐC ĐỘ CUỘN
+              </label>
+              <input type="number" id="input-speed" class="form-input" min="1" max="10" value="3" />
+            </div>
           </div>
-          <textarea
-            id="input-api-key"
-            class="text-input text-area"
-            rows="2"
-            placeholder="Nhập 1 hoặc nhiều API Key (mỗi dòng 1 key hoặc cách nhau bằng dấu phẩy) để tự động xoay vòng tròn &amp; tăng tốc..."
-            spellcheck="false"></textarea>
-          <span class="field-hint">💡 Thêm nhiều API key giúp tự động xoay vòng (round-robin), giảm thời gian chờ và chống 429 rate limit.</span>
-        </div>
 
-        <div class="field-row" id="group-rate-limit">
-          <label class="field-label" for="input-rate-limit">Delay (ms)</label>
-          <input
-            type="number"
-            id="input-rate-limit"
-            class="text-input"
-            min="0"
-            max="10000"
-            step="100"
-            placeholder="1200" />
-        </div>
-
-        <div class="inline-row">
-          <button id="btn-test-connection" class="btn btn-ghost">
-            Kiểm tra kết nối
-          </button>
-          <span id="test-result" class="inline-status"></span>
-        </div>
-      </section>
-
-      <div class="divider"></div>
-
-      <!-- SECTION: CACHE -->
-      <section class="section">
-        <p class="section-label">Cache bản dịch</p>
-        <div class="kv-row">
-          <span class="kv-key">Đã lưu</span>
-          <span id="cache-stats-text" class="kv-val">0 ảnh</span>
-        </div>
-        <button id="btn-clear-cache" class="btn btn-ghost btn-full">
-          Xóa toàn bộ cache
-        </button>
-      </section>
-
-      <div class="divider"></div>
-
-      <!-- SECTION: DISPLAY -->
-      <section class="section">
-        <p class="section-label">Hiển thị &amp; Cuộn</p>
-        <div class="two-col">
-          <div class="field-row col">
-            <label class="field-label" for="select-theme">Màu hộp thoại</label>
-            <select id="select-theme" class="select-input">
-              <option value="light">Nền Trắng</option>
-              <option value="dark">Nền Đen</option>
-              <option value="auto">Tự động</option>
-            </select>
+          <!-- Cache Management -->
+          <div class="card-inline-action">
+            <div class="card-info">
+              <span class="card-title"><i class="ti ti-database"></i> Cache bản dịch</span>
+              <span id="cache-stats-text" class="card-sub">0 ảnh</span>
+            </div>
+            <button id="btn-clear-cache" class="btn btn-secondary btn-sm" type="button">
+              <i class="ti ti-trash"></i> Xóa Cache
+            </button>
           </div>
-          <div class="field-row col">
-            <label class="field-label" for="input-speed">Tốc độ cuộn</label>
-            <input
-              type="number"
-              id="input-speed"
-              class="text-input"
-              min="1"
-              max="10"
-              value="3" />
+
+          <!-- Debug Logs Section -->
+          <div class="panel-section-title" style="margin-top: 14px">
+            <span>NHẬT KÝ | DEBUG LOGS</span>
+            <span id="log-count-badge" class="pill-badge">0 log</span>
           </div>
-        </div>
-      </section>
+          <div class="log-viewer" id="log-viewer-box">
+            <pre id="log-content-text" class="log-pre">Đang tải nhật ký…</pre>
+          </div>
 
-      <div class="divider"></div>
+          <div class="log-actions-grid">
+            <button id="btn-copy-logs" class="btn btn-secondary" type="button">
+              <i class="ti ti-copy"></i> Sao chép
+            </button>
+            <button id="btn-refresh-logs" class="btn btn-secondary" type="button">
+              <i class="ti ti-refresh"></i> Làm mới
+            </button>
+            <button id="btn-clear-logs" class="btn btn-secondary" type="button">
+              <i class="ti ti-trash-x"></i> Xóa log
+            </button>
+          </div>
+          <span id="copy-log-status" class="inline-feedback"></span>
+        </div>
+      </main>
 
-      <!-- SECTION: DEBUG & LOGS -->
-      <section class="section">
-        <div class="section-header-row">
-          <p class="section-label">Nhật ký &amp; Debug</p>
-          <span id="log-count-badge" class="sub-tag">0 log</span>
-        </div>
-        <div class="log-viewer" id="log-viewer-box">
-          <pre id="log-content-text" class="log-pre">Đang tải nhật ký…</pre>
-        </div>
-        <div class="action-row" style="margin-top: 8px">
-          <button id="btn-copy-logs" class="btn btn-fill" style="flex: 1">
-            Sao chép nhật ký debug
-          </button>
-          <button
-            id="btn-refresh-logs"
-            class="btn btn-ghost"
-            style="flex: 0 0 auto">
-            Làm mới
-          </button>
-          <button
-            id="btn-clear-logs"
-            class="btn btn-ghost"
-            style="flex: 0 0 auto">
-            Xóa
-          </button>
-        </div>
-        <span id="copy-log-status" class="inline-status"></span>
-      </section>
-
-      <!-- FOOTER -->
+      <!-- FOOTER: SAVE BUTTON -->
       <footer class="footer">
-        <button id="btn-save-settings" class="btn btn-fill btn-full">
-          Lưu cài đặt
+        <button id="btn-save-settings" class="btn btn-primary btn-full" type="button">
+          <i class="ti ti-device-floppy"></i> LƯU CÀI ĐẶT
         </button>
         <span id="save-status" class="save-feedback"></span>
       </footer>

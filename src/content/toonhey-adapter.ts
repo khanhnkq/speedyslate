@@ -5,9 +5,11 @@
  */
 export class ToonheyAdapter {
   private static readonly CONTAINER_SELECTORS = [
-    '#reader-area',
+    '#image-container',     // nHentai reader
+    '.image-container',
+    '#reader-area',         // WordPress Manga / Toonhey
     '#readerarea',
-    '.reading-content',
+    '.reading-content',     // Toonily & Madara WordPress theme
     '#reader-container',
     '.reader-container',
     '.chapter-images',
@@ -41,6 +43,11 @@ export class ToonheyAdapter {
     '.related',
     '.related-manga',
     '.related-posts',
+    '.related-container', // nHentai related galleries
+    '#related-container',
+    '#caption',           // nHentai page caption
+    '#pagination',
+    '.pagination',
     '#trending',
     '.trending',
     '.popular',
@@ -66,7 +73,8 @@ export class ToonheyAdapter {
       if (container && !this.isInsideExcludedZone(container)) {
         const imgs = Array.from(container.querySelectorAll<HTMLImageElement>('img'));
         const validComicPanels = imgs.filter((img) => this.isGenuineComicPanel(img));
-        if (validComicPanels.length >= 2) {
+        // Inside dedicated reader containers, even 1 image (e.g. nHentai single-page mode) is a valid panel!
+        if (validComicPanels.length >= 1) {
           return validComicPanels;
         }
       }
@@ -82,8 +90,7 @@ export class ToonheyAdapter {
     // Group images by their common ancestor container to isolate the reading column from recommendation grids
     const containerCounts = new Map<HTMLElement, HTMLImageElement[]>();
     for (const img of candidatePanels) {
-      // Find the closest meaningful ancestor container (e.g. div or section)
-      const parentContainer = img.closest('div, section') as HTMLElement | null;
+      const parentContainer = img.closest('div, section, article') as HTMLElement | null;
       if (parentContainer && !this.isInsideExcludedZone(parentContainer)) {
         const list = containerCounts.get(parentContainer) || [];
         list.push(img);
@@ -99,7 +106,20 @@ export class ToonheyAdapter {
       }
     }
 
-    return bestGroup.length >= 2 ? bestGroup : candidatePanels;
+    if (bestGroup.length >= 2) return bestGroup;
+    if (candidatePanels.length >= 2) return candidatePanels;
+
+    // Single-page fallback: verify it's a large comic panel (>300px) and not a tiny icon/avatar
+    if (candidatePanels.length === 1) {
+      const single = candidatePanels[0];
+      const w = single.naturalWidth || single.width || 0;
+      const h = single.naturalHeight || single.height || 0;
+      if (w >= 300 || h >= 300) {
+        return candidatePanels;
+      }
+    }
+
+    return [];
   }
 
   /**
@@ -115,15 +135,32 @@ export class ToonheyAdapter {
       return false;
     }
 
-    // 2. CRITICAL: Comic panels never link to another manga series
-    // Recommendation thumbnails and related cards are ALWAYS inside <a href="/en/other-manga/...">
+    // 2. CRITICAL: Distinguish comic panels vs recommendation thumbnails wrapped in anchors
+    // On single-page readers (e.g. nHentai /g/123/1/), clicking the panel navigates to next page (/g/123/2/)
     const anchor = img.closest('a');
     if (anchor && anchor.href) {
       const anchorHref = anchor.href.toLowerCase();
-      const currentPath = window.location.pathname.toLowerCase();
-      // If the link points to another comic or catalog page, it's definitely a thumbnail!
-      if (!anchorHref.includes(currentPath) && (anchorHref.includes('/manga/') || anchorHref.includes('/en/'))) {
-        return false;
+      const currentPath = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+      const pathSegments = currentPath.split('/').filter(Boolean);
+      const seriesPrefix = pathSegments.length > 1
+        ? '/' + pathSegments.slice(0, pathSegments.length - 1).join('/')
+        : currentPath;
+
+      const isNextPageOrSameSeries =
+        anchorHref.includes(currentPath) ||
+        (seriesPrefix.length > 3 && anchorHref.includes(seriesPrefix));
+
+      if (!isNextPageOrSameSeries) {
+        if (
+          anchorHref.includes('/manga/') ||
+          anchorHref.includes('/webtoon/') ||
+          anchorHref.includes('/series/') ||
+          anchorHref.includes('/comic/') ||
+          anchorHref.includes('/g/') ||
+          anchorHref.includes('/en/')
+        ) {
+          return false;
+        }
       }
     }
 

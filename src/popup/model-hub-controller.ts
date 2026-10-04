@@ -72,16 +72,12 @@ export class ModelHubController {
           ${
             isDownloaded
               ? `<button class="btn-card-action btn-card-delete" data-action="delete" title="Xóa model khỏi bộ nhớ máy">
-                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                     <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2M10 11v6M14 11v6"/>
-                   </svg>
-                   Xóa model (${sizeMb} MB)
+                   <i class="ti ti-trash"></i>
+                   Xóa (${sizeMb} MB)
                  </button>`
               : `<button class="btn-card-action btn-card-download" data-action="download" title="Tải model về máy để sử dụng offline">
-                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-                   </svg>
-                   Tải về máy (~${preset.totalSizeMb} MB)
+                   <i class="ti ti-download"></i>
+                   Tải về (~${preset.totalSizeMb} MB)
                  </button>`
           }
           <div class="card-progress-bar-wrap" style="display:none">

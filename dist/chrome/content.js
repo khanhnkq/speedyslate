@@ -1016,9 +1016,6 @@
     }
   });
 
-  // src/content/index.ts
-  var import_webextension_polyfill3 = __toESM(require_browser_polyfill(), 1);
-
   // src/shared/storage.ts
   var import_webextension_polyfill = __toESM(require_browser_polyfill(), 1);
 
@@ -2080,11 +2077,11 @@
     /**
      * Updates badge status and message
      */
-    static updateBadge(wrapper, pageIndex, status, count) {
+    static updateBadge(wrapper, pageIndex, status, count, keyInfo) {
       const badge = this.ensureBadge(wrapper, pageIndex);
-      this.renderBadgeContent(badge, pageIndex, status, count);
+      this.renderBadgeContent(badge, pageIndex, status, count, keyInfo);
     }
-    static renderBadgeContent(badge, pageIndex, status, count) {
+    static renderBadgeContent(badge, pageIndex, status, count, keyInfo) {
       let dotColor = "#555555";
       let statusText = "";
       let isPulsing = false;
@@ -2121,6 +2118,7 @@
           break;
       }
       const pulseAnim = isPulsing ? "animation: speedyslatePulse 1.2s infinite ease-in-out;" : "";
+      const keyBadge = keyInfo?.keyIndex !== void 0 ? `<span style="background: rgba(168, 85, 247, 0.22); border: 1px solid rgba(168, 85, 247, 0.5); color: #e9d5ff; border-radius: 4px; padding: 1px 5px; font-size: 10px; font-weight: 700; letter-spacing: 0.02em;">Key #${keyInfo.keyIndex}${keyInfo.totalKeys && keyInfo.totalKeys > 1 ? `/${keyInfo.totalKeys}` : ""}</span>` : "";
       badge.innerHTML = `
       <style>
         @keyframes speedyslatePulse {
@@ -2130,6 +2128,7 @@
       </style>
       <span style="width: 6px; height: 6px; border-radius: 50%; background: ${dotColor}; box-shadow: 0 0 5px ${dotColor}; display: inline-block; ${pulseAnim}"></span>
       <span style="color: #F5F5F4; font-weight: 700;">#${pageIndex + 1}</span>
+      ${keyBadge}
       ${statusText ? `<span style="color: #999999; font-weight: 500; font-size: 10px;">${statusText}</span>` : ""}
     `;
       if (status === "translated" || status === "translating" || status === "ocr_running") {
@@ -2139,52 +2138,6 @@
       } else {
         badge.style.border = "1px solid rgba(255, 255, 255, 0.12)";
       }
-    }
-  };
-
-  // src/content/image-compressor.ts
-  var ImageCompressor = class {
-    /**
-     * Captures and downsizes an image for Vision AI transmission.
-     */
-    static compressForVision(img, maxDim = 1280, quality = 0.85) {
-      const naturalWidth = img.naturalWidth || img.width || 800;
-      const naturalHeight = img.naturalHeight || img.height || 1200;
-      let targetWidth = naturalWidth;
-      let targetHeight = naturalHeight;
-      if (Math.max(naturalWidth, naturalHeight) > maxDim) {
-        if (naturalWidth > naturalHeight) {
-          targetWidth = maxDim;
-          targetHeight = Math.round(naturalHeight / naturalWidth * maxDim);
-        } else {
-          targetHeight = maxDim;
-          targetWidth = Math.round(naturalWidth / naturalHeight * maxDim);
-        }
-      }
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = targetWidth;
-        canvas.height = targetHeight;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-          const dataUrl = canvas.toDataURL("image/jpeg", quality);
-          return {
-            dataUrl,
-            naturalWidth,
-            naturalHeight,
-            compressedWidth: targetWidth,
-            compressedHeight: targetHeight
-          };
-        }
-      } catch {
-      }
-      return {
-        naturalWidth,
-        naturalHeight,
-        compressedWidth: targetWidth,
-        compressedHeight: targetHeight
-      };
     }
   };
 
@@ -2354,12 +2307,331 @@
     }
   };
 
+  // src/content/safe-messenger.ts
+  var import_webextension_polyfill3 = __toESM(require_browser_polyfill(), 1);
+  var SafeMessenger = class {
+    static isPortClosedError(errMsg) {
+      const lower = errMsg.toLowerCase();
+      return lower.includes("message channel closed") || lower.includes("receiving end does not exist") || lower.includes("could not establish connection") || lower.includes("port closed") || lower.includes("asynchronous response by returning true");
+    }
+    /**
+     * Send message with automatic Service Worker wake-up and retry on port closure
+     */
+    static async send(message, options = {}) {
+      const maxRetries = options.maxRetries ?? 2;
+      const retryDelayMs = options.retryDelayMs ?? 400;
+      let lastError = null;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const resp = await import_webextension_polyfill3.default.runtime.sendMessage(message);
+          if (resp !== void 0) {
+            return resp;
+          }
+        } catch (err) {
+          lastError = err;
+          const errMsg = err?.message || String(err);
+          if (errMsg.toLowerCase().includes("extension context invalidated")) {
+            return {
+              success: false,
+              isContextInvalidated: true,
+              error: "Ti\u1EC7n \xEDch \u0111\xE3 \u0111\u01B0\u1EE3c t\u1EA3i l\u1EA1i ho\u1EB7c c\u1EADp nh\u1EADt. Vui l\xF2ng t\u1EA3i l\u1EA1i trang (F5 / Cmd+R)."
+            };
+          }
+          if (this.isPortClosedError(errMsg) && attempt < maxRetries) {
+            const delay = retryDelayMs * (attempt + 1);
+            console.warn(
+              `[SpeedySlate] Service worker channel closed (attempt ${attempt + 1}/${maxRetries + 1}). Waking up worker and retrying in ${delay}ms...`
+            );
+            DebugLogger.warn(
+              "SafeMessenger",
+              `Message channel closed for ${message?.action || "unknown"}. Waking worker (attempt ${attempt + 1})...`
+            );
+            await new Promise((r) => setTimeout(r, delay));
+            try {
+              await import_webextension_polyfill3.default.runtime.sendMessage({ action: "PING" });
+            } catch {
+            }
+            continue;
+          }
+          break;
+        }
+      }
+      const finalErrMsg = lastError?.message || "Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c ph\u1EA3n h\u1ED3i t\u1EEB ti\u1EC7n \xEDch (k\xEAnh li\xEAn l\u1EA1c \u0111\xE3 b\u1ECB \u0111\xF3ng)";
+      return {
+        success: false,
+        error: finalErrMsg
+      };
+    }
+  };
+
+  // src/content/image-compressor.ts
+  var ImageCompressor = class {
+    /**
+     * Captures and downsizes an image for Vision AI transmission.
+     */
+    static compressForVision(img, maxDim = 1280, quality = 0.85) {
+      const naturalWidth = img.naturalWidth || img.width || 800;
+      const naturalHeight = img.naturalHeight || img.height || 1200;
+      let targetWidth = naturalWidth;
+      let targetHeight = naturalHeight;
+      if (Math.max(naturalWidth, naturalHeight) > maxDim) {
+        if (naturalWidth > naturalHeight) {
+          targetWidth = maxDim;
+          targetHeight = Math.round(naturalHeight / naturalWidth * maxDim);
+        } else {
+          targetHeight = maxDim;
+          targetWidth = Math.round(naturalWidth / naturalHeight * maxDim);
+        }
+      }
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+          const dataUrl = canvas.toDataURL("image/jpeg", quality);
+          return {
+            dataUrl,
+            naturalWidth,
+            naturalHeight,
+            compressedWidth: targetWidth,
+            compressedHeight: targetHeight
+          };
+        }
+      } catch {
+      }
+      return {
+        naturalWidth,
+        naturalHeight,
+        compressedWidth: targetWidth,
+        compressedHeight: targetHeight
+      };
+    }
+  };
+
+  // src/content/task-processor.ts
+  var TaskProcessor = class {
+    constructor(ctx) {
+      this.ctx = ctx;
+    }
+    getKeyCount() {
+      const settings = this.ctx.getSettings();
+      const raw = settings?.providers?.[settings?.activeProvider]?.apiKey || "";
+      if (!raw) return 0;
+      return raw.split(/[\n,;]+/).map((k) => k.trim()).filter((k) => k.length > 0).length;
+    }
+    async processOcrTask(task) {
+      if (this.ctx.completedImages.has(task.img)) return;
+      const img = task.img;
+      const imageUrl = img.src;
+      const wrapper = img.parentElement;
+      if (!wrapper) return;
+      const settings = this.ctx.getSettings();
+      const isVision = settings?.translationMode === "vision_ai";
+      const totalKeys = this.getKeyCount();
+      const estimatedKey = totalKeys > 0 ? task.index % totalKeys + 1 : void 0;
+      try {
+        if (!img.complete || img.naturalWidth === 0) {
+          ToonheyAdapter.forceTriggerImage(img);
+          await new Promise((resolve) => {
+            img.onload = resolve;
+            img.onerror = resolve;
+            setTimeout(resolve, 3e3);
+          });
+        }
+        img.dataset.slateStatus = "ocr_running";
+        PageBadgeManager.updateBadge(
+          wrapper,
+          task.index,
+          "ocr_running",
+          void 0,
+          isVision && totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : void 0
+        );
+        const compressed = ImageCompressor.compressForVision(img, 1280, 0.85);
+        const resp = await SafeMessenger.send({
+          action: "OCR_IMAGE",
+          imageUrl,
+          chapterUrl: window.location.href,
+          dataUrl: compressed.dataUrl,
+          naturalWidth: compressed.naturalWidth,
+          naturalHeight: compressed.naturalHeight
+        });
+        if (resp?.isContextInvalidated) {
+          this.ctx.onContextInvalidated();
+          return;
+        }
+        if (resp?.success) {
+          if (resp.cached || resp.isDirectTranslation) {
+            if (resp.dialogues && resp.dialogues.length > 0) {
+              OverlayRenderer.renderDialogues(
+                wrapper,
+                resp.dialogues,
+                resp.naturalWidth || compressed.naturalWidth,
+                resp.naturalHeight || compressed.naturalHeight,
+                settings?.bubbleTheme || "auto"
+              );
+              img.dataset.slateStatus = "translated";
+              const finalKey = resp.keyIndex || estimatedKey;
+              const finalTotal = resp.totalKeys || totalKeys;
+              PageBadgeManager.updateBadge(
+                wrapper,
+                task.index,
+                "translated",
+                resp.dialogues.length,
+                !resp.cached && finalKey ? { keyIndex: finalKey, totalKeys: finalTotal } : void 0
+              );
+              this.ctx.hud.log(
+                resp.cached ? `Trang #${task.index + 1}: N\u1EA1p t\u1EEB Cache (0ms)` : `Trang #${task.index + 1}${finalTotal > 1 ? ` (Key #${finalKey}/${finalTotal})` : ""}: Vision AI \u0111\xE3 d\u1ECBch ${resp.dialogues.length} c\xE2u tho\u1EA1i`
+              );
+            } else {
+              img.dataset.slateStatus = "no_text";
+              PageBadgeManager.updateBadge(wrapper, task.index, "no_text");
+              this.ctx.hud.log(`Trang #${task.index + 1}: Kh\xF4ng c\xF3 ch\u1EEF tho\u1EA1i`);
+            }
+            this.ctx.markImageCompleted(img);
+          } else if (!resp.dialogues || resp.dialogues.length === 0) {
+            img.dataset.slateStatus = "no_text";
+            PageBadgeManager.updateBadge(wrapper, task.index, "no_text");
+            this.ctx.markImageCompleted(img);
+            this.ctx.hud.log(`Trang #${task.index + 1}: Kh\xF4ng c\xF3 ch\u1EEF`);
+          } else {
+            img.dataset.slateStatus = "ocr_done";
+            PageBadgeManager.updateBadge(wrapper, task.index, "ocr_done", resp.dialogues.length);
+            this.ctx.hud.log(`Trang #${task.index + 1}: \u0110\xE3 qu\xE9t ${resp.dialogues.length} c\xE2u tho\u1EA1i, \u0111ang ch\u1EDD d\u1ECBch...`);
+            this.ctx.translationQueue.enqueue({
+              index: task.index,
+              img: task.img,
+              dialogues: resp.dialogues,
+              naturalWidth: resp.naturalWidth || compressed.naturalWidth,
+              naturalHeight: resp.naturalHeight || compressed.naturalHeight
+            });
+          }
+        } else {
+          img.dataset.slateStatus = "error";
+          PageBadgeManager.updateBadge(
+            wrapper,
+            task.index,
+            "error",
+            void 0,
+            isVision && totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : void 0
+          );
+          const errMsg = resp?.error || "L\u1ED7i nh\u1EADn di\u1EC7n OCR";
+          this.ctx.hud.log(`L\u1ED7i OCR trang #${task.index + 1}: ${errMsg}`, true);
+          DebugLogger.error("Content:OCR", `Trang #${task.index + 1}: ${errMsg}`);
+        }
+      } catch (err) {
+        const errMsg = err?.message || String(err);
+        if (errMsg.includes("Extension context invalidated")) {
+          this.ctx.onContextInvalidated();
+          return;
+        }
+        img.dataset.slateStatus = "error";
+        PageBadgeManager.updateBadge(
+          wrapper,
+          task.index,
+          "error",
+          void 0,
+          isVision && totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : void 0
+        );
+        this.ctx.hud.log(`L\u1ED7i OCR trang #${task.index + 1}: ${errMsg}`, true);
+        DebugLogger.error("Content:OCR", `Trang #${task.index + 1}: ${errMsg}`, err);
+      }
+    }
+    async processTranslationTask(task) {
+      if (this.ctx.completedImages.has(task.img)) return;
+      const img = task.img;
+      const wrapper = img.parentElement;
+      if (!wrapper) return;
+      const settings = this.ctx.getSettings();
+      const totalKeys = this.getKeyCount();
+      const estimatedKey = totalKeys > 0 ? task.index % totalKeys + 1 : void 0;
+      try {
+        img.dataset.slateStatus = "translating";
+        PageBadgeManager.updateBadge(
+          wrapper,
+          task.index,
+          "translating",
+          task.dialogues.length,
+          totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : void 0
+        );
+        this.ctx.hud.log(
+          `Trang #${task.index + 1}${totalKeys > 1 ? ` (Key #${estimatedKey}/${totalKeys})` : ""}: \u0110ang d\u1ECBch ${task.dialogues.length} c\xE2u tho\u1EA1i...`
+        );
+        const resp = await SafeMessenger.send({
+          action: "TRANSLATE_DIALOGUES",
+          imageUrl: img.src,
+          chapterUrl: window.location.href,
+          dialogues: task.dialogues,
+          naturalWidth: task.naturalWidth,
+          naturalHeight: task.naturalHeight
+        });
+        if (resp?.isContextInvalidated) {
+          this.ctx.onContextInvalidated();
+          return;
+        }
+        if (resp?.success && Array.isArray(resp.dialogues)) {
+          OverlayRenderer.renderDialogues(
+            wrapper,
+            resp.dialogues,
+            task.naturalWidth,
+            task.naturalHeight,
+            settings?.bubbleTheme || "auto"
+          );
+          img.dataset.slateStatus = "translated";
+          const finalKey = resp.keyIndex || estimatedKey;
+          const finalTotal = resp.totalKeys || totalKeys;
+          PageBadgeManager.updateBadge(
+            wrapper,
+            task.index,
+            "translated",
+            resp.dialogues.length,
+            finalKey ? { keyIndex: finalKey, totalKeys: finalTotal } : void 0
+          );
+          this.ctx.markImageCompleted(img);
+          this.ctx.hud.log(
+            `Trang #${task.index + 1}${finalTotal > 1 ? ` (Key #${finalKey}/${finalTotal})` : ""}: Ho\xE0n t\u1EA5t ${resp.dialogues.length} c\xE2u tho\u1EA1i`
+          );
+        } else {
+          img.dataset.slateStatus = "error";
+          PageBadgeManager.updateBadge(
+            wrapper,
+            task.index,
+            "error",
+            void 0,
+            totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : void 0
+          );
+          const errMsg = resp?.error || "L\u1ED7i API d\u1ECBch";
+          this.ctx.hud.log(`L\u1ED7i d\u1ECBch trang #${task.index + 1}: ${errMsg}`, true);
+          DebugLogger.error("Content:Translate", `Trang #${task.index + 1}: ${errMsg}`);
+        }
+      } catch (err) {
+        const errMsg = err?.message || String(err);
+        if (errMsg.includes("Extension context invalidated")) {
+          this.ctx.onContextInvalidated();
+          return;
+        }
+        img.dataset.slateStatus = "error";
+        PageBadgeManager.updateBadge(
+          wrapper,
+          task.index,
+          "error",
+          void 0,
+          totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : void 0
+        );
+        this.ctx.hud.log(`L\u1ED7i d\u1ECBch trang #${task.index + 1}: ${errMsg}`, true);
+        DebugLogger.error("Content:Translate", `Trang #${task.index + 1}: ${errMsg}`, err);
+      }
+    }
+  };
+
   // src/content/index.ts
   var SpeedySlateContentApp = class {
     settings;
     hud;
     ocrQueue;
     translationQueue;
+    taskProcessor;
     images = [];
     completedImages = /* @__PURE__ */ new Set();
     isModelReady = false;
@@ -2378,38 +2650,16 @@
         },
         onToggleVisibility: (visible) => OverlayRenderer.setAllVisibility(visible),
         onClearChapterCache: async () => {
-          const resp = await import_webextension_polyfill3.default.runtime.sendMessage({
+          const resp = await SafeMessenger.send({
             action: "CLEAR_CHAPTER_CACHE",
             chapterUrl: window.location.href
           });
-          document.querySelectorAll(".speedyslate-bubble").forEach((el) => el.remove());
-          this.images.forEach((img, idx) => {
-            delete img.dataset.slateStatus;
-            if (img.parentElement) {
-              PageBadgeManager.updateBadge(img.parentElement, idx, "idle");
-            }
-          });
-          this.completedImages.clear();
-          this.ocrQueue?.clear();
-          this.translationQueue?.clear();
-          this.hud.updateStatus(0, this.images.length);
-          this.hud.setState("idle");
+          this.resetPageTranslations();
           this.hud.log(`Da xoa ${resp?.deleted || 0} ban dich cache cua chuong nay`);
         },
         onClearAllCache: async () => {
-          await import_webextension_polyfill3.default.runtime.sendMessage({ action: "CLEAR_ALL_CACHE" });
-          document.querySelectorAll(".speedyslate-bubble").forEach((el) => el.remove());
-          this.images.forEach((img, idx) => {
-            delete img.dataset.slateStatus;
-            if (img.parentElement) {
-              PageBadgeManager.updateBadge(img.parentElement, idx, "idle");
-            }
-          });
-          this.completedImages.clear();
-          this.ocrQueue?.clear();
-          this.translationQueue?.clear();
-          this.hud.updateStatus(0, this.images.length);
-          this.hud.setState("idle");
+          await SafeMessenger.send({ action: "CLEAR_ALL_CACHE" });
+          this.resetPageTranslations();
           this.hud.log("Da don sach toan bo cache");
         }
       });
@@ -2423,17 +2673,26 @@
         this.hud.log("Dang dung cau hinh mac dinh");
       }
       this.ocrQueue = new OrderedTaskQueue(
-        async (task) => this.processOcrTask(task),
+        async (task) => this.taskProcessor.processOcrTask(task),
         1,
         (t) => t.img
       );
       this.ocrQueue.pause();
       this.translationQueue = new OrderedTaskQueue(
-        async (task) => this.processTranslationTask(task),
+        async (task) => this.taskProcessor.processTranslationTask(task),
         1,
         (t) => t.img
       );
       this.translationQueue.pause();
+      this.taskProcessor = new TaskProcessor({
+        getSettings: () => this.settings,
+        hud: this.hud,
+        completedImages: this.completedImages,
+        ocrQueue: this.ocrQueue,
+        translationQueue: this.translationQueue,
+        markImageCompleted: (img) => this.markImageCompleted(img),
+        onContextInvalidated: () => this.handleContextInvalidated()
+      });
       this.detectImages();
       this.setupMutationObserver();
       this.setupIntersectionObserver();
@@ -2443,7 +2702,31 @@
         this.hud.log(`San sang dich. Tim thay ${this.images.length} trang truyen`);
       }
     }
+    resetPageTranslations() {
+      document.querySelectorAll(".speedyslate-bubble").forEach((el) => el.remove());
+      this.images.forEach((img, idx) => {
+        delete img.dataset.slateStatus;
+        if (img.parentElement) {
+          PageBadgeManager.updateBadge(img.parentElement, idx, "idle");
+        }
+      });
+      this.completedImages.clear();
+      this.ocrQueue?.clear();
+      this.translationQueue?.clear();
+      this.hud.updateStatus(0, this.images.length);
+      this.hud.setState("idle");
+    }
+    handleContextInvalidated() {
+      this.ocrQueue?.clear();
+      this.translationQueue?.clear();
+      this.hud?.setState("idle");
+      this.hud?.log("Ti\u1EC7n \xEDch v\u1EEBa \u0111\u01B0\u1EE3c t\u1EA3i l\u1EA1i. Vui l\xF2ng nh\u1EA5n F5 (Cmd+R) \u0111\u1EC3 ti\u1EBFp t\u1EE5c d\u1ECBch.", true);
+    }
     async handleStartTranslating() {
+      try {
+        this.settings = await StorageService.getSettings();
+      } catch {
+      }
       if (!this.isModelReady) {
         await this.checkModelStatusFromBackground(true);
         if (!this.isModelReady) {
@@ -2465,7 +2748,7 @@
     }
     async checkModelStatusFromBackground(showBannerIfMissing) {
       try {
-        const resp = await import_webextension_polyfill3.default.runtime.sendMessage({ action: "CHECK_MODEL_STATUS" });
+        const resp = await SafeMessenger.send({ action: "CHECK_MODEL_STATUS" });
         if (resp?.success && resp.status?.status === "ready") {
           this.isModelReady = true;
           this.hud.log("Model OCR da san sang");
@@ -2508,7 +2791,7 @@
       if (this.images.length === 0) return;
       const urls = this.images.map((img) => img.dataset.src || img.getAttribute("data-src") || img.src).filter(Boolean);
       try {
-        const resp = await import_webextension_polyfill3.default.runtime.sendMessage({
+        const resp = await SafeMessenger.send({
           action: "GET_CHAPTER_TRANSLATIONS",
           imageUrls: urls
         });
@@ -2584,119 +2867,6 @@
         }
       }
     }
-    /**
-     * Stage 1: Fast local WebAssembly OCR Pipeline (runs at 100% CPU speed, 0ms artificial delay)
-     */
-    async processOcrTask(task) {
-      if (this.completedImages.has(task.img)) return;
-      const img = task.img;
-      const imageUrl = img.src;
-      const wrapper = img.parentElement;
-      if (!wrapper) return;
-      if (!img.complete || img.naturalWidth === 0) {
-        ToonheyAdapter.forceTriggerImage(img);
-        await new Promise((resolve) => {
-          img.onload = resolve;
-          img.onerror = resolve;
-          setTimeout(resolve, 3e3);
-        });
-      }
-      img.dataset.slateStatus = "ocr_running";
-      PageBadgeManager.updateBadge(wrapper, task.index, "ocr_running");
-      const compressed = ImageCompressor.compressForVision(img, 1280, 0.85);
-      const resp = await import_webextension_polyfill3.default.runtime.sendMessage({
-        action: "OCR_IMAGE",
-        imageUrl,
-        chapterUrl: window.location.href,
-        dataUrl: compressed.dataUrl,
-        naturalWidth: compressed.naturalWidth,
-        naturalHeight: compressed.naturalHeight
-      });
-      if (resp?.success) {
-        if (resp.cached || resp.isDirectTranslation) {
-          if (resp.dialogues && resp.dialogues.length > 0) {
-            OverlayRenderer.renderDialogues(
-              wrapper,
-              resp.dialogues,
-              resp.naturalWidth || compressed.naturalWidth,
-              resp.naturalHeight || compressed.naturalHeight,
-              this.settings?.bubbleTheme || "auto"
-            );
-            img.dataset.slateStatus = "translated";
-            PageBadgeManager.updateBadge(wrapper, task.index, "translated", resp.dialogues.length);
-            this.hud.log(
-              resp.cached ? `Trang #${task.index + 1}: N\u1EA1p t\u1EEB Cache (0ms)` : `Trang #${task.index + 1}: Vision AI \u0111\xE3 d\u1ECBch ${resp.dialogues.length} c\xE2u tho\u1EA1i`
-            );
-          } else {
-            img.dataset.slateStatus = "no_text";
-            PageBadgeManager.updateBadge(wrapper, task.index, "no_text");
-            this.hud.log(`Trang #${task.index + 1}: Kh\xF4ng c\xF3 ch\u1EEF tho\u1EA1i`);
-          }
-          this.markImageCompleted(img);
-        } else if (!resp.dialogues || resp.dialogues.length === 0) {
-          img.dataset.slateStatus = "no_text";
-          PageBadgeManager.updateBadge(wrapper, task.index, "no_text");
-          this.markImageCompleted(img);
-          this.hud.log(`Trang #${task.index + 1}: Kh\xF4ng c\xF3 ch\u1EEF`);
-        } else {
-          img.dataset.slateStatus = "ocr_done";
-          PageBadgeManager.updateBadge(wrapper, task.index, "ocr_done", resp.dialogues.length);
-          this.hud.log(`Trang #${task.index + 1}: \u0110\xE3 qu\xE9t ${resp.dialogues.length} c\xE2u tho\u1EA1i, \u0111ang ch\u1EDD d\u1ECBch...`);
-          this.translationQueue.enqueue({
-            index: task.index,
-            img: task.img,
-            dialogues: resp.dialogues,
-            naturalWidth: resp.naturalWidth || compressed.naturalWidth,
-            naturalHeight: resp.naturalHeight || compressed.naturalHeight
-          });
-        }
-      } else {
-        img.dataset.slateStatus = "error";
-        PageBadgeManager.updateBadge(wrapper, task.index, "error");
-        const errMsg = resp?.error || (resp === void 0 ? "Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c ph\u1EA3n h\u1ED3i t\u1EEB n\u1EC1n (k\xEAnh \u0111\xF3ng s\u1EDBm ho\u1EB7c Worker \u0111ang b\u1EADn)" : `Ph\u1EA3n h\u1ED3i l\u1ED7i: ${JSON.stringify(resp)}`);
-        this.hud.log(`L\u1ED7i OCR trang #${task.index + 1}: ${errMsg}`, true);
-        DebugLogger.error("Content:OCR", `Trang #${task.index + 1}: ${errMsg}`);
-      }
-    }
-    /**
-     * Stage 2: Rate-limited API Translation Consumer (Gemini/Groq spacing & backoff)
-     */
-    async processTranslationTask(task) {
-      if (this.completedImages.has(task.img)) return;
-      const img = task.img;
-      const wrapper = img.parentElement;
-      if (!wrapper) return;
-      img.dataset.slateStatus = "translating";
-      PageBadgeManager.updateBadge(wrapper, task.index, "translating", task.dialogues.length);
-      this.hud.log(`Trang #${task.index + 1}: Dang dich ${task.dialogues.length} cau thoai...`);
-      const resp = await import_webextension_polyfill3.default.runtime.sendMessage({
-        action: "TRANSLATE_DIALOGUES",
-        imageUrl: img.src,
-        chapterUrl: window.location.href,
-        dialogues: task.dialogues,
-        naturalWidth: task.naturalWidth,
-        naturalHeight: task.naturalHeight
-      });
-      if (resp?.success && Array.isArray(resp.dialogues)) {
-        OverlayRenderer.renderDialogues(
-          wrapper,
-          resp.dialogues,
-          task.naturalWidth,
-          task.naturalHeight,
-          this.settings?.bubbleTheme || "auto"
-        );
-        img.dataset.slateStatus = "translated";
-        PageBadgeManager.updateBadge(wrapper, task.index, "translated", resp.dialogues.length);
-        this.markImageCompleted(img);
-        this.hud.log(`Trang #${task.index + 1}: Hoan tat ${resp.dialogues.length} cau thoai`);
-      } else {
-        img.dataset.slateStatus = "error";
-        PageBadgeManager.updateBadge(wrapper, task.index, "error");
-        const errMsg = resp?.error || (resp === void 0 ? "Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c ph\u1EA3n h\u1ED3i d\u1ECBch t\u1EEB n\u1EC1n" : `L\u1ED7i API d\u1ECBch: ${JSON.stringify(resp)}`);
-        this.hud.log(`Loi dich trang #${task.index + 1}: ${errMsg}`, true);
-        DebugLogger.error("Content:Translate", `Trang #${task.index + 1}: ${errMsg}`);
-      }
-    }
     markImageCompleted(img, checkAllDone = true) {
       this.completedImages.add(img);
       this.hud.updateStatus(this.completedImages.size, this.images.length);
@@ -2710,12 +2880,14 @@
     }
   };
   window.addEventListener("error", (e) => {
+    if (e.message?.includes("Extension context invalidated")) return;
     if (e.message?.includes("SpeedySlate") || e.message?.includes("OCR") || e.filename?.includes("content")) {
       DebugLogger.error("Content:GlobalError", e.message, e.error);
     }
   });
   window.addEventListener("unhandledrejection", (e) => {
     const reason = e.reason?.message || String(e.reason);
+    if (reason.includes("Extension context invalidated")) return;
     if (reason.includes("SpeedySlate") || reason.includes("OCR")) {
       DebugLogger.error("Content:UnhandledRejection", reason, e.reason);
     }

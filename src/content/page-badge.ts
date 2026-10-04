@@ -7,6 +7,11 @@ export type PageBadgeStatus =
   | 'no_text'
   | 'error';
 
+export interface PageBadgeKeyInfo {
+  keyIndex?: number;
+  totalKeys?: number;
+}
+
 /**
  * Modern floating glassmorphism page badge for comic panels
  * Displays page number (#1, #2...) and live status matching the Floating HUD
@@ -61,17 +66,19 @@ export class PageBadgeManager {
     wrapper: HTMLElement,
     pageIndex: number,
     status: PageBadgeStatus,
-    count?: number
+    count?: number,
+    keyInfo?: PageBadgeKeyInfo
   ): void {
     const badge = this.ensureBadge(wrapper, pageIndex);
-    this.renderBadgeContent(badge, pageIndex, status, count);
+    this.renderBadgeContent(badge, pageIndex, status, count, keyInfo);
   }
 
   private static renderBadgeContent(
     badge: HTMLElement,
     pageIndex: number,
     status: PageBadgeStatus,
-    count?: number
+    count?: number,
+    keyInfo?: PageBadgeKeyInfo
   ): void {
     let dotColor = '#555555';
     let statusText = '';
@@ -112,6 +119,11 @@ export class PageBadgeManager {
 
     const pulseAnim = isPulsing ? 'animation: speedyslatePulse 1.2s infinite ease-in-out;' : '';
 
+    const keyBadge =
+      keyInfo?.keyIndex !== undefined
+        ? `<span style="background: rgba(168, 85, 247, 0.22); border: 1px solid rgba(168, 85, 247, 0.5); color: #e9d5ff; border-radius: 4px; padding: 1px 5px; font-size: 10px; font-weight: 700; letter-spacing: 0.02em;">Key #${keyInfo.keyIndex}${keyInfo.totalKeys && keyInfo.totalKeys > 1 ? `/${keyInfo.totalKeys}` : ''}</span>`
+        : '';
+
     badge.innerHTML = `
       <style>
         @keyframes speedyslatePulse {
@@ -121,6 +133,7 @@ export class PageBadgeManager {
       </style>
       <span style="width: 6px; height: 6px; border-radius: 50%; background: ${dotColor}; box-shadow: 0 0 5px ${dotColor}; display: inline-block; ${pulseAnim}"></span>
       <span style="color: #F5F5F4; font-weight: 700;">#${pageIndex + 1}</span>
+      ${keyBadge}
       ${statusText ? `<span style="color: #999999; font-weight: 500; font-size: 10px;">${statusText}</span>` : ''}
     `;
 

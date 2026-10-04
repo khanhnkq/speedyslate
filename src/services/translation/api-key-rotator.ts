@@ -4,9 +4,11 @@
  * Follows Single Responsibility Principle (SRP).
  */
 export class ApiKeyRotator {
+  private static globalKeyIndices: Map<string, number> = new Map();
+  private static globalCooldowns: Map<string, number> = new Map();
+
   private keys: string[] = [];
-  private currentIndex: number = 0;
-  private cooldowns: Map<string, number> = new Map();
+  private groupKey: string = '';
 
   constructor(input: string | string[]) {
     this.setKeys(input);
@@ -33,7 +35,7 @@ export class ApiKeyRotator {
 
   public setKeys(input: string | string[]): void {
     this.keys = ApiKeyRotator.parseKeys(input);
-    this.currentIndex = 0;
+    this.groupKey = this.keys.join('|');
   }
 
   public get count(): number {
@@ -49,6 +51,14 @@ export class ApiKeyRotator {
   }
 
   /**
+   * Returns 1-based index of key (e.g. 1, 2, 3...)
+   */
+  public getKeyIndex(key: string): number {
+    const idx = this.keys.indexOf(key);
+    return idx >= 0 ? idx + 1 : 1;
+  }
+
+  /**
    * Masks key for secure logging (e.g. AIza...e3f4).
    */
   public static maskKey(key: string): string {
@@ -60,6 +70,7 @@ export class ApiKeyRotator {
 
   /**
    * Retrieves the next available key that is not in cooldown.
+   * Advances the global rotation index across requests so each request uses a different key.
    * If all keys are temporarily rate-limited, returns the one whose cooldown expires soonest.
    */
   public getNextKey(): string {
@@ -68,25 +79,27 @@ export class ApiKeyRotator {
 
     const now = Date.now();
     const total = this.keys.length;
+    const currentIndex = ApiKeyRotator.globalKeyIndices.get(this.groupKey) || 0;
 
-    // 1. Try to find next key that is not in cooldown
+    // 1. Try to find next key that is not in cooldown starting from global currentIndex
     for (let i = 0; i < total; i++) {
-      const idx = (this.currentIndex + i) % total;
+      const idx = (currentIndex + i) % total;
       const candidate = this.keys[idx];
-      const cooldownUntil = this.cooldowns.get(candidate) || 0;
+      const cooldownUntil = ApiKeyRotator.globalCooldowns.get(candidate) || 0;
 
       if (now >= cooldownUntil) {
-        this.currentIndex = (idx + 1) % total;
+        // Advance global index for the next request in round-robin fashion!
+        ApiKeyRotator.globalKeyIndices.set(this.groupKey, (idx + 1) % total);
         return candidate;
       }
     }
 
     // 2. All keys are in cooldown: pick the one expiring soonest
     let earliestKey = this.keys[0];
-    let earliestTime = this.cooldowns.get(earliestKey) || Infinity;
+    let earliestTime = ApiKeyRotator.globalCooldowns.get(earliestKey) || Infinity;
 
     for (const key of this.keys) {
-      const time = this.cooldowns.get(key) || 0;
+      const time = ApiKeyRotator.globalCooldowns.get(key) || 0;
       if (time < earliestTime) {
         earliestTime = time;
         earliestKey = key;
@@ -98,21 +111,23 @@ export class ApiKeyRotator {
 
   /**
    * Marks a specific key as rate-limited with a cooldown period.
+   * Persists across all requests in the extension.
    */
   public markRateLimited(key: string, cooldownMs: number = 30000): void {
     if (!key) return;
     const until = Date.now() + Math.max(5000, cooldownMs);
-    this.cooldowns.set(key, until);
+    ApiKeyRotator.globalCooldowns.set(key, until);
     console.warn(`[ApiKeyRotator] Key ...${key.slice(-6)} bị giới hạn (429). Cooldown ${Math.round(cooldownMs / 1000)}s.`);
   }
 
   /**
    * Marks a specific key as invalid or denied (401/403) with a long cooldown (24h).
+   * Persists across all requests in the extension.
    */
   public markFailed(key: string, reason: string = 'Access denied or invalid'): void {
     if (!key) return;
     const cooldownMs = 24 * 60 * 60 * 1000;
-    this.cooldowns.set(key, Date.now() + cooldownMs);
+    ApiKeyRotator.globalCooldowns.set(key, Date.now() + cooldownMs);
     console.error(`[ApiKeyRotator] Key ...${key.slice(-6)} bị loại bỏ (401/403: ${reason}). Tự động chuyển key.`);
   }
 
@@ -121,7 +136,7 @@ export class ApiKeyRotator {
    */
   public markSuccess(key: string): void {
     if (!key) return;
-    this.cooldowns.delete(key);
+    ApiKeyRotator.globalCooldowns.delete(key);
   }
 
   /**

@@ -1,4 +1,3 @@
-import browser from 'webextension-polyfill';
 import { StorageService } from '../shared/storage';
 import { BubbleTheme, ExtensionSettings } from '../shared/types';
 import { FloatingHud } from './hud/hud';
@@ -6,15 +5,17 @@ import { OverlayRenderer } from './overlay/overlay-renderer';
 import { OrderedTaskQueue, OcrTask, TranslationTask } from './priority-queue';
 import { ToonheyAdapter } from './toonhey-adapter';
 import { PageBadgeManager } from './page-badge';
-import { ImageCompressor } from './image-compressor';
 import { ModelMissingBanner } from './missing-banner';
 import { DebugLogger } from '../shared/debug-logger';
+import { SafeMessenger } from './safe-messenger';
+import { TaskProcessor } from './task-processor';
 
 class SpeedySlateContentApp {
   private settings!: ExtensionSettings;
   private hud!: FloatingHud;
   private ocrQueue!: OrderedTaskQueue<OcrTask>;
   private translationQueue!: OrderedTaskQueue<TranslationTask>;
+  private taskProcessor!: TaskProcessor;
   private images: HTMLImageElement[] = [];
   private completedImages = new Set<HTMLImageElement>();
   private isModelReady: boolean = false;
@@ -35,38 +36,16 @@ class SpeedySlateContentApp {
       },
       onToggleVisibility: (visible) => OverlayRenderer.setAllVisibility(visible),
       onClearChapterCache: async () => {
-        const resp: any = await browser.runtime.sendMessage({
+        const resp: any = await SafeMessenger.send({
           action: 'CLEAR_CHAPTER_CACHE',
           chapterUrl: window.location.href
         });
-        document.querySelectorAll('.speedyslate-bubble').forEach((el) => el.remove());
-        this.images.forEach((img, idx) => {
-          delete img.dataset.slateStatus;
-          if (img.parentElement) {
-            PageBadgeManager.updateBadge(img.parentElement, idx, 'idle');
-          }
-        });
-        this.completedImages.clear();
-        this.ocrQueue?.clear();
-        this.translationQueue?.clear();
-        this.hud.updateStatus(0, this.images.length);
-        this.hud.setState('idle');
+        this.resetPageTranslations();
         this.hud.log(`Da xoa ${resp?.deleted || 0} ban dich cache cua chuong nay`);
       },
       onClearAllCache: async () => {
-        await browser.runtime.sendMessage({ action: 'CLEAR_ALL_CACHE' });
-        document.querySelectorAll('.speedyslate-bubble').forEach((el) => el.remove());
-        this.images.forEach((img, idx) => {
-          delete img.dataset.slateStatus;
-          if (img.parentElement) {
-            PageBadgeManager.updateBadge(img.parentElement, idx, 'idle');
-          }
-        });
-        this.completedImages.clear();
-        this.ocrQueue?.clear();
-        this.translationQueue?.clear();
-        this.hud.updateStatus(0, this.images.length);
-        this.hud.setState('idle');
+        await SafeMessenger.send({ action: 'CLEAR_ALL_CACHE' });
+        this.resetPageTranslations();
         this.hud.log('Da don sach toan bo cache');
       }
     });
@@ -85,18 +64,28 @@ class SpeedySlateContentApp {
 
     // 2. Khoi tao 2 hang doi tach biet: OCR Producer (cuc bo) & Translation Consumer (API)
     this.ocrQueue = new OrderedTaskQueue<OcrTask>(
-      async (task) => this.processOcrTask(task),
+      async (task) => this.taskProcessor.processOcrTask(task),
       1,
       (t) => t.img
     );
     this.ocrQueue.pause();
 
     this.translationQueue = new OrderedTaskQueue<TranslationTask>(
-      async (task) => this.processTranslationTask(task),
+      async (task) => this.taskProcessor.processTranslationTask(task),
       1,
       (t) => t.img
     );
     this.translationQueue.pause();
+
+    this.taskProcessor = new TaskProcessor({
+      getSettings: () => this.settings,
+      hud: this.hud,
+      completedImages: this.completedImages,
+      ocrQueue: this.ocrQueue,
+      translationQueue: this.translationQueue,
+      markImageCompleted: (img) => this.markImageCompleted(img),
+      onContextInvalidated: () => this.handleContextInvalidated()
+    });
 
     // 3. Quet toan bo anh trong chuong va theo doi DOM
     this.detectImages();
@@ -114,7 +103,35 @@ class SpeedySlateContentApp {
     }
   }
 
+  private resetPageTranslations(): void {
+    document.querySelectorAll('.speedyslate-bubble').forEach((el) => el.remove());
+    this.images.forEach((img, idx) => {
+      delete img.dataset.slateStatus;
+      if (img.parentElement) {
+        PageBadgeManager.updateBadge(img.parentElement, idx, 'idle');
+      }
+    });
+    this.completedImages.clear();
+    this.ocrQueue?.clear();
+    this.translationQueue?.clear();
+    this.hud.updateStatus(0, this.images.length);
+    this.hud.setState('idle');
+  }
+
+  private handleContextInvalidated(): void {
+    this.ocrQueue?.clear();
+    this.translationQueue?.clear();
+    this.hud?.setState('idle');
+    this.hud?.log('Tiện ích vừa được tải lại. Vui lòng nhấn F5 (Cmd+R) để tiếp tục dịch.', true);
+  }
+
   private async handleStartTranslating(): Promise<void> {
+    try {
+      this.settings = await StorageService.getSettings();
+    } catch {
+      // Giu nguyen settings hien tai
+    }
+
     if (!this.isModelReady) {
       await this.checkModelStatusFromBackground(true);
       if (!this.isModelReady) {
@@ -146,7 +163,7 @@ class SpeedySlateContentApp {
 
   private async checkModelStatusFromBackground(showBannerIfMissing: boolean): Promise<void> {
     try {
-      const resp: any = await browser.runtime.sendMessage({ action: 'CHECK_MODEL_STATUS' });
+      const resp: any = await SafeMessenger.send({ action: 'CHECK_MODEL_STATUS' });
       if (resp?.success && resp.status?.status === 'ready') {
         this.isModelReady = true;
         this.hud.log('Model OCR da san sang');
@@ -198,7 +215,7 @@ class SpeedySlateContentApp {
       .filter(Boolean);
 
     try {
-      const resp: any = await browser.runtime.sendMessage({
+      const resp: any = await SafeMessenger.send({
         action: 'GET_CHAPTER_TRANSLATIONS',
         imageUrls: urls
       });
@@ -284,144 +301,6 @@ class SpeedySlateContentApp {
     }
   }
 
-  /**
-   * Stage 1: Fast local WebAssembly OCR Pipeline (runs at 100% CPU speed, 0ms artificial delay)
-   */
-  private async processOcrTask(task: OcrTask): Promise<void> {
-    if (this.completedImages.has(task.img)) return;
-
-    const img = task.img;
-    const imageUrl = img.src;
-    const wrapper = img.parentElement;
-    if (!wrapper) return;
-
-    if (!img.complete || img.naturalWidth === 0) {
-      ToonheyAdapter.forceTriggerImage(img);
-      await new Promise((resolve) => {
-        img.onload = resolve;
-        img.onerror = resolve;
-        setTimeout(resolve, 3000);
-      });
-    }
-
-    img.dataset.slateStatus = 'ocr_running';
-    PageBadgeManager.updateBadge(wrapper, task.index, 'ocr_running');
-
-    // Downscale and compress image (max 1280px) to drastically reduce latency and token usage
-    const compressed = ImageCompressor.compressForVision(img, 1280, 0.85);
-
-    const resp: any = await browser.runtime.sendMessage({
-      action: 'OCR_IMAGE',
-      imageUrl,
-      chapterUrl: window.location.href,
-      dataUrl: compressed.dataUrl,
-      naturalWidth: compressed.naturalWidth,
-      naturalHeight: compressed.naturalHeight
-    });
-
-    if (resp?.success) {
-      // 1. Direct result from Cache or Vision AI mode (already fully translated with styling)
-      if (resp.cached || resp.isDirectTranslation) {
-        if (resp.dialogues && resp.dialogues.length > 0) {
-          OverlayRenderer.renderDialogues(
-            wrapper,
-            resp.dialogues,
-            resp.naturalWidth || compressed.naturalWidth,
-            resp.naturalHeight || compressed.naturalHeight,
-            (this.settings?.bubbleTheme || 'auto') as BubbleTheme
-          );
-          img.dataset.slateStatus = 'translated';
-          PageBadgeManager.updateBadge(wrapper, task.index, 'translated', resp.dialogues.length);
-          this.hud.log(
-            resp.cached
-              ? `Trang #${task.index + 1}: Nạp từ Cache (0ms)`
-              : `Trang #${task.index + 1}: Vision AI đã dịch ${resp.dialogues.length} câu thoại`
-          );
-        } else {
-          img.dataset.slateStatus = 'no_text';
-          PageBadgeManager.updateBadge(wrapper, task.index, 'no_text');
-          this.hud.log(`Trang #${task.index + 1}: Không có chữ thoại`);
-        }
-        this.markImageCompleted(img);
-      } else if (!resp.dialogues || resp.dialogues.length === 0) {
-        img.dataset.slateStatus = 'no_text';
-        PageBadgeManager.updateBadge(wrapper, task.index, 'no_text');
-        this.markImageCompleted(img);
-        this.hud.log(`Trang #${task.index + 1}: Không có chữ`);
-      } else {
-        // 2. Hybrid OCR Mode: Text extracted locally, forward to translation queue
-        img.dataset.slateStatus = 'ocr_done';
-        PageBadgeManager.updateBadge(wrapper, task.index, 'ocr_done', resp.dialogues.length);
-        this.hud.log(`Trang #${task.index + 1}: Đã quét ${resp.dialogues.length} câu thoại, đang chờ dịch...`);
-        this.translationQueue.enqueue({
-          index: task.index,
-          img: task.img,
-          dialogues: resp.dialogues,
-          naturalWidth: resp.naturalWidth || compressed.naturalWidth,
-          naturalHeight: resp.naturalHeight || compressed.naturalHeight
-        });
-      }
-    } else {
-      img.dataset.slateStatus = 'error';
-      PageBadgeManager.updateBadge(wrapper, task.index, 'error');
-      const errMsg =
-        resp?.error ||
-        (resp === undefined
-          ? 'Không nhận được phản hồi từ nền (kênh đóng sớm hoặc Worker đang bận)'
-          : `Phản hồi lỗi: ${JSON.stringify(resp)}`);
-      this.hud.log(`Lỗi OCR trang #${task.index + 1}: ${errMsg}`, true);
-      DebugLogger.error('Content:OCR', `Trang #${task.index + 1}: ${errMsg}`);
-    }
-  }
-
-  /**
-   * Stage 2: Rate-limited API Translation Consumer (Gemini/Groq spacing & backoff)
-   */
-  private async processTranslationTask(task: TranslationTask): Promise<void> {
-    if (this.completedImages.has(task.img)) return;
-
-    const img = task.img;
-    const wrapper = img.parentElement;
-    if (!wrapper) return;
-
-    img.dataset.slateStatus = 'translating';
-    PageBadgeManager.updateBadge(wrapper, task.index, 'translating', task.dialogues.length);
-    this.hud.log(`Trang #${task.index + 1}: Dang dich ${task.dialogues.length} cau thoai...`);
-
-    const resp: any = await browser.runtime.sendMessage({
-      action: 'TRANSLATE_DIALOGUES',
-      imageUrl: img.src,
-      chapterUrl: window.location.href,
-      dialogues: task.dialogues,
-      naturalWidth: task.naturalWidth,
-      naturalHeight: task.naturalHeight
-    });
-
-    if (resp?.success && Array.isArray(resp.dialogues)) {
-      OverlayRenderer.renderDialogues(
-        wrapper,
-        resp.dialogues,
-        task.naturalWidth,
-        task.naturalHeight,
-        (this.settings?.bubbleTheme || 'auto') as BubbleTheme
-      );
-      img.dataset.slateStatus = 'translated';
-      PageBadgeManager.updateBadge(wrapper, task.index, 'translated', resp.dialogues.length);
-      this.markImageCompleted(img);
-      this.hud.log(`Trang #${task.index + 1}: Hoan tat ${resp.dialogues.length} cau thoai`);
-    } else {
-      img.dataset.slateStatus = 'error';
-      PageBadgeManager.updateBadge(wrapper, task.index, 'error');
-      const errMsg =
-        resp?.error ||
-        (resp === undefined
-          ? 'Không nhận được phản hồi dịch từ nền'
-          : `Lỗi API dịch: ${JSON.stringify(resp)}`);
-      this.hud.log(`Loi dich trang #${task.index + 1}: ${errMsg}`, true);
-      DebugLogger.error('Content:Translate', `Trang #${task.index + 1}: ${errMsg}`);
-    }
-  }
-
   private markImageCompleted(img: HTMLImageElement, checkAllDone: boolean = true): void {
     this.completedImages.add(img);
     this.hud.updateStatus(this.completedImages.size, this.images.length);
@@ -438,12 +317,14 @@ class SpeedySlateContentApp {
 
 // Global error handlers
 window.addEventListener('error', (e) => {
+  if (e.message?.includes('Extension context invalidated')) return;
   if (e.message?.includes('SpeedySlate') || e.message?.includes('OCR') || e.filename?.includes('content')) {
     DebugLogger.error('Content:GlobalError', e.message, e.error);
   }
 });
 window.addEventListener('unhandledrejection', (e) => {
   const reason = e.reason?.message || String(e.reason);
+  if (reason.includes('Extension context invalidated')) return;
   if (reason.includes('SpeedySlate') || reason.includes('OCR')) {
     DebugLogger.error('Content:UnhandledRejection', reason, e.reason);
   }

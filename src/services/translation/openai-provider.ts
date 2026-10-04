@@ -2,11 +2,13 @@ import { DialogueItem } from '../../shared/types';
 import { ITranslationProvider } from './translation-provider.interface';
 import { ApiKeyRotator } from './api-key-rotator';
 import { DebugLogger } from '../../shared/debug-logger';
+import { JsonExtractor } from './json-extractor';
 
 export class OpenAIProvider implements ITranslationProvider {
   private baseUrl: string;
   private keyRotator: ApiKeyRotator;
   private model: string;
+  public lastKeyIndex: number = 1;
 
   constructor(baseUrl: string, apiKey: string | string[], model: string) {
     this.baseUrl = baseUrl.trim().replace(/\/+$/, '');
@@ -85,6 +87,7 @@ RULES FOR TRANSLATION:
       }
 
       if (resp.ok) {
+        this.lastKeyIndex = this.keyRotator.getKeyIndex(activeKey);
         this.keyRotator.markSuccess(activeKey);
         break;
       }
@@ -167,31 +170,17 @@ RULES FOR TRANSLATION:
       throw new Error('API không trả về kết quả choices[0].message.content.');
     }
 
-    try {
-      const parsed = JSON.parse(content.trim());
-      if (Array.isArray(parsed)) {
-        return parsed.map((item) => String(item ?? ''));
+    const parsed = JsonExtractor.safeParse<any>(content, null);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item: any) => String(item ?? ''));
+    }
+    if (parsed && typeof parsed === 'object') {
+      if (Array.isArray(parsed.translations)) {
+        return (parsed.translations as any[]).map((item: any) => String(item ?? ''));
       }
-      if (parsed && Array.isArray(parsed.translations)) {
-        return parsed.translations.map((item: any) => String(item ?? ''));
-      }
-      // If object with numeric or string keys
       const values = Object.values(parsed);
       if (values.length === texts.length && values.every((v) => typeof v === 'string')) {
         return values as string[];
-      }
-    } catch {
-      // Regex fallback to extract array
-      const match = content.match(/\[[\s\S]*\]/);
-      if (match) {
-        try {
-          const arr = JSON.parse(match[0]);
-          if (Array.isArray(arr)) {
-            return arr.map((item) => String(item ?? ''));
-          }
-        } catch {
-          // ignore
-        }
       }
     }
 
@@ -302,6 +291,7 @@ If no character dialogues or narrator boxes are found, return {"dialogues": []}.
       }
 
       if (resp.ok) {
+        this.lastKeyIndex = this.keyRotator.getKeyIndex(activeKey);
         this.keyRotator.markSuccess(activeKey);
         break;
       }
@@ -379,24 +369,57 @@ If no character dialogues or narrator boxes are found, return {"dialogues": []}.
     }
 
     const data = await resp.json();
-    const content = data?.choices?.[0]?.message?.content;
+    const choice = data?.choices?.[0];
+    const finishReason = choice?.finish_reason;
+
+    if (finishReason === 'content_filter') {
+      DebugLogger.warn('OpenAI/Vision API', 'Ảnh bị Content Filter chặn (nội dung nhạy cảm/18+).');
+      throw new Error('AI Content Filter chặn ảnh này (ảnh nhạy cảm/18+). Bạn có thể đổi sang chế độ OCR Hybrid (quét cục bộ bằng WebGPU) để dịch không bị kiểm duyệt.');
+    }
+
+    const content = choice?.message?.content;
     if (!content) {
+      if (finishReason && finishReason !== 'stop') {
+        DebugLogger.warn('OpenAI/Vision API', `Phản hồi rỗng với finish_reason: ${finishReason}`);
+        throw new Error(`AI Vision không trả về nội dung (finish_reason: ${finishReason}).`);
+      }
       return [];
     }
 
     try {
-      const parsed = JSON.parse(content.trim());
-      const rawList = Array.isArray(parsed) ? parsed : (parsed.dialogues || parsed.items || []);
+      const rawList = JsonExtractor.extractDialogueItems(content);
       const dialogues: DialogueItem[] = [];
 
       for (let i = 0; i < rawList.length; i++) {
         const item = rawList[i];
-        if (!item || !item.translation) continue;
+        if (!item) continue;
 
-        const box2d = item.box_2d || item.box;
-        if (!Array.isArray(box2d) || box2d.length < 4) continue;
+        const translatedText = String(
+          item.translation || item.translated_text || item.vietnamese || item.text || ''
+        ).trim();
+        if (!translatedText) continue;
 
-        const [ymin, xmin, ymax, xmax] = box2d;
+        const rawBox = item.box_2d || item.box || item.bounding_box;
+        let ymin = 0, xmin = 0, ymax = 0, xmax = 0;
+
+        let flatBox: any[] = [];
+        if (Array.isArray(rawBox)) {
+          flatBox = Array.isArray(rawBox[0]) ? rawBox[0] : rawBox;
+        }
+
+        if (flatBox.length >= 4) {
+          [ymin, xmin, ymax, xmax] = flatBox.map(Number);
+        } else if (rawBox && typeof rawBox === 'object') {
+          ymin = Number(rawBox.ymin ?? rawBox.top ?? 0);
+          xmin = Number(rawBox.xmin ?? rawBox.left ?? 0);
+          ymax = Number(rawBox.ymax ?? rawBox.bottom ?? 0);
+          xmax = Number(rawBox.xmax ?? rawBox.right ?? 0);
+        } else {
+          continue;
+        }
+
+        if (isNaN(ymin) || isNaN(xmin) || isNaN(ymax) || isNaN(xmax)) continue;
+
         const normYmin = Math.min(ymin, ymax);
         const normYmax = Math.max(ymin, ymax);
         const normXmin = Math.min(xmin, xmax);
@@ -413,14 +436,14 @@ If no character dialogues or narrator boxes are found, return {"dialogues": []}.
           id: `slate_vision_${Date.now()}_${i}`,
           box: { x, y, width, height, confidence: 0.95 },
           originalText: String(item.original_text || item.text || '').trim(),
-          translatedText: String(item.translation).trim(),
+          translatedText,
           isDarkBackground: item.background === 'dark'
         });
       }
 
       return dialogues;
     } catch (e: any) {
-      console.error('[OpenAI Vision] Lỗi phân tích JSON:', content, e);
+      DebugLogger.error('OpenAI Vision', `Lỗi parse JSON. Raw AI text: ${content.substring(0, 300)}`, e);
       throw new Error('Không thể phân tích dữ liệu tọa độ hộp thoại từ Vision API.');
     }
   }

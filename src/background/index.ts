@@ -28,7 +28,33 @@ if (typeof self !== 'undefined') {
 // All ONNX inference runs inside Dedicated Web Worker / Offscreen Document.
 // ---------------------------------------------------------------------------
 
+class ServiceWorkerKeepAlive {
+  private static timer: any = null;
+  private static refCount = 0;
+
+  public static start(): void {
+    this.refCount++;
+    if (this.timer) return;
+    this.timer = setInterval(() => {
+      try {
+        browser.runtime.getPlatformInfo().catch(() => {});
+      } catch {
+        // ignore
+      }
+    }, 10000);
+  }
+
+  public static stop(): void {
+    this.refCount = Math.max(0, this.refCount - 1);
+    if (this.refCount === 0 && this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+}
+
 async function handleBackgroundMessage(msg: any): Promise<any> {
+  ServiceWorkerKeepAlive.start();
   try {
     switch (msg.action) {
       case 'PING':
@@ -179,7 +205,9 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
               isDirectTranslation: true,
               dialogues,
               naturalWidth: width,
-              naturalHeight: height
+              naturalHeight: height,
+              keyIndex: (provider as any).lastKeyIndex || 1,
+              totalKeys: keyCount
             };
           } catch (err: any) {
             DebugLogger.error('Background:VisionAI', err.message, err);
@@ -257,7 +285,12 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
           );
         }
 
-        return { success: true, dialogues: validDialogues };
+        return {
+          success: true,
+          dialogues: validDialogues,
+          keyIndex: (provider as any).lastKeyIndex || 1,
+          totalKeys: keyCount
+        };
       }
 
       case 'TRANSLATE_IMAGE': {
@@ -337,7 +370,15 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
           await TranslationCacheDb.saveTranslation(imageUrl, chapterUrl || '', validDialogues, width, height);
         }
 
-        return { success: true, cached: false, dialogues: validDialogues, naturalWidth: width, naturalHeight: height };
+        return {
+          success: true,
+          cached: false,
+          dialogues: validDialogues,
+          naturalWidth: width,
+          naturalHeight: height,
+          keyIndex: (provider as any).lastKeyIndex || 1,
+          totalKeys: (provider as any).keyCount || 1
+        };
       }
 
       case 'TEST_CONNECTION': {
@@ -365,7 +406,30 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
     console.error('[SpeedySlate Background] Error:', err);
     await DebugLogger.error('Background', errorMsg, err);
     return { success: false, error: errorMsg };
+  } finally {
+    ServiceWorkerKeepAlive.stop();
   }
+}
+
+/**
+ * Timeout helper to resolve message before Chrome terminates port (at ~30s).
+ */
+function withMessageTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  timeoutResult: T
+): Promise<T> {
+  let timer: any;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(timeoutResult), ms);
+  });
+  return Promise.race([
+    promise.then((res) => {
+      clearTimeout(timer);
+      return res;
+    }),
+    timeoutPromise
+  ]);
 }
 
 // Listen for messages targeted to Background
@@ -374,7 +438,12 @@ browser.runtime.onMessage.addListener((rawMsg: any) => {
   if (rawMsg?.target === 'OFFSCREEN_OCR') {
     return undefined;
   }
-  return handleBackgroundMessage(rawMsg);
+  return withMessageTimeout(
+    handleBackgroundMessage(rawMsg),
+    27000,
+    { success: false, error: 'Tác vụ nền quá thời gian chờ (timeout 27s). Vui lòng thử lại.' }
+  );
 });
 
 console.log('[SpeedySlate] Background Service Initialized (Hybrid Worker/Offscreen)');
+

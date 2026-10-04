@@ -220,13 +220,38 @@ async function handleOffscreenMessage(msg: any): Promise<any> {
   });
 }
 
+/**
+ * Timeout helper to resolve message before Chrome terminates port (at ~30s).
+ */
+function withMessageTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  timeoutResult: T
+): Promise<T> {
+  let timer: any;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(timeoutResult), ms);
+  });
+  return Promise.race([
+    promise.then((res) => {
+      clearTimeout(timer);
+      return res;
+    }),
+    timeoutPromise
+  ]);
+}
+
 // Listen for messages targeted to this offscreen document
 // CRITICAL (chrome-extensions rule): return undefined synchronously if not for this document!
 browser.runtime.onMessage.addListener((msg: any) => {
   if (msg?.target !== 'OFFSCREEN_OCR') {
     return undefined;
   }
-  return handleOffscreenMessage(msg);
+  return withMessageTimeout(
+    handleOffscreenMessage(msg),
+    25000,
+    { success: false, error: 'Offscreen OCR timeout sau 25s' }
+  );
 });
 
 DebugLogger.log('info', 'Offscreen', 'Offscreen OCR Document Initialized');

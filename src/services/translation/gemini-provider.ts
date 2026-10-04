@@ -2,11 +2,13 @@ import { DialogueItem } from '../../shared/types';
 import { ITranslationProvider } from './translation-provider.interface';
 import { ApiKeyRotator } from './api-key-rotator';
 import { DebugLogger } from '../../shared/debug-logger';
+import { JsonExtractor } from './json-extractor';
 
 export class GeminiProvider implements ITranslationProvider {
   private keyRotator: ApiKeyRotator;
   private model: string;
   private baseUrl: string;
+  public lastKeyIndex: number = 1;
 
   constructor(apiKey: string | string[], model: string = 'gemini-3.5-flash-lite', baseUrl?: string) {
     this.keyRotator = new ApiKeyRotator(apiKey);
@@ -33,14 +35,8 @@ RULES FOR COMIC TRANSLATION:
 2. Brevity & Bubble Formatting:
    - Keep translations concise to fit inside comic bubbles.
    - For longer sentences, you may insert a single newline character (\\n) at natural phrasing pauses to balance text across lines.
-3. CRITICAL FILTERING - ONLY OMIT TRUE JUNK & WATERMARKS:
-   - Scanlation credits, website URLs, group plugs, Discord/Patreon links (e.g. "toonhey.com", "asura", "reaper", "read at...", "join our discord", "uploaded by").
-   - Standalone chapter numbers, page numbers, status labels (e.g. "Ch. 5", "Page 12", "01/24", "End of chapter").
-   - Non-dialogue graphic noise or single punctuation symbols (e.g. "|", "---", "/", ";;", "..", "~~~").
-   - FOR TRUE JUNK / WATERMARK / CREDIT ONLY: Return an EMPTY STRING ("") at that index! Do NOT omit real dialogue.
-4. STRICT JSON OUTPUT FORMAT:
-   - Return ONLY a valid JSON array of strings with the EXACT same length and order as the input array.
-   - Example: Input: ["WHAT'S GOING ON IN THEREP", "toonhey.com", "Hmph"] -> Output: ["CÓ CHUYỆN GÌ ĐANG XẢY RA TRONG ĐÓ THẾ?", "", "Hừ"]`;
+3. FILTERING - ONLY OMIT TRUE JUNK & WATERMARKS:
+   - Scanlation credits, website URLs (e.g. "toonhey.com", "asura"), chapter numbers, or non-dialogue graphic noise: return empty string (""). Do NOT omit real character dialogue.`;
 
     const requestBody = {
       system_instruction: {
@@ -53,8 +49,19 @@ RULES FOR COMIC TRANSLATION:
       ],
       generationConfig: {
         response_mime_type: 'application/json',
-        temperature: 0.3
-      }
+        response_schema: {
+          type: 'ARRAY',
+          items: { type: 'STRING' }
+        },
+        temperature: 0.2
+      },
+      safetySettings: [
+        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
+      ]
     };
 
     let resp: Response | null = null;
@@ -88,6 +95,7 @@ RULES FOR COMIC TRANSLATION:
       }
 
       if (resp.ok) {
+        this.lastKeyIndex = this.keyRotator.getKeyIndex(activeKey);
         this.keyRotator.markSuccess(activeKey);
         break;
       }
@@ -170,23 +178,21 @@ RULES FOR COMIC TRANSLATION:
       throw new Error('Gemini API không trả về nội dung hợp lệ.');
     }
 
-    try {
-      const parsed = JSON.parse(candidateText.trim());
-      if (Array.isArray(parsed)) {
-        return parsed.map((item) => String(item ?? ''));
+    const parsed = JsonExtractor.safeParse<any>(candidateText, null);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item: any) => String(item ?? ''));
+    }
+    if (parsed && typeof parsed === 'object') {
+      const found = Object.values(parsed).find((v) => Array.isArray(v)) || Object.values(parsed);
+      if (Array.isArray(found) && found.length === texts.length) {
+        return (found as any[]).map((v: any) => String(v ?? ''));
       }
-      if (parsed && typeof parsed === 'object') {
-        const values = Object.values(parsed);
-        if (values.length === texts.length) {
-          return values.map((v) => String(v ?? ''));
-        }
-      }
-    } catch {
-      // Fallback: line-by-line parsing if json is slightly malformed
-      const lines = candidateText.split('\n').filter((l: string) => l.trim().length > 0);
-      if (lines.length === texts.length) {
-        return lines;
-      }
+    }
+
+    // Fallback: line-by-line parsing if json was completely broken
+    const lines = candidateText.split('\n').filter((l: string) => l.trim().length > 0);
+    if (lines.length === texts.length) {
+      return lines;
     }
 
     throw new Error('Không thể phân tích định dạng JSON kết quả từ Gemini.');
@@ -221,21 +227,9 @@ TASK:
      * "dark": speech bubble has black or dark background with white/light text (e.g. demonic, angry, horror, shock).
      * "light": speech bubble has white or light background with dark/black text (standard comic speech bubble).
 
-CRITICAL NEGATIVE CONSTRAINTS (STRICTLY FORBIDDEN):
-- DO NOT TRANSLATE SOUND EFFECTS (SFX / onomatopoeia / visual action sounds like "BOOM", "SWOOSH", "CRASH", "CLANG", "THUMP", "RUMBLE", "DOKI", stylized sound drawings). You MUST IGNORE all sound effect graphics completely!
-- DO NOT translate scanlation credits, website URLs (e.g. toonhey.com, asura, reaper), group plugs, or chapter/page numbers.
-
-OUTPUT FORMAT:
-Return ONLY a valid JSON array of objects conforming to:
-[
-  {
-    "box_2d": [ymin, xmin, ymax, xmax],
-    "original_text": "MICHAEL!",
-    "translation": "MICHAEL!",
-    "background": "light"
-  }
-]
-If no character dialogues or narrator boxes are found, return an empty array [].`;
+CRITICAL NEGATIVE CONSTRAINTS:
+- NEVER translate sound effects (SFX / onomatopoeia like "BOOM", "SWOOSH", "RUSTLE", "HAAA..."). Ignore them completely!
+- Never translate scanlation credits, website URLs (e.g. toonhey.com), group plugs, or chapter/page numbers.`;
 
     const requestBody = {
       system_instruction: {
@@ -258,8 +252,35 @@ If no character dialogues or narrator boxes are found, return an empty array [].
       ],
       generationConfig: {
         response_mime_type: 'application/json',
+        response_schema: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              box_2d: {
+                type: 'ARRAY',
+                items: { type: 'INTEGER' },
+                description: '[ymin, xmin, ymax, xmax] coordinates normalized 0-1000'
+              },
+              original_text: { type: 'STRING' },
+              translation: { type: 'STRING' },
+              background: {
+                type: 'STRING',
+                enum: ['light', 'dark']
+              }
+            },
+            required: ['box_2d', 'translation']
+          }
+        },
         temperature: 0.2
-      }
+      },
+      safetySettings: [
+        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+        { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
+      ]
     };
 
     let resp: Response | null = null;
@@ -291,6 +312,7 @@ If no character dialogues or narrator boxes are found, return an empty array [].
       }
 
       if (resp.ok) {
+        this.lastKeyIndex = this.keyRotator.getKeyIndex(activeKey);
         this.keyRotator.markSuccess(activeKey);
         break;
       }
@@ -368,24 +390,60 @@ If no character dialogues or narrator boxes are found, return an empty array [].
     }
 
     const data = await resp.json();
-    const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const candidate = data?.candidates?.[0];
+    const finishReason = candidate?.finishReason;
+    const blockReason = data?.promptFeedback?.blockReason;
+
+    // Detect Google Safety Filter block on sensitive/18+ content
+    if (finishReason === 'SAFETY' || blockReason === 'SAFETY') {
+      const reason = finishReason || blockReason;
+      DebugLogger.warn('Gemini Vision', `Ảnh bị Google Safety Filter chặn (${reason}: nội dung nhạy cảm/18+).`);
+      throw new Error(`Google Safety Filter chặn ảnh này (${reason}: ảnh nhạy cảm/18+). Bạn có thể đổi sang chế độ OCR Hybrid (quét cục bộ bằng WebGPU) để dịch không bị kiểm duyệt.`);
+    }
+
+    const candidateText = candidate?.content?.parts?.[0]?.text;
     if (!candidateText) {
+      if (finishReason && finishReason !== 'STOP') {
+        DebugLogger.warn('Gemini Vision', `Phản hồi rỗng với finishReason: ${finishReason}`);
+        throw new Error(`Gemini không trả về văn bản (finishReason: ${finishReason}).`);
+      }
       return [];
     }
 
     try {
-      const parsed = JSON.parse(candidateText.trim());
-      const rawList = Array.isArray(parsed) ? parsed : (parsed.dialogues || parsed.items || []);
+      const rawList = JsonExtractor.extractDialogueItems(candidateText);
       const dialogues: DialogueItem[] = [];
 
       for (let i = 0; i < rawList.length; i++) {
         const item = rawList[i];
-        if (!item || !item.translation) continue;
+        if (!item) continue;
 
-        const box2d = item.box_2d || item.box;
-        if (!Array.isArray(box2d) || box2d.length < 4) continue;
+        const translatedText = String(
+          item.translation || item.translated_text || item.vietnamese || item.text || ''
+        ).trim();
+        if (!translatedText) continue;
 
-        const [ymin, xmin, ymax, xmax] = box2d;
+        const rawBox = item.box_2d || item.box || item.bounding_box;
+        let ymin = 0, xmin = 0, ymax = 0, xmax = 0;
+
+        let flatBox: any[] = [];
+        if (Array.isArray(rawBox)) {
+          flatBox = Array.isArray(rawBox[0]) ? rawBox[0] : rawBox;
+        }
+
+        if (flatBox.length >= 4) {
+          [ymin, xmin, ymax, xmax] = flatBox.map(Number);
+        } else if (rawBox && typeof rawBox === 'object') {
+          ymin = Number(rawBox.ymin ?? rawBox.top ?? 0);
+          xmin = Number(rawBox.xmin ?? rawBox.left ?? 0);
+          ymax = Number(rawBox.ymax ?? rawBox.bottom ?? 0);
+          xmax = Number(rawBox.xmax ?? rawBox.right ?? 0);
+        } else {
+          continue;
+        }
+
+        if (isNaN(ymin) || isNaN(xmin) || isNaN(ymax) || isNaN(xmax)) continue;
+
         const normYmin = Math.min(ymin, ymax);
         const normYmax = Math.max(ymin, ymax);
         const normXmin = Math.min(xmin, xmax);
@@ -402,14 +460,14 @@ If no character dialogues or narrator boxes are found, return an empty array [].
           id: `slate_vision_${Date.now()}_${i}`,
           box: { x, y, width, height, confidence: 0.95 },
           originalText: String(item.original_text || item.text || '').trim(),
-          translatedText: String(item.translation).trim(),
+          translatedText,
           isDarkBackground: item.background === 'dark'
         });
       }
 
       return dialogues;
     } catch (e: any) {
-      console.error('[Gemini Vision] Lỗi phân tích JSON:', candidateText, e);
+      DebugLogger.error('Gemini Vision', `Lỗi parse JSON. Raw AI text: ${candidateText.substring(0, 300)}`, e);
       throw new Error('Không thể phân tích dữ liệu tọa độ hộp thoại từ Gemini Vision.');
     }
   }

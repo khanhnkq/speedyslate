@@ -1,6 +1,7 @@
 import { DialogueItem } from '../../shared/types';
 import { ITranslationProvider } from './translation-provider.interface';
 import { ApiKeyRotator } from './api-key-rotator';
+import { DebugLogger } from '../../shared/debug-logger';
 
 export class OpenAIProvider implements ITranslationProvider {
   private baseUrl: string;
@@ -52,9 +53,11 @@ RULES FOR TRANSLATION:
 
     let resp: Response | null = null;
     const maxRetries = Math.max(3, this.keyRotator.count * 2);
+    let lastErrorMsg = '';
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const activeKey = this.keyRotator.getNextKey();
+      const maskedKey = ApiKeyRotator.maskKey(activeKey);
       const headers: Record<string, string> = {
         'Content-Type': 'application/json'
       };
@@ -62,13 +65,57 @@ RULES FOR TRANSLATION:
         headers['Authorization'] = `Bearer ${activeKey}`;
       }
 
-      resp = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload)
-      });
+      try {
+        resp = await fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload)
+        });
+      } catch (netErr: any) {
+        lastErrorMsg = `Lỗi mạng: ${netErr?.message || netErr}`;
+        DebugLogger.warn('OpenAI/Groq API', `Key ${maskedKey} gặp lỗi mạng. Đang đổi key hoặc thử lại...`);
+        if (attempt < maxRetries && this.keyRotator.hasMultipleKeys) {
+          continue;
+        }
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 1000));
+          continue;
+        }
+        break;
+      }
 
-      if (resp.status === 429 && attempt < maxRetries) {
+      if (resp.ok) {
+        this.keyRotator.markSuccess(activeKey);
+        break;
+      }
+
+      const errText = await resp.text();
+      let errorDetail = `HTTP ${resp.status}`;
+      try {
+        const json = JSON.parse(errText);
+        if (json.error?.message) {
+          errorDetail = `(${resp.status}): ${json.error.message}`;
+        }
+      } catch {
+        errorDetail = `(${resp.status}): ${errText.substring(0, 120)}`;
+      }
+      lastErrorMsg = `API lỗi ${errorDetail}`;
+
+      // 1. HTTP 401 / 403: Invalid Key or Forbidden
+      if (resp.status === 401 || resp.status === 403) {
+        this.keyRotator.markFailed(activeKey, `HTTP ${resp.status}`);
+        DebugLogger.warn(
+          'OpenAI/Groq API',
+          `Key ${maskedKey} bị từ chối ${errorDetail}. Đang tự động chuyển sang key khác...`
+        );
+        if (attempt < maxRetries && this.keyRotator.hasMultipleKeys) {
+          continue;
+        }
+        break;
+      }
+
+      // 2. HTTP 429: Rate Limit
+      if (resp.status === 429) {
         const retryAfterSec = Number(resp.headers.get('retry-after'));
         const backoffMs = !isNaN(retryAfterSec) && retryAfterSec > 0
           ? retryAfterSec * 1000
@@ -76,35 +123,42 @@ RULES FOR TRANSLATION:
 
         this.keyRotator.markRateLimited(activeKey, backoffMs);
 
-        // Instant failover: If we have multiple keys, rotate immediately without sleeping!
-        if (this.keyRotator.count > 1) {
-          console.warn(`[OpenAI/Groq API] Key ...${activeKey.slice(-6)} gặp 429. Đang chuyển sang key khác ngay...`);
+        if (this.keyRotator.hasMultipleKeys && attempt < maxRetries) {
+          DebugLogger.warn('OpenAI/Groq API', `Key ${maskedKey} gặp 429 (Rate limit). Chuyển sang key khác ngay...`);
           continue;
         }
 
-        console.warn(`[OpenAI/Groq API] 429 Rate limited. Đang chờ ${Math.round(backoffMs)}ms...`);
-        await new Promise((r) => setTimeout(r, backoffMs));
-        continue;
+        if (attempt < maxRetries) {
+          DebugLogger.warn('OpenAI/Groq API', `429 Rate limited. Đang chờ ${Math.round(backoffMs)}ms...`);
+          await new Promise((r) => setTimeout(r, backoffMs));
+          continue;
+        }
+        break;
       }
 
-      if (resp.ok) {
-        this.keyRotator.markSuccess(activeKey);
+      // 3. HTTP 5xx: Server Errors (500, 502, 503, 504)
+      if (resp.status >= 500) {
+        this.keyRotator.markRateLimited(activeKey, 10000);
+        DebugLogger.warn('OpenAI/Groq API', `Key ${maskedKey} gặp lỗi máy chủ ${errorDetail}. Đang thử key khác...`);
+        if (this.keyRotator.hasMultipleKeys && attempt < maxRetries) {
+          continue;
+        }
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 1500));
+          continue;
+        }
+        break;
       }
+
+      // Other 4xx client errors
       break;
     }
 
     if (!resp || !resp.ok) {
-      const errText = resp ? await resp.text() : 'Không thể kết nối';
-      let msg = `API lỗi (${resp?.status || 0})`;
-      try {
-        const json = JSON.parse(errText);
-        if (json.error?.message) {
-          msg += `: ${json.error.message}`;
-        }
-      } catch {
-        msg += `: ${errText.substring(0, 100)}`;
+      if (this.keyRotator.hasMultipleKeys) {
+        throw new Error(`API: Đã thử qua ${this.keyRotator.count} API keys nhưng đều thất bại. ${lastErrorMsg}`);
       }
-      throw new Error(msg);
+      throw new Error(lastErrorMsg || `API lỗi (${resp?.status || 0})`);
     }
 
     const data = await resp.json();
@@ -216,9 +270,11 @@ If no character dialogues or narrator boxes are found, return {"dialogues": []}.
 
     let resp: Response | null = null;
     const maxRetries = Math.max(3, this.keyRotator.count * 2);
+    let lastErrorMsg = '';
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const activeKey = this.keyRotator.getNextKey();
+      const maskedKey = ApiKeyRotator.maskKey(activeKey);
       const headers: Record<string, string> = {
         'Content-Type': 'application/json'
       };
@@ -226,13 +282,57 @@ If no character dialogues or narrator boxes are found, return {"dialogues": []}.
         headers['Authorization'] = `Bearer ${activeKey}`;
       }
 
-      resp = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload)
-      });
+      try {
+        resp = await fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload)
+        });
+      } catch (netErr: any) {
+        lastErrorMsg = `Lỗi mạng: ${netErr?.message || netErr}`;
+        DebugLogger.warn('OpenAI/Vision API', `Key ${maskedKey} gặp lỗi mạng. Đang đổi key hoặc thử lại...`);
+        if (attempt < maxRetries && this.keyRotator.hasMultipleKeys) {
+          continue;
+        }
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 1000));
+          continue;
+        }
+        break;
+      }
 
-      if (resp.status === 429 && attempt < maxRetries) {
+      if (resp.ok) {
+        this.keyRotator.markSuccess(activeKey);
+        break;
+      }
+
+      const errText = await resp.text();
+      let errorDetail = `HTTP ${resp.status}`;
+      try {
+        const json = JSON.parse(errText);
+        if (json.error?.message) {
+          errorDetail = `(${resp.status}): ${json.error.message}`;
+        }
+      } catch {
+        errorDetail = `(${resp.status}): ${errText.substring(0, 120)}`;
+      }
+      lastErrorMsg = `Vision API lỗi ${errorDetail}`;
+
+      // 1. HTTP 401 / 403: Invalid Key or Forbidden
+      if (resp.status === 401 || resp.status === 403) {
+        this.keyRotator.markFailed(activeKey, `HTTP ${resp.status}`);
+        DebugLogger.warn(
+          'OpenAI/Vision API',
+          `Key ${maskedKey} bị từ chối ${errorDetail}. Đang tự động chuyển sang key khác...`
+        );
+        if (attempt < maxRetries && this.keyRotator.hasMultipleKeys) {
+          continue;
+        }
+        break;
+      }
+
+      // 2. HTTP 429: Rate Limit
+      if (resp.status === 429) {
         const retryAfterSec = Number(resp.headers.get('retry-after'));
         const backoffMs = !isNaN(retryAfterSec) && retryAfterSec > 0
           ? retryAfterSec * 1000
@@ -240,33 +340,42 @@ If no character dialogues or narrator boxes are found, return {"dialogues": []}.
 
         this.keyRotator.markRateLimited(activeKey, backoffMs);
 
-        // Instant failover: If we have multiple keys, rotate immediately without sleeping!
-        if (this.keyRotator.count > 1) {
-          console.warn(`[OpenAI/Vision API] Key ...${activeKey.slice(-6)} gặp 429. Đang chuyển sang key khác ngay...`);
+        if (this.keyRotator.hasMultipleKeys && attempt < maxRetries) {
+          DebugLogger.warn('OpenAI/Vision API', `Key ${maskedKey} gặp 429 (Rate limit). Chuyển sang key khác ngay...`);
           continue;
         }
 
-        console.warn(`[OpenAI/Vision API] 429 Rate limited. Đang chờ ${Math.round(backoffMs)}ms...`);
-        await new Promise((r) => setTimeout(r, backoffMs));
-        continue;
+        if (attempt < maxRetries) {
+          DebugLogger.warn('OpenAI/Vision API', `429 Rate limited. Đang chờ ${Math.round(backoffMs)}ms...`);
+          await new Promise((r) => setTimeout(r, backoffMs));
+          continue;
+        }
+        break;
       }
 
-      if (resp.ok) {
-        this.keyRotator.markSuccess(activeKey);
+      // 3. HTTP 5xx: Server Errors (500, 502, 503, 504)
+      if (resp.status >= 500) {
+        this.keyRotator.markRateLimited(activeKey, 10000);
+        DebugLogger.warn('OpenAI/Vision API', `Key ${maskedKey} gặp lỗi máy chủ ${errorDetail}. Đang thử key khác...`);
+        if (this.keyRotator.hasMultipleKeys && attempt < maxRetries) {
+          continue;
+        }
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 1500));
+          continue;
+        }
+        break;
       }
+
+      // Other 4xx client errors
       break;
     }
 
     if (!resp || !resp.ok) {
-      const errText = resp ? await resp.text() : 'Không thể kết nối';
-      let msg = `Vision API lỗi (${resp?.status || 0})`;
-      try {
-        const json = JSON.parse(errText);
-        if (json.error?.message) msg += `: ${json.error.message}`;
-      } catch {
-        msg += `: ${errText.substring(0, 100)}`;
+      if (this.keyRotator.hasMultipleKeys) {
+        throw new Error(`Vision API: Đã thử qua ${this.keyRotator.count} API keys nhưng đều thất bại. ${lastErrorMsg}`);
       }
-      throw new Error(msg);
+      throw new Error(lastErrorMsg || `Vision API lỗi (${resp?.status || 0})`);
     }
 
     const data = await resp.json();

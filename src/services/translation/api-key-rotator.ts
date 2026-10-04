@@ -44,6 +44,20 @@ export class ApiKeyRotator {
     return this.keys.length > 0;
   }
 
+  public get hasMultipleKeys(): boolean {
+    return this.keys.length > 1;
+  }
+
+  /**
+   * Masks key for secure logging (e.g. AIza...e3f4).
+   */
+  public static maskKey(key: string): string {
+    if (!key) return '(trống)';
+    const clean = key.trim();
+    if (clean.length <= 8) return '***' + clean.slice(-3);
+    return clean.slice(0, 4) + '...' + clean.slice(-4);
+  }
+
   /**
    * Retrieves the next available key that is not in cooldown.
    * If all keys are temporarily rate-limited, returns the one whose cooldown expires soonest.

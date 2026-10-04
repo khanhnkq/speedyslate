@@ -245,9 +245,12 @@ class PopupController {
     this.radioModeHybrid?.addEventListener('change', onModeChange);
     this.radioModeVision?.addEventListener('change', onModeChange);
 
-    // API Key input live count
+    // API Key input live count & auto-persist
     this.apiKeyInput?.addEventListener('input', () => {
       this.updateApiKeyCount();
+    });
+    this.apiKeyInput?.addEventListener('change', () => {
+      this.saveCurrentFormToSettings();
     });
 
     // WebGPU toggle

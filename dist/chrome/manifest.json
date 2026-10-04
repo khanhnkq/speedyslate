@@ -43,7 +43,8 @@
   ],
   "permissions": [
     "storage",
-    "offscreen"
+    "offscreen",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "https://*/*",

@@ -1222,114 +1222,76 @@
 
   // src/content/hud/chubby-icons.ts
   var ChubbyIcons = class {
-    static bolt(size = 18, color = "currentColor") {
+    static bolt(size = 15, color = "#E52E3D") {
       return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M13 2.5L5 13H12L11 21.5L19 11H12L13 2.5Z" 
-          fill="${color}" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <path d="M13 3l0 7l6 0l-8 11l0 -7l-6 0z" fill="${color}" fill-opacity="0.15"/>
       </svg>
     `.trim();
     }
-    static play(size = 16, color = "currentColor") {
+    static play(size = 14, color = "#FFFFFF") {
       return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M7 5.5C7 4.5 8.1 3.9 8.9 4.4L18.4 10.4C19.2 10.9 19.2 12.1 18.4 12.6L8.9 18.6C8.1 19.1 7 18.5 7 17.5V5.5Z" 
-          fill="${color}" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <path d="M7 4v16l13 -8z" fill="${color}" fill-opacity="0.2"/>
       </svg>
     `.trim();
     }
-    static pause(size = 16, color = "currentColor") {
+    static pause(size = 14, color = "#FFFFFF") {
       return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <rect x="6" y="5" width="4" height="14" rx="2" fill="${color}"/>
-        <rect x="14" y="5" width="4" height="14" rx="2" fill="${color}"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <path d="M6 5m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/>
+        <path d="M14 5m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/>
       </svg>
     `.trim();
     }
-    static checkCircle(size = 16, color = "currentColor") {
+    static checkCircle(size = 15, color = "#E52E3D") {
       return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <circle cx="12" cy="12" r="9" stroke="${color}" stroke-width="2.5"/>
-        <path d="M8.5 12.5L10.8 14.8L15.5 9.5" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M9 12l2 2l4 -4"/>
       </svg>
     `.trim();
     }
-    static eye(size = 16, color = "currentColor") {
+    static eye(size = 15, color = "#E52E3D") {
       return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M2.5 12C4.5 7.5 8 5 12 5C16 5 19.5 7.5 21.5 12C19.5 16.5 16 19 12 19C8 19 4.5 16.5 2.5 12Z" 
-          stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="12" cy="12" r="3.2" fill="${color}"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <circle cx="12" cy="12" r="2"/>
+        <path d="M22 12c-2.4 4 -5.4 6 -10 6c-4.6 0 -7.6 -2 -10 -6c2.4 -4 5.4 -6 10 -6c4.6 0 7.6 2 10 6"/>
       </svg>
     `.trim();
     }
-    static broom(size = 16, color = "currentColor") {
+    static broom(size = 15, color = "#E52E3D") {
       return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M18 3L21 6L13.5 13.5L10.5 10.5L18 3Z" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M10.5 10.5L4 17C3.5 17.5 3.5 18.5 4 19L5 20C5.5 20.5 6.5 20.5 7 20L13.5 13.5" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M3 21L7 21" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <path d="M14 12l-8.5 8.5a2.12 2.12 0 0 1 -3 -3l8.5 -8.5"/>
+        <path d="M12 10l-1 -1a1 1 0 0 1 0 -1.41l5.59 -5.59a1 1 0 0 1 1.41 0l3.59 3.59a1 1 0 0 1 0 1.41l-5.59 5.59a1 1 0 0 1 -1.41 0l-1 -1"/>
       </svg>
     `.trim();
     }
-    static document(size = 16, color = "currentColor") {
+    static trash(size = 15, color = "#FF3B47") {
       return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <rect x="5" y="3.5" width="14" height="17" rx="3.5" stroke="${color}" stroke-width="2.5"/>
-        <path d="M9 8.5H15M9 12H15M9 15.5H12.5" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <path d="M4 7l16 0"/>
+        <path d="M10 11l0 6"/>
+        <path d="M14 11l0 6"/>
+        <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/>
+        <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/>
       </svg>
     `.trim();
     }
-    static book(size = 15, color = "currentColor") {
+    static alert(size = 15, color = "#FF3B47") {
       return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M4 19.5C5.5 18.5 7.5 18 10 18C12 18 13.5 18.5 14.5 19.5V5.5C13.5 4.5 12 4 10 4C7.5 4 5.5 4.5 4 5.5V19.5Z" 
-          stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M20 19.5C18.5 18.5 16.5 18 14 18C12 18 10.5 18.5 9.5 19.5V5.5C10.5 4.5 12 4 14 4C16.5 4 18.5 4.5 20 5.5V19.5Z" 
-          stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <path d="M12 9v4"/>
+        <path d="M12 17h.01"/>
+        <path d="M5 19h14a2 2 0 0 0 1.84 -2.75l-7.1 -12.25a2 2 0 0 0 -3.5 0l-7.1 12.25a2 2 0 0 0 1.75 2.75"/>
       </svg>
     `.trim();
     }
-    static close(size = 13, color = "currentColor") {
+    static spinner(size = 15, color = "#E52E3D") {
       return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M6 6L18 18M18 6L6 18" stroke="${color}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    `.trim();
-    }
-    static sparkles(size = 16, color = "currentColor") {
-      return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M12 3C12 7.5 14.5 10 19 10C14.5 10 12 12.5 12 17C12 12.5 9.5 10 5 10C9.5 10 12 7.5 12 3Z" 
-          fill="${color}" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="19" cy="18" r="1.5" fill="${color}"/>
-        <circle cx="5" cy="4" r="1.5" fill="${color}"/>
-      </svg>
-    `.trim();
-    }
-    static spinner(size = 14, color = "#A855F7") {
-      return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle; animation: speedyslateSpin 0.9s linear infinite;">
-        <circle cx="12" cy="12" r="9" stroke="${color}" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="36 18" />
-      </svg>
-    `.trim();
-    }
-    static pulseDot(color = "#10b981") {
-      return `
-      <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background-color:${color}; box-shadow:0 0 8px ${color}; margin-right:6px; flex-shrink:0;"></span>
-    `.trim();
-    }
-    static trash(size = 14, color = "currentColor") {
-      return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M3 6H21M19 6V20C19 21.1 18.1 22 17 22H7C5.9 22 5 21.1 5 20V6M8 6V4C8 2.9 8.9 2 10 2H14C15.1 2 16 2.9 16 4V6" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    `.trim();
-    }
-    static alert(size = 15, color = "#ef4444") {
-      return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M12 9V14M12 17.5V18M12 3L2 21H22L12 3Z" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle; animation: speedyslateSpin 0.75s linear infinite;">
+        <path d="M12 3a9 9 0 1 0 9 9"/>
       </svg>
     `.trim();
     }
@@ -1376,48 +1338,50 @@
         bottom: 24px;
         right: 24px;
         z-index: 2147483647;
-        background: #111111;
-        color: #F5F5F4;
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        border-radius: 9999px;
-        padding: 8px 16px;
+        background: #0D0D11;
+        color: #FFFFFF;
+        border: 1px solid #26262E;
+        border-radius: 8px;
+        padding: 8px 14px;
         height: 38px;
-        font-family: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        font-size: 12px;
-        font-weight: 600;
-        letter-spacing: -0.01em;
+        font-family: 'Space Grotesk', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
         display: inline-flex;
         align-items: center;
         gap: 8px;
         cursor: pointer;
         user-select: none;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
         transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
         outline: none;
         white-space: nowrap;
       }
       #speedyslate-floating-btn:hover {
-        border-color: #A855F7;
+        border-color: #E52E3D;
         transform: translateY(-1px);
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 10px rgba(168, 85, 247, 0.25);
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.8), 0 0 16px rgba(229, 46, 61, 0.4);
       }
       #speedyslate-floating-btn:active {
         transform: translateY(0px) scale(0.98);
       }
       .speedyslate-menu-item {
-        padding: 8px 12px;
+        padding: 9px 14px;
         font-size: 11px;
-        font-weight: 500;
-        color: #F5F5F4;
+        font-weight: 600;
+        font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+        color: #FFFFFF;
         cursor: pointer;
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 9px;
         transition: background 0.12s ease;
       }
       .speedyslate-menu-item:hover {
-        background: rgba(168, 85, 247, 0.18);
-        color: #ffffff;
+        background: rgba(229, 46, 61, 0.16);
+        color: #FFFFFF;
       }
     `;
       (document.head || document.documentElement).appendChild(style);
@@ -1524,18 +1488,18 @@
         left: `${Math.max(12, rect.left)}px`,
         bottom: `${window.innerHeight - rect.top + 8}px`,
         zIndex: "2147483647",
-        background: "#111111",
-        border: "1px solid rgba(255, 255, 255, 0.16)",
+        background: "#0D0D11",
+        border: "1px solid #26262E",
         borderRadius: "8px",
         overflow: "hidden",
-        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.45)",
-        minWidth: "160px",
+        boxShadow: "0 8px 30px rgba(0, 0, 0, 0.7), 0 0 14px rgba(229, 46, 61, 0.15)",
+        minWidth: "170px",
         userSelect: "none"
       });
       const itemVis = document.createElement("div");
       itemVis.className = "speedyslate-menu-item";
       itemVis.innerHTML = `
-      ${ChubbyIcons.eye(14, "#A855F7")}
+      ${ChubbyIcons.eye(15, "#E52E3D")}
       <span>${this.isVisible ? "\u1EA8n b\u1EA3n d\u1ECBch (Xem g\u1ED1c)" : "Hi\u1EC7n l\u1EA1i b\u1EA3n d\u1ECBch"}</span>
     `;
       itemVis.onclick = (e) => {
@@ -1547,9 +1511,9 @@
       };
       const itemClear = document.createElement("div");
       itemClear.className = "speedyslate-menu-item";
-      itemClear.style.borderTop = "1px solid rgba(255, 255, 255, 0.08)";
+      itemClear.style.borderTop = "1px solid #26262E";
       itemClear.innerHTML = `
-      ${ChubbyIcons.broom(14, "#A855F7")}
+      ${ChubbyIcons.broom(15, "#E52E3D")}
       <span>X\xF3a cache ch\u01B0\u01A1ng n\xE0y</span>
     `;
       itemClear.onclick = (e) => {
@@ -1560,9 +1524,9 @@
       };
       const itemClearAll = document.createElement("div");
       itemClearAll.className = "speedyslate-menu-item";
-      itemClearAll.style.borderTop = "1px solid rgba(255, 255, 255, 0.08)";
+      itemClearAll.style.borderTop = "1px solid #26262E";
       itemClearAll.innerHTML = `
-      ${ChubbyIcons.trash(14, "#ef4444")}
+      ${ChubbyIcons.trash(15, "#FF3B47")}
       <span>D\u1ECDn s\u1EA1ch to\xE0n b\u1ED9 cache</span>
     `;
       itemClearAll.onclick = (e) => {
@@ -1616,14 +1580,14 @@
         left: `${Math.max(12, rect.left)}px`,
         bottom: `${window.innerHeight - rect.top + 8}px`,
         zIndex: "2147483647",
-        background: "#1c1010",
-        color: "#fee2e2",
-        border: "1px solid rgba(239, 68, 68, 0.7)",
+        background: "#140A0B",
+        color: "#FFA5AC",
+        border: "1px solid #E52E3D",
         borderRadius: "8px",
         padding: "8px 14px",
         fontSize: "11px",
-        fontFamily: "system-ui, -apple-system, sans-serif",
-        boxShadow: "0 8px 30px rgba(0, 0, 0, 0.6)",
+        fontFamily: "'Space Grotesk', 'Inter', system-ui, -apple-system, sans-serif",
+        boxShadow: "0 8px 30px rgba(0, 0, 0, 0.7), 0 0 12px rgba(229, 46, 61, 0.25)",
         pointerEvents: "none",
         transition: "opacity 0.2s ease",
         maxWidth: "340px",
@@ -1644,53 +1608,73 @@
     render() {
       switch (this.state) {
         case "idle": {
-          const countTxt = this.totalCount > 0 ? ` (${this.totalCount})` : "";
+          const badge = this.totalCount > 0 ? `<span style="background: #140A0B; border: 1px solid #4D1217; color: #FFA5AC; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${this.totalCount}</span>` : "";
           this.btn.innerHTML = `
-          ${ChubbyIcons.bolt(14, "#A855F7")}
-          <span>D\u1ECBch truy\u1EC7n${countTxt}</span>
+          ${ChubbyIcons.bolt(15, "#E52E3D")}
+          <span>D\u1ECACH TRUY\u1EC6N</span>
+          ${badge}
         `;
+          this.btn.style.background = "#0D0D11";
+          this.btn.style.borderColor = "#26262E";
+          this.btn.style.boxShadow = "0 4px 20px rgba(0, 0, 0, 0.7)";
           this.btn.title = "B\u1EA5m \u0111\u1EC3 b\u1EAFt \u0111\u1EA7u d\u1ECBch truy\u1EC7n \u2022 Chu\u1ED9t ph\u1EA3i m\u1EDF menu";
           break;
         }
         case "error": {
-          const prog = this.totalCount > 0 ? ` (${this.translatedCount}/${this.totalCount})` : "";
+          const badge = this.totalCount > 0 ? `<span style="background: #1C0A0B; border: 1px solid #E52E3D; color: #FFA5AC; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${this.translatedCount}/${this.totalCount}</span>` : "";
           this.btn.innerHTML = `
-          ${ChubbyIcons.alert(14, "#ef4444")}
-          <span style="color: #fca5a5;">L\u1ED7i d\u1ECBch${prog}</span>
+          ${ChubbyIcons.alert(15, "#FF3B47")}
+          <span style="color: #FFA5AC;">L\u1ED6I D\u1ECACH</span>
+          ${badge}
         `;
+          this.btn.style.background = "#180D0E";
+          this.btn.style.borderColor = "#FF3B47";
+          this.btn.style.boxShadow = "0 6px 24px rgba(0, 0, 0, 0.8), 0 0 18px rgba(255, 59, 71, 0.35)";
           this.btn.title = "C\xF3 l\u1ED7i x\u1EA3y ra khi d\u1ECBch \u2022 B\u1EA5m \u0111\u1EC3 th\u1EED l\u1EA1i \u2022 Chu\u1ED9t ph\u1EA3i m\u1EDF menu";
           break;
         }
         case "translating": {
-          const prog = this.totalCount > 0 ? ` ${this.translatedCount}/${this.totalCount}` : "...";
+          const badge = this.totalCount > 0 ? `<span style="background: #1C0A0B; border: 1px solid #E52E3D; color: #FFA5AC; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${this.translatedCount}/${this.totalCount}</span>` : '<span style="color: #E52E3D; font-size: 10px;">...</span>';
           this.btn.innerHTML = `
-          ${ChubbyIcons.spinner(14, "#A855F7")}
-          <span>\u0110ang d\u1ECBch${prog}</span>
+          ${ChubbyIcons.spinner(15, "#E52E3D")}
+          <span>\u0110ANG D\u1ECACH</span>
+          ${badge}
         `;
+          this.btn.style.background = "#0D0D11";
+          this.btn.style.borderColor = "#E52E3D";
+          this.btn.style.boxShadow = "0 6px 24px rgba(0, 0, 0, 0.8), 0 0 18px rgba(229, 46, 61, 0.45)";
           this.btn.title = "\u0110ang d\u1ECBch truy\u1EC7n... B\u1EA5m \u0111\u1EC3 t\u1EA1m d\u1EEBng";
           break;
         }
         case "paused": {
-          const prog = this.totalCount > 0 ? ` (${this.translatedCount}/${this.totalCount})` : "";
+          const badge = this.totalCount > 0 ? `<span style="background: #181820; border: 1px solid #33333E; color: #FFFFFF; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${this.translatedCount}/${this.totalCount}</span>` : "";
           this.btn.innerHTML = `
-          ${ChubbyIcons.play(13, "#F5F5F4")}
-          <span>Ti\u1EBFp t\u1EE5c${prog}</span>
+          ${ChubbyIcons.play(14, "#FFFFFF")}
+          <span>T\u1EA0M D\u1EEANG</span>
+          ${badge}
         `;
+          this.btn.style.background = "#0D0D11";
+          this.btn.style.borderColor = "#26262E";
+          this.btn.style.boxShadow = "0 4px 20px rgba(0, 0, 0, 0.7)";
           this.btn.title = "B\u1EA5m \u0111\u1EC3 ti\u1EBFp t\u1EE5c d\u1ECBch";
           break;
         }
         case "completed": {
+          this.btn.style.background = "#0D0D11";
+          this.btn.style.borderColor = "#26262E";
+          this.btn.style.boxShadow = "0 4px 20px rgba(0, 0, 0, 0.7)";
           if (this.isVisible) {
-            const prog = this.totalCount > 0 ? ` (${this.totalCount})` : "";
+            const badge = this.totalCount > 0 ? `<span style="background: #140A0B; border: 1px solid #4D1217; color: #FFA5AC; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${this.totalCount}</span>` : "";
             this.btn.innerHTML = `
-            ${ChubbyIcons.checkCircle(14, "#A855F7")}
-            <span>\u0110\xE3 d\u1ECBch${prog}</span>
+            ${ChubbyIcons.checkCircle(15, "#E52E3D")}
+            <span>\u0110\xC3 D\u1ECACH</span>
+            ${badge}
           `;
             this.btn.title = "B\u1EA5m \u0111\u1EC3 \u1EA9n b\u1EA3n d\u1ECBch (Xem tranh g\u1ED1c) \u2022 Chu\u1ED9t ph\u1EA3i m\u1EDF menu";
           } else {
             this.btn.innerHTML = `
-            ${ChubbyIcons.eye(14, "#F5F5F4")}
-            <span>Xem tranh g\u1ED1c</span>
+            ${ChubbyIcons.eye(15, "#FFFFFF")}
+            <span>XEM \u1EA2NH G\u1ED0C</span>
           `;
             this.btn.title = "B\u1EA5m \u0111\u1EC3 hi\u1EC7n l\u1EA1i b\u1EA3n d\u1ECBch \u2022 Chu\u1ED9t ph\u1EA3i m\u1EDF menu";
           }
@@ -2097,21 +2081,21 @@
         top: "12px",
         left: "12px",
         zIndex: "60",
-        background: "#111111",
-        border: "1px solid rgba(255, 255, 255, 0.16)",
-        borderRadius: "9999px",
-        padding: "3px 10px",
-        color: "#F5F5F4",
-        fontFamily: "'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-        fontWeight: "600",
+        background: "#0D0D11",
+        border: "1px solid #26262E",
+        borderRadius: "6px",
+        padding: "4px 10px",
+        color: "#FFFFFF",
+        fontFamily: "'Space Grotesk', 'Inter', system-ui, -apple-system, sans-serif",
+        fontWeight: "700",
         fontSize: "11px",
-        letterSpacing: "-0.01em",
-        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.35)",
+        letterSpacing: "0.02em",
+        boxShadow: "0 4px 14px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.04)",
         pointerEvents: "none",
         display: "inline-flex",
         alignItems: "center",
         gap: "6px",
-        transition: "all 0.2s ease",
+        transition: "all 0.15s ease",
         userSelect: "none"
       });
       this.renderBadgeContent(badge, pageIndex, "idle");
@@ -2135,29 +2119,29 @@
           statusText = "";
           break;
         case "ocr_running":
-          dotColor = "#A855F7";
+          dotColor = "#E52E3D";
           statusText = "Qu\xE9t OCR...";
           isPulsing = true;
           break;
         case "ocr_done":
-          dotColor = "#A855F7";
+          dotColor = "#E52E3D";
           statusText = count !== void 0 ? `${count} c\xE2u` : "\u0110\xE3 qu\xE9t";
           break;
         case "translating":
-          dotColor = "#A855F7";
+          dotColor = "#E52E3D";
           statusText = "\u0110ang d\u1ECBch...";
           isPulsing = true;
           break;
         case "translated":
-          dotColor = "#A855F7";
+          dotColor = "#E52E3D";
           statusText = count !== void 0 ? `${count} c\xE2u` : "\u0110\xE3 d\u1ECBch";
           break;
         case "no_text":
-          dotColor = "#444444";
+          dotColor = "#333333";
           statusText = "Kh\xF4ng ch\u1EEF";
           break;
         case "error": {
-          dotColor = "#ef4444";
+          dotColor = "#FF3B47";
           const rawErr = (keyInfo?.errorMessage || "").toLowerCase();
           if (rawErr.includes("timeout") || rawErr.includes("qu\xE1 th\u1EDDi gian")) {
             statusText = "Timeout 27s";
@@ -2176,8 +2160,8 @@
         }
       }
       const pulseAnim = isPulsing ? "animation: speedyslatePulse 1.2s infinite ease-in-out;" : "";
-      const keyBadge = keyInfo?.keyIndex !== void 0 ? `<span style="background: rgba(168, 85, 247, 0.22); border: 1px solid rgba(168, 85, 247, 0.5); color: #e9d5ff; border-radius: 4px; padding: 1px 5px; font-size: 10px; font-weight: 700; letter-spacing: 0.02em;">Key #${keyInfo.keyIndex}${keyInfo.totalKeys && keyInfo.totalKeys > 1 ? `/${keyInfo.totalKeys}` : ""}</span>` : "";
-      const statusSpan = statusText ? status === "error" ? `<span style="color: #f87171; font-weight: 700; font-size: 10px; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.45); border-radius: 4px; padding: 1px 5px;">${statusText}</span>` : `<span style="color: #999999; font-weight: 500; font-size: 10px;">${statusText}</span>` : "";
+      const keyBadge = keyInfo?.keyIndex !== void 0 ? `<span style="background: #140A0B; border: 1px solid #4D1217; color: #FFA5AC; border-radius: 4px; padding: 1px 5px; font-size: 10px; font-weight: 700; letter-spacing: 0.02em;">Key #${keyInfo.keyIndex}${keyInfo.totalKeys && keyInfo.totalKeys > 1 ? `/${keyInfo.totalKeys}` : ""}</span>` : "";
+      const statusSpan = statusText ? status === "error" ? `<span style="color: #FFA5AC; font-weight: 700; font-size: 10px; background: #1C0A0B; border: 1px solid #E52E3D; border-radius: 4px; padding: 1px 5px;">${statusText}</span>` : `<span style="color: #A0A0AB; font-weight: 600; font-size: 10px;">${statusText}</span>` : "";
       badge.innerHTML = `
       <style>
         @keyframes speedyslatePulse {
@@ -2186,22 +2170,22 @@
         }
       </style>
       <span style="width: 6px; height: 6px; border-radius: 50%; background: ${dotColor}; box-shadow: 0 0 5px ${dotColor}; display: inline-block; ${pulseAnim}"></span>
-      <span style="color: #F5F5F4; font-weight: 700;">#${pageIndex + 1}</span>
+      <span style="color: #FFFFFF; font-weight: 700;">#${pageIndex + 1}</span>
       ${keyBadge}
       ${statusSpan}
     `;
       if (status === "error") {
-        badge.style.border = "1px solid rgba(239, 68, 68, 0.5)";
+        badge.style.border = "1px solid #E52E3D";
         badge.title = keyInfo?.errorMessage ? `Trang #${pageIndex + 1}: ${keyInfo.errorMessage}` : "\u0110\xE3 x\u1EA3y ra l\u1ED7i";
         badge.style.pointerEvents = "auto";
         badge.style.cursor = "help";
       } else if (status === "translated" || status === "translating" || status === "ocr_running") {
-        badge.style.border = "1px solid rgba(168, 85, 247, 0.4)";
+        badge.style.border = "1px solid rgba(229, 46, 61, 0.4)";
         badge.title = "";
         badge.style.pointerEvents = "none";
         badge.style.cursor = "default";
       } else {
-        badge.style.border = "1px solid rgba(255, 255, 255, 0.12)";
+        badge.style.border = "1px solid #26262E";
         badge.title = "";
         badge.style.pointerEvents = "none";
         badge.style.cursor = "default";
@@ -2492,21 +2476,27 @@
     async processOcrTask(task) {
       if (this.ctx.completedImages.has(task.img)) return;
       const img = task.img;
-      const imageUrl = img.src;
       const wrapper = img.parentElement;
       if (!wrapper) return;
+      ToonheyAdapter.forceTriggerImage(img);
       const settings = this.ctx.getSettings();
       const isVision = settings?.translationMode === "vision_ai";
       const totalKeys = this.getKeyCount();
       const estimatedKey = totalKeys > 0 ? task.index % totalKeys + 1 : void 0;
       try {
         if (!img.complete || img.naturalWidth === 0) {
-          ToonheyAdapter.forceTriggerImage(img);
           await new Promise((resolve) => {
             img.onload = resolve;
             img.onerror = resolve;
-            setTimeout(resolve, 3e3);
+            setTimeout(resolve, 3500);
           });
+        }
+        const rawSrc = img.dataset.src || img.getAttribute("data-src") || img.src;
+        let imageUrl = rawSrc && !rawSrc.startsWith("data:image/svg") ? rawSrc : img.src;
+        if (imageUrl.startsWith("//")) {
+          imageUrl = window.location.protocol + imageUrl;
+        } else if (imageUrl.startsWith("/")) {
+          imageUrl = window.location.origin + imageUrl;
         }
         img.dataset.slateStatus = "ocr_running";
         PageBadgeManager.updateBadge(

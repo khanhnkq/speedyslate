@@ -1,130 +1,86 @@
 /**
- * Chubby Cute Vector SVG Icon System for SpeedySlate
- * Completely replaces all text emojis with scalable, crisp, rounded SVGs
- * Designed with 2.5px/3px rounded strokes and cute anime-tech aesthetic
+ * Tabler Icons SVG System for SpeedySlate Floating HUD & Content UI
+ * Uses official Tabler Icons SVG geometries with 2px stroke and clean Brutalist aesthetic
  */
 export class ChubbyIcons {
-  public static bolt(size = 18, color = 'currentColor'): string {
+  public static bolt(size = 15, color = '#E52E3D'): string {
     return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M13 2.5L5 13H12L11 21.5L19 11H12L13 2.5Z" 
-          fill="${color}" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <path d="M13 3l0 7l6 0l-8 11l0 -7l-6 0z" fill="${color}" fill-opacity="0.15"/>
       </svg>
     `.trim();
   }
 
-  public static play(size = 16, color = 'currentColor'): string {
+  public static play(size = 14, color = '#FFFFFF'): string {
     return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M7 5.5C7 4.5 8.1 3.9 8.9 4.4L18.4 10.4C19.2 10.9 19.2 12.1 18.4 12.6L8.9 18.6C8.1 19.1 7 18.5 7 17.5V5.5Z" 
-          fill="${color}" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <path d="M7 4v16l13 -8z" fill="${color}" fill-opacity="0.2"/>
       </svg>
     `.trim();
   }
 
-  public static pause(size = 16, color = 'currentColor'): string {
+  public static pause(size = 14, color = '#FFFFFF'): string {
     return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <rect x="6" y="5" width="4" height="14" rx="2" fill="${color}"/>
-        <rect x="14" y="5" width="4" height="14" rx="2" fill="${color}"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <path d="M6 5m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/>
+        <path d="M14 5m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z"/>
       </svg>
     `.trim();
   }
 
-  public static checkCircle(size = 16, color = 'currentColor'): string {
+  public static checkCircle(size = 15, color = '#E52E3D'): string {
     return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <circle cx="12" cy="12" r="9" stroke="${color}" stroke-width="2.5"/>
-        <path d="M8.5 12.5L10.8 14.8L15.5 9.5" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <circle cx="12" cy="12" r="9"/>
+        <path d="M9 12l2 2l4 -4"/>
       </svg>
     `.trim();
   }
 
-  public static eye(size = 16, color = 'currentColor'): string {
+  public static eye(size = 15, color = '#E52E3D'): string {
     return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M2.5 12C4.5 7.5 8 5 12 5C16 5 19.5 7.5 21.5 12C19.5 16.5 16 19 12 19C8 19 4.5 16.5 2.5 12Z" 
-          stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="12" cy="12" r="3.2" fill="${color}"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <circle cx="12" cy="12" r="2"/>
+        <path d="M22 12c-2.4 4 -5.4 6 -10 6c-4.6 0 -7.6 -2 -10 -6c2.4 -4 5.4 -6 10 -6c4.6 0 7.6 2 10 6"/>
       </svg>
     `.trim();
   }
 
-  public static broom(size = 16, color = 'currentColor'): string {
+  public static broom(size = 15, color = '#E52E3D'): string {
     return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M18 3L21 6L13.5 13.5L10.5 10.5L18 3Z" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M10.5 10.5L4 17C3.5 17.5 3.5 18.5 4 19L5 20C5.5 20.5 6.5 20.5 7 20L13.5 13.5" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M3 21L7 21" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <path d="M14 12l-8.5 8.5a2.12 2.12 0 0 1 -3 -3l8.5 -8.5"/>
+        <path d="M12 10l-1 -1a1 1 0 0 1 0 -1.41l5.59 -5.59a1 1 0 0 1 1.41 0l3.59 3.59a1 1 0 0 1 0 1.41l-5.59 5.59a1 1 0 0 1 -1.41 0l-1 -1"/>
       </svg>
     `.trim();
   }
 
-  public static document(size = 16, color = 'currentColor'): string {
+  public static trash(size = 15, color = '#FF3B47'): string {
     return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <rect x="5" y="3.5" width="14" height="17" rx="3.5" stroke="${color}" stroke-width="2.5"/>
-        <path d="M9 8.5H15M9 12H15M9 15.5H12.5" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <path d="M4 7l16 0"/>
+        <path d="M10 11l0 6"/>
+        <path d="M14 11l0 6"/>
+        <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/>
+        <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/>
       </svg>
     `.trim();
   }
 
-  public static book(size = 15, color = 'currentColor'): string {
+  public static alert(size = 15, color = '#FF3B47'): string {
     return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M4 19.5C5.5 18.5 7.5 18 10 18C12 18 13.5 18.5 14.5 19.5V5.5C13.5 4.5 12 4 10 4C7.5 4 5.5 4.5 4 5.5V19.5Z" 
-          stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M20 19.5C18.5 18.5 16.5 18 14 18C12 18 10.5 18.5 9.5 19.5V5.5C10.5 4.5 12 4 14 4C16.5 4 18.5 4.5 20 5.5V19.5Z" 
-          stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <path d="M12 9v4"/>
+        <path d="M12 17h.01"/>
+        <path d="M5 19h14a2 2 0 0 0 1.84 -2.75l-7.1 -12.25a2 2 0 0 0 -3.5 0l-7.1 12.25a2 2 0 0 0 1.75 2.75"/>
       </svg>
     `.trim();
   }
 
-  public static close(size = 13, color = 'currentColor'): string {
+  public static spinner(size = 15, color = '#E52E3D'): string {
     return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M6 6L18 18M18 6L6 18" stroke="${color}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    `.trim();
-  }
-
-  public static sparkles(size = 16, color = 'currentColor'): string {
-    return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M12 3C12 7.5 14.5 10 19 10C14.5 10 12 12.5 12 17C12 12.5 9.5 10 5 10C9.5 10 12 7.5 12 3Z" 
-          fill="${color}" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="19" cy="18" r="1.5" fill="${color}"/>
-        <circle cx="5" cy="4" r="1.5" fill="${color}"/>
-      </svg>
-    `.trim();
-  }
-
-  public static spinner(size = 14, color = '#A855F7'): string {
-    return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle; animation: speedyslateSpin 0.9s linear infinite;">
-        <circle cx="12" cy="12" r="9" stroke="${color}" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="36 18" />
-      </svg>
-    `.trim();
-  }
-
-  public static pulseDot(color = '#10b981'): string {
-    return `
-      <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background-color:${color}; box-shadow:0 0 8px ${color}; margin-right:6px; flex-shrink:0;"></span>
-    `.trim();
-  }
-
-  public static trash(size = 14, color = 'currentColor'): string {
-    return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M3 6H21M19 6V20C19 21.1 18.1 22 17 22H7C5.9 22 5 21.1 5 20V6M8 6V4C8 2.9 8.9 2 10 2H14C15.1 2 16 2.9 16 4V6" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    `.trim();
-  }
-
-  public static alert(size = 15, color = '#ef4444'): string {
-    return `
-      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
-        <path d="M12 9V14M12 17.5V18M12 3L2 21H22L12 3Z" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle; animation: speedyslateSpin 0.75s linear infinite;">
+        <path d="M12 3a9 9 0 1 0 9 9"/>
       </svg>
     `.trim();
   }

@@ -60,48 +60,50 @@ export class FloatingHud {
         bottom: 24px;
         right: 24px;
         z-index: 2147483647;
-        background: #111111;
-        color: #F5F5F4;
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        border-radius: 9999px;
-        padding: 8px 16px;
+        background: #0D0D11;
+        color: #FFFFFF;
+        border: 1px solid #26262E;
+        border-radius: 8px;
+        padding: 8px 14px;
         height: 38px;
-        font-family: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        font-size: 12px;
-        font-weight: 600;
-        letter-spacing: -0.01em;
+        font-family: 'Space Grotesk', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
         display: inline-flex;
         align-items: center;
         gap: 8px;
         cursor: pointer;
         user-select: none;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
         transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
         outline: none;
         white-space: nowrap;
       }
       #speedyslate-floating-btn:hover {
-        border-color: #A855F7;
+        border-color: #E52E3D;
         transform: translateY(-1px);
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 10px rgba(168, 85, 247, 0.25);
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.8), 0 0 16px rgba(229, 46, 61, 0.4);
       }
       #speedyslate-floating-btn:active {
         transform: translateY(0px) scale(0.98);
       }
       .speedyslate-menu-item {
-        padding: 8px 12px;
+        padding: 9px 14px;
         font-size: 11px;
-        font-weight: 500;
-        color: #F5F5F4;
+        font-weight: 600;
+        font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+        color: #FFFFFF;
         cursor: pointer;
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 9px;
         transition: background 0.12s ease;
       }
       .speedyslate-menu-item:hover {
-        background: rgba(168, 85, 247, 0.18);
-        color: #ffffff;
+        background: rgba(229, 46, 61, 0.16);
+        color: #FFFFFF;
       }
     `;
     (document.head || document.documentElement).appendChild(style);
@@ -227,12 +229,12 @@ export class FloatingHud {
       left: `${Math.max(12, rect.left)}px`,
       bottom: `${window.innerHeight - rect.top + 8}px`,
       zIndex: '2147483647',
-      background: '#111111',
-      border: '1px solid rgba(255, 255, 255, 0.16)',
+      background: '#0D0D11',
+      border: '1px solid #26262E',
       borderRadius: '8px',
       overflow: 'hidden',
-      boxShadow: '0 8px 24px rgba(0, 0, 0, 0.45)',
-      minWidth: '160px',
+      boxShadow: '0 8px 30px rgba(0, 0, 0, 0.7), 0 0 14px rgba(229, 46, 61, 0.15)',
+      minWidth: '170px',
       userSelect: 'none'
     });
 
@@ -240,7 +242,7 @@ export class FloatingHud {
     const itemVis = document.createElement('div');
     itemVis.className = 'speedyslate-menu-item';
     itemVis.innerHTML = `
-      ${ChubbyIcons.eye(14, '#A855F7')}
+      ${ChubbyIcons.eye(15, '#E52E3D')}
       <span>${this.isVisible ? 'Ẩn bản dịch (Xem gốc)' : 'Hiện lại bản dịch'}</span>
     `;
     itemVis.onclick = (e) => {
@@ -254,9 +256,9 @@ export class FloatingHud {
     // Item 2: Clear chapter cache & re-translate
     const itemClear = document.createElement('div');
     itemClear.className = 'speedyslate-menu-item';
-    itemClear.style.borderTop = '1px solid rgba(255, 255, 255, 0.08)';
+    itemClear.style.borderTop = '1px solid #26262E';
     itemClear.innerHTML = `
-      ${ChubbyIcons.broom(14, '#A855F7')}
+      ${ChubbyIcons.broom(15, '#E52E3D')}
       <span>Xóa cache chương này</span>
     `;
     itemClear.onclick = (e) => {
@@ -269,9 +271,9 @@ export class FloatingHud {
     // Item 3: Clear all cache
     const itemClearAll = document.createElement('div');
     itemClearAll.className = 'speedyslate-menu-item';
-    itemClearAll.style.borderTop = '1px solid rgba(255, 255, 255, 0.08)';
+    itemClearAll.style.borderTop = '1px solid #26262E';
     itemClearAll.innerHTML = `
-      ${ChubbyIcons.trash(14, '#ef4444')}
+      ${ChubbyIcons.trash(15, '#FF3B47')}
       <span>Dọn sạch toàn bộ cache</span>
     `;
     itemClearAll.onclick = (e) => {
@@ -334,14 +336,14 @@ export class FloatingHud {
       left: `${Math.max(12, rect.left)}px`,
       bottom: `${window.innerHeight - rect.top + 8}px`,
       zIndex: '2147483647',
-      background: '#1c1010',
-      color: '#fee2e2',
-      border: '1px solid rgba(239, 68, 68, 0.7)',
+      background: '#140A0B',
+      color: '#FFA5AC',
+      border: '1px solid #E52E3D',
       borderRadius: '8px',
       padding: '8px 14px',
       fontSize: '11px',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-      boxShadow: '0 8px 30px rgba(0, 0, 0, 0.6)',
+      fontFamily: "'Space Grotesk', 'Inter', system-ui, -apple-system, sans-serif",
+      boxShadow: '0 8px 30px rgba(0, 0, 0, 0.7), 0 0 12px rgba(229, 46, 61, 0.25)',
       pointerEvents: 'none',
       transition: 'opacity 0.2s ease',
       maxWidth: '340px',
@@ -364,53 +366,83 @@ export class FloatingHud {
   private render(): void {
     switch (this.state) {
       case 'idle': {
-        const countTxt = this.totalCount > 0 ? ` (${this.totalCount})` : '';
+        const badge = this.totalCount > 0
+          ? `<span style="background: #140A0B; border: 1px solid #4D1217; color: #FFA5AC; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${this.totalCount}</span>`
+          : '';
         this.btn.innerHTML = `
-          ${ChubbyIcons.bolt(14, '#A855F7')}
-          <span>Dịch truyện${countTxt}</span>
+          ${ChubbyIcons.bolt(15, '#E52E3D')}
+          <span>DỊCH TRUYỆN</span>
+          ${badge}
         `;
+        this.btn.style.background = '#0D0D11';
+        this.btn.style.borderColor = '#26262E';
+        this.btn.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.7)';
         this.btn.title = 'Bấm để bắt đầu dịch truyện • Chuột phải mở menu';
         break;
       }
       case 'error': {
-        const prog = this.totalCount > 0 ? ` (${this.translatedCount}/${this.totalCount})` : '';
+        const badge = this.totalCount > 0
+          ? `<span style="background: #1C0A0B; border: 1px solid #E52E3D; color: #FFA5AC; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${this.translatedCount}/${this.totalCount}</span>`
+          : '';
         this.btn.innerHTML = `
-          ${ChubbyIcons.alert(14, '#ef4444')}
-          <span style="color: #fca5a5;">Lỗi dịch${prog}</span>
+          ${ChubbyIcons.alert(15, '#FF3B47')}
+          <span style="color: #FFA5AC;">LỖI DỊCH</span>
+          ${badge}
         `;
+        this.btn.style.background = '#180D0E';
+        this.btn.style.borderColor = '#FF3B47';
+        this.btn.style.boxShadow = '0 6px 24px rgba(0, 0, 0, 0.8), 0 0 18px rgba(255, 59, 71, 0.35)';
         this.btn.title = 'Có lỗi xảy ra khi dịch • Bấm để thử lại • Chuột phải mở menu';
         break;
       }
       case 'translating': {
-        const prog = this.totalCount > 0 ? ` ${this.translatedCount}/${this.totalCount}` : '...';
+        const badge = this.totalCount > 0
+          ? `<span style="background: #1C0A0B; border: 1px solid #E52E3D; color: #FFA5AC; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${this.translatedCount}/${this.totalCount}</span>`
+          : '<span style="color: #E52E3D; font-size: 10px;">...</span>';
         this.btn.innerHTML = `
-          ${ChubbyIcons.spinner(14, '#A855F7')}
-          <span>Đang dịch${prog}</span>
+          ${ChubbyIcons.spinner(15, '#E52E3D')}
+          <span>ĐANG DỊCH</span>
+          ${badge}
         `;
+        this.btn.style.background = '#0D0D11';
+        this.btn.style.borderColor = '#E52E3D';
+        this.btn.style.boxShadow = '0 6px 24px rgba(0, 0, 0, 0.8), 0 0 18px rgba(229, 46, 61, 0.45)';
         this.btn.title = 'Đang dịch truyện... Bấm để tạm dừng';
         break;
       }
       case 'paused': {
-        const prog = this.totalCount > 0 ? ` (${this.translatedCount}/${this.totalCount})` : '';
+        const badge = this.totalCount > 0
+          ? `<span style="background: #181820; border: 1px solid #33333E; color: #FFFFFF; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${this.translatedCount}/${this.totalCount}</span>`
+          : '';
         this.btn.innerHTML = `
-          ${ChubbyIcons.play(13, '#F5F5F4')}
-          <span>Tiếp tục${prog}</span>
+          ${ChubbyIcons.play(14, '#FFFFFF')}
+          <span>TẠM DỪNG</span>
+          ${badge}
         `;
+        this.btn.style.background = '#0D0D11';
+        this.btn.style.borderColor = '#26262E';
+        this.btn.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.7)';
         this.btn.title = 'Bấm để tiếp tục dịch';
         break;
       }
       case 'completed': {
+        this.btn.style.background = '#0D0D11';
+        this.btn.style.borderColor = '#26262E';
+        this.btn.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.7)';
         if (this.isVisible) {
-          const prog = this.totalCount > 0 ? ` (${this.totalCount})` : '';
+          const badge = this.totalCount > 0
+            ? `<span style="background: #140A0B; border: 1px solid #4D1217; color: #FFA5AC; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${this.totalCount}</span>`
+            : '';
           this.btn.innerHTML = `
-            ${ChubbyIcons.checkCircle(14, '#A855F7')}
-            <span>Đã dịch${prog}</span>
+            ${ChubbyIcons.checkCircle(15, '#E52E3D')}
+            <span>ĐÃ DỊCH</span>
+            ${badge}
           `;
           this.btn.title = 'Bấm để ẩn bản dịch (Xem tranh gốc) • Chuột phải mở menu';
         } else {
           this.btn.innerHTML = `
-            ${ChubbyIcons.eye(14, '#F5F5F4')}
-            <span>Xem tranh gốc</span>
+            ${ChubbyIcons.eye(15, '#FFFFFF')}
+            <span>XEM ẢNH GỐC</span>
           `;
           this.btn.title = 'Bấm để hiện lại bản dịch • Chuột phải mở menu';
         }

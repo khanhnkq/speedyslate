@@ -1,3 +1,5 @@
+import { DnrManager } from './dnr-rules';
+
 /**
  * Helper to extract or fetch base64 image data for Multimodal Vision AI
  * Follows Single Responsibility Principle (SRP)
@@ -5,7 +7,8 @@
 export class ImageFetcher {
   public static async getBase64Data(
     dataUrl?: string,
-    imageUrl?: string
+    imageUrl?: string,
+    chapterUrl?: string
   ): Promise<{ base64Data: string; mimeType: string }> {
     if (dataUrl && dataUrl.startsWith('data:')) {
       const commaIdx = dataUrl.indexOf(',');
@@ -17,12 +20,21 @@ export class ImageFetcher {
     }
 
     if (imageUrl) {
+      if (chapterUrl) {
+        await DnrManager.ensureRefererForDomain(chapterUrl, imageUrl);
+      }
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       let res: Response;
       try {
-        res = await fetch(imageUrl, { signal: controller.signal });
+        res = await fetch(imageUrl, {
+          signal: controller.signal,
+          headers: {
+            Accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+          }
+        });
       } catch (err: any) {
         clearTimeout(timeoutId);
         if (err.name === 'AbortError') {

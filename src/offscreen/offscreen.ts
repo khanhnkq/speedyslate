@@ -143,9 +143,16 @@ async function runOcrOnImage(
     blob = await res.blob();
   } else if (imageUrl) {
     const res = await fetch(imageUrl);
+    if (!res.ok) {
+      throw new Error(`Không thể tải ảnh qua offscreen: HTTP ${res.status}`);
+    }
     blob = await res.blob();
   } else {
     throw new Error('Thiếu ảnh để thực hiện OCR');
+  }
+
+  if (blob.type && (blob.type.includes('html') || blob.type.includes('text') || blob.type.includes('svg'))) {
+    throw new Error(`Dữ liệu nhận về không phải ảnh hợp lệ (${blob.type})`);
   }
 
   const bitmap = await createImageBitmap(blob);

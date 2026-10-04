@@ -9,7 +9,11 @@ import { ApiRateLimiter } from '../services/translation/rate-limiter';
 import { ApiKeyRotator } from '../services/translation/api-key-rotator';
 import { ocrWorkerClient } from './ocr-worker-client';
 import { ImageFetcher } from './image-fetcher';
+import { DnrManager } from './dnr-rules';
 import { DebugLogger } from '../shared/debug-logger';
+
+// Initialize DeclarativeNetRequest rules for anti-hotlinking & CORS
+DnrManager.init().catch(() => {});
 
 // ---------------------------------------------------------------------------
 // Global error catching for Background Service Worker / Event Page
@@ -167,7 +171,7 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
               };
             }
 
-            const { base64Data, mimeType } = await ImageFetcher.getBase64Data(dataUrl, imageUrl);
+            const { base64Data, mimeType } = await ImageFetcher.getBase64Data(dataUrl, imageUrl, msg.chapterUrl);
             const targetLang = settings.targetLanguage || 'Tiếng Việt';
             const width = msg.naturalWidth || msg.width || 800;
             const height = msg.naturalHeight || msg.height || 1200;
@@ -223,9 +227,23 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
           return { success: false, error: err.message };
         }
 
-        // 4. Run PaddleOCR / Comic-Det in Web Worker
+        // 4. Ensure image dataUrl is resolved via background if tainted/missing
+        let ocrDataUrl = dataUrl;
+        if (!ocrDataUrl && imageUrl && !imageUrl.startsWith('data:image/svg')) {
+          try {
+            const { base64Data, mimeType } = await ImageFetcher.getBase64Data(undefined, imageUrl, msg.chapterUrl);
+            ocrDataUrl = `data:${mimeType};base64,${base64Data}`;
+          } catch (e: any) {
+            DebugLogger.warn('Background:OCR', `Không thể tải trước ảnh: ${e.message}`);
+          }
+        }
+
+        // 5. Run PaddleOCR / Comic-Det in Web Worker
         try {
-          const { dialogues, width, height } = await ocrWorkerClient.runOcr({ dataUrl, imageUrl });
+          const { dialogues, width, height } = await ocrWorkerClient.runOcr({
+            dataUrl: ocrDataUrl,
+            imageUrl
+          });
           return { success: true, cached: false, dialogues, naturalWidth: width, naturalHeight: height };
         } catch (err: any) {
           return { success: false, error: err.message || 'Lỗi nhận diện OCR' };

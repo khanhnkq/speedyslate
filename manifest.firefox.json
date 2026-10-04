@@ -48,7 +48,8 @@
     }
   ],
   "permissions": [
-    "storage"
+    "storage",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "https://*/*",

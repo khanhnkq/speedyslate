@@ -36,9 +36,11 @@ export class TaskProcessor {
     if (this.ctx.completedImages.has(task.img)) return;
 
     const img = task.img;
-    const imageUrl = img.src;
     const wrapper = img.parentElement;
     if (!wrapper) return;
+
+    // Trigger lazy loading first
+    ToonheyAdapter.forceTriggerImage(img);
 
     const settings = this.ctx.getSettings();
     const isVision = settings?.translationMode === 'vision_ai';
@@ -47,12 +49,20 @@ export class TaskProcessor {
 
     try {
       if (!img.complete || img.naturalWidth === 0) {
-        ToonheyAdapter.forceTriggerImage(img);
         await new Promise((resolve) => {
           img.onload = resolve;
           img.onerror = resolve;
-          setTimeout(resolve, 3000);
+          setTimeout(resolve, 3500);
         });
+      }
+
+      // Determine real image URL (strictly ignore SVG/data-url placeholders)
+      const rawSrc = img.dataset.src || img.getAttribute('data-src') || img.src;
+      let imageUrl = (rawSrc && !rawSrc.startsWith('data:image/svg')) ? rawSrc : img.src;
+      if (imageUrl.startsWith('//')) {
+        imageUrl = window.location.protocol + imageUrl;
+      } else if (imageUrl.startsWith('/')) {
+        imageUrl = window.location.origin + imageUrl;
       }
 
       img.dataset.slateStatus = 'ocr_running';

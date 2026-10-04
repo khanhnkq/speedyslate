@@ -2488,58 +2488,6 @@
         compressedHeight: targetHeight
       };
     }
-    /**
-     * Slices a tall continuous webtoon image strip into standard page-sized chunks
-     * (e.g. 2200px height with 150px overlap) for high-accuracy Vision AI / OCR.
-     */
-    static sliceForProcessing(img, maxSliceHeight = 2200, overlap = 150, quality = 0.85) {
-      const naturalWidth = img.naturalWidth || img.width || 800;
-      const naturalHeight = img.naturalHeight || img.height || 1200;
-      if (naturalHeight <= maxSliceHeight + 200) {
-        const compressed = this.compressForVision(img, 1280, quality);
-        if (compressed.dataUrl) {
-          return [
-            {
-              dataUrl: compressed.dataUrl,
-              startY: 0,
-              sliceHeight: naturalHeight,
-              naturalWidth,
-              naturalHeight
-            }
-          ];
-        }
-        return [];
-      }
-      let targetWidth = naturalWidth;
-      if (naturalWidth > 1280) {
-        targetWidth = 1280;
-      }
-      const slices = [];
-      const step = maxSliceHeight - overlap;
-      for (let startY = 0; startY < naturalHeight; startY += step) {
-        const currentH = Math.min(maxSliceHeight, naturalHeight - startY);
-        const targetH = naturalWidth > 1280 ? Math.round(currentH / naturalWidth * 1280) : currentH;
-        try {
-          const canvas = document.createElement("canvas");
-          canvas.width = targetWidth;
-          canvas.height = targetH;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) continue;
-          ctx.drawImage(img, 0, startY, naturalWidth, currentH, 0, 0, targetWidth, targetH);
-          const dataUrl = canvas.toDataURL("image/jpeg", quality);
-          slices.push({
-            dataUrl,
-            startY,
-            sliceHeight: currentH,
-            naturalWidth,
-            naturalHeight
-          });
-        } catch {
-          break;
-        }
-      }
-      return slices;
-    }
   };
 
   // src/content/task-processor.ts
@@ -2583,10 +2531,6 @@
         }
         const naturalWidth = img.naturalWidth || img.width || 800;
         const naturalHeight = img.naturalHeight || img.height || 1200;
-        if (isVision && naturalHeight > 2200) {
-          await this.processVisionStrip(task, wrapper, imageUrl, naturalWidth, naturalHeight);
-          return;
-        }
         img.dataset.slateStatus = "ocr_running";
         PageBadgeManager.updateBadge(
           wrapper,
@@ -2601,8 +2545,8 @@
           imageUrl,
           chapterUrl: window.location.href,
           dataUrl: compressed.dataUrl,
-          naturalWidth: compressed.naturalWidth,
-          naturalHeight: compressed.naturalHeight
+          naturalWidth,
+          naturalHeight
         });
         if (resp?.isContextInvalidated) {
           this.ctx.onContextInvalidated();
@@ -2795,154 +2739,6 @@
           this.ctx.hud.setState("error");
         }
       }
-    }
-    /**
-     * Slices tall continuous webtoon strips into individual page chunks (e.g. 2200px each)
-     * for Vision AI to avoid horizontal squashing, box displacement, and hallucinated panels.
-     */
-    async processVisionStrip(task, wrapper, imageUrl, naturalWidth, naturalHeight) {
-      const img = task.img;
-      const settings = this.ctx.getSettings();
-      const totalKeys = this.getKeyCount();
-      const estimatedKey = totalKeys > 0 ? task.index % totalKeys + 1 : void 0;
-      if (imageUrl) {
-        try {
-          const cacheCheck = await SafeMessenger.send({
-            action: "OCR_IMAGE",
-            imageUrl,
-            chapterUrl: window.location.href
-          });
-          if (cacheCheck?.success && cacheCheck.cached) {
-            if (cacheCheck.dialogues && cacheCheck.dialogues.length > 0) {
-              OverlayRenderer.renderDialogues(
-                wrapper,
-                cacheCheck.dialogues,
-                naturalWidth,
-                naturalHeight,
-                settings?.bubbleTheme || "auto"
-              );
-              img.dataset.slateStatus = "translated";
-              PageBadgeManager.updateBadge(wrapper, task.index, "translated", cacheCheck.dialogues.length);
-              this.ctx.hud.log(`Trang #${task.index + 1}: N\u1EA1p t\u1EEB Cache (0ms)`);
-            } else {
-              img.dataset.slateStatus = "no_text";
-              PageBadgeManager.updateBadge(wrapper, task.index, "no_text");
-              this.ctx.hud.log(`Trang #${task.index + 1}: Kh\xF4ng c\xF3 ch\u1EEF tho\u1EA1i`);
-            }
-            this.ctx.markImageCompleted(img);
-            return;
-          }
-        } catch {
-        }
-      }
-      const slices = ImageCompressor.sliceForProcessing(img, 2200, 150);
-      if (slices.length === 0) {
-        img.dataset.slateStatus = "error";
-        PageBadgeManager.updateBadge(wrapper, task.index, "error", void 0, { errorMessage: "Kh\xF4ng th\u1EC3 ph\xE2n \u0111o\u1EA1n \u1EA3nh" });
-        return;
-      }
-      img.dataset.slateStatus = "ocr_running";
-      PageBadgeManager.updateBadge(
-        wrapper,
-        task.index,
-        "ocr_running",
-        void 0,
-        totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : void 0
-      );
-      const allDialogues = [];
-      let lastKeyIndex = estimatedKey;
-      for (let sIdx = 0; sIdx < slices.length; sIdx++) {
-        const slice = slices[sIdx];
-        this.ctx.hud.log(
-          `Trang #${task.index + 1}: Vision AI \u0111ang d\u1ECBch \u0111o\u1EA1n ${sIdx + 1}/${slices.length}...`
-        );
-        const resp = await SafeMessenger.send({
-          action: "OCR_IMAGE",
-          chapterUrl: window.location.href,
-          dataUrl: slice.dataUrl,
-          naturalWidth: slice.naturalWidth,
-          naturalHeight: slice.sliceHeight
-        });
-        if (resp?.isContextInvalidated) {
-          this.ctx.onContextInvalidated();
-          return;
-        }
-        if (resp?.success && Array.isArray(resp.dialogues)) {
-          if (resp.keyIndex) lastKeyIndex = resp.keyIndex;
-          for (const d of resp.dialogues) {
-            if (!d.normBox) continue;
-            const sliceH = slice.sliceHeight;
-            const slicePixelYmin = d.normBox.ymin / 1e3 * sliceH;
-            const slicePixelYmax = d.normBox.ymax / 1e3 * sliceH;
-            const globalPixelYmin = slice.startY + slicePixelYmin;
-            const globalPixelYmax = slice.startY + slicePixelYmax;
-            const globalNormYmin = Math.round(globalPixelYmin / naturalHeight * 1e3);
-            const globalNormYmax = Math.round(globalPixelYmax / naturalHeight * 1e3);
-            const remappedDialogue = {
-              ...d,
-              box: {
-                x: Math.round(d.normBox.xmin / 1e3 * naturalWidth),
-                y: Math.round(globalPixelYmin),
-                width: Math.round((d.normBox.xmax - d.normBox.xmin) / 1e3 * naturalWidth),
-                height: Math.round(globalPixelYmax - globalPixelYmin),
-                confidence: d.box?.confidence ?? 0.95
-              },
-              normBox: {
-                ymin: globalNormYmin,
-                xmin: d.normBox.xmin,
-                ymax: globalNormYmax,
-                xmax: d.normBox.xmax
-              }
-            };
-            if (slice.startY > 0 && slicePixelYmin < 180) {
-              const isDup = allDialogues.some((existing) => {
-                if (!existing.normBox) return false;
-                const yDiff = Math.abs(existing.normBox.ymin - globalNormYmin);
-                const xDiff = Math.abs(existing.normBox.xmin - d.normBox.xmin);
-                return yDiff < 20 && xDiff < 25;
-              });
-              if (isDup) continue;
-            }
-            allDialogues.push(remappedDialogue);
-          }
-        }
-      }
-      if (allDialogues.length > 0) {
-        OverlayRenderer.renderDialogues(
-          wrapper,
-          allDialogues,
-          naturalWidth,
-          naturalHeight,
-          settings?.bubbleTheme || "auto"
-        );
-        img.dataset.slateStatus = "translated";
-        PageBadgeManager.updateBadge(
-          wrapper,
-          task.index,
-          "translated",
-          allDialogues.length,
-          lastKeyIndex ? { keyIndex: lastKeyIndex, totalKeys } : void 0
-        );
-        this.ctx.hud.log(
-          `Trang #${task.index + 1}: Vision AI \u0111\xE3 ho\xE0n t\u1EA5t ${allDialogues.length} c\xE2u tho\u1EA1i`
-        );
-        if (imageUrl) {
-          SafeMessenger.send({
-            action: "SAVE_TRANSLATION",
-            imageUrl,
-            chapterUrl: window.location.href,
-            dialogues: allDialogues,
-            width: naturalWidth,
-            height: naturalHeight
-          }).catch(() => {
-          });
-        }
-      } else {
-        img.dataset.slateStatus = "no_text";
-        PageBadgeManager.updateBadge(wrapper, task.index, "no_text");
-        this.ctx.hud.log(`Trang #${task.index + 1}: Kh\xF4ng t\xECm th\u1EA5y ch\u1EEF tho\u1EA1i`);
-      }
-      this.ctx.markImageCompleted(img);
     }
   };
 

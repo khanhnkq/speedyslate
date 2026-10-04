@@ -10,6 +10,7 @@ import { ApiKeyRotator } from '../services/translation/api-key-rotator';
 import { ocrWorkerClient } from './ocr-worker-client';
 import { ImageFetcher } from './image-fetcher';
 import { DnrManager } from './dnr-rules';
+import { VisionStripSlicer } from '../services/translation/vision-strip-slicer';
 import { DebugLogger } from '../shared/debug-logger';
 
 // Initialize DeclarativeNetRequest rules for anti-hotlinking & CORS
@@ -196,8 +197,15 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
               ? Math.max(200, Math.round(baseDelay / keyCount))
               : baseDelay;
 
-            const dialogues = await ApiRateLimiter.throttle(minDelayMs, () =>
-              provider.translateImage!(base64Data, mimeType, targetLang, width, height)
+            // Automatically slice tall continuous webtoon strips (>2200px) in background
+            const dialogues = await VisionStripSlicer.processStrip(
+              base64Data,
+              mimeType,
+              width,
+              height,
+              provider,
+              targetLang,
+              minDelayMs
             );
 
             // Save to Cache DB

@@ -12,7 +12,7 @@ interface PresetDnrConfig {
 const PRESET_RULES: PresetDnrConfig[] = [
   {
     id: 1,
-    domains: ['toonily.com', 'toonily.net', 'toonily.me'],
+    domains: ['toonily.com', 'toonily.net', 'toonily.me', 'tnlycdn.com'],
     referer: 'https://toonily.com/'
   },
   {

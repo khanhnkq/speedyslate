@@ -241,14 +241,15 @@ RULES FOR COMIC TRANSLATION:
 Analyze the comic page image.
 
 TASK:
-1. Detect all character speech bubbles, inner thought bubbles, and narrator text boxes.
+1. Detect all character speech dialogues, inner thoughts, and narrator text boxes.
 2. For each detected dialogue:
-   - Provide a tight 2D bounding box normalized to 0-1000 scale: [ymin, xmin, ymax, xmax].
+   - Provide a tight 2D bounding box normalized to 0-1000 scale: [ymin, xmin, ymax, xmax] tightly enclosing the printed TEXT itself inside the speech bubble.
+     CRITICAL: Bounding box must tightly wrap the printed text lines to be replaced. Do NOT include the empty bubble margins or the speech bubble tail pointing to the character.
    - Transcribe original text.
    - Translate into natural, expressive, emotionally fitting ${targetLang}. Understand character gender, relationship, tone, and comic atmosphere from the visual drawings to pick proper pronouns.
    - Classify the bubble background color style:
-     * "dark": speech bubble has black or dark background with white/light text (e.g. demonic, angry, horror, shock).
-     * "light": speech bubble has white or light background with dark/black text (standard comic speech bubble).
+     * "dark": speech bubble has black or dark background with white/light text.
+     * "light": speech bubble has white or light background with dark/black text.
 
 CRITICAL NEGATIVE CONSTRAINTS:
 - NEVER translate sound effects (SFX / onomatopoeia like "BOOM", "SWOOSH", "RUSTLE", "HAAA..."). Ignore them completely!
@@ -268,7 +269,7 @@ CRITICAL NEGATIVE CONSTRAINTS:
               }
             },
             {
-              text: `Detect all character speech bubbles and narrator boxes in this comic image. Translate to ${targetLang}. Never translate sound effects (SFX). Return JSON array.`
+              text: `Detect all character dialogue text in this comic image. Bounding box [ymin, xmin, ymax, xmax] must tightly wrap the TEXT itself (not the bubble tail). Translate to ${targetLang}. Never translate sound effects (SFX). Return JSON array.`
             }
           ]
         }
@@ -283,7 +284,7 @@ CRITICAL NEGATIVE CONSTRAINTS:
               box_2d: {
                 type: 'ARRAY',
                 items: { type: 'INTEGER' },
-                description: '[ymin, xmin, ymax, xmax] coordinates normalized 0-1000'
+                description: '[ymin, xmin, ymax, xmax] tight bounding box of dialogue TEXT itself (excluding bubble tail), normalized 0-1000'
               },
               original_text: { type: 'STRING' },
               translation: { type: 'STRING' },

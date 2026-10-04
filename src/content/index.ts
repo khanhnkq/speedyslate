@@ -197,31 +197,45 @@ class SpeedySlateContentApp {
     }
   }
 
+  private isDetecting = false;
+
   private detectImages(): void {
-    const rawImages = ToonheyAdapter.getChapterImages();
-    let newFound = 0;
+    if (this.isDetecting) return;
+    this.isDetecting = true;
+    try {
+      const rawImages = ToonheyAdapter.getChapterImages();
+      let newFound = 0;
 
-    for (const img of rawImages) {
-      if (!this.images.includes(img)) {
-        ToonheyAdapter.wrapImage(img);
-        this.images.push(img);
-        const index = this.images.length - 1;
-        if (img.parentElement) {
-          PageBadgeManager.ensureBadge(img.parentElement, index);
+      for (const img of rawImages) {
+        if (!this.images.includes(img)) {
+          ToonheyAdapter.wrapImage(img);
+          this.images.push(img);
+          const index = this.images.length - 1;
+          if (img.parentElement) {
+            PageBadgeManager.ensureBadge(img.parentElement, index);
+          }
+          newFound++;
         }
-        newFound++;
       }
-    }
 
-    if (newFound > 0) {
-      this.hud.updateStatus(this.completedImages.size, this.images.length);
-      this.hud.log(`Da phat hien ${this.images.length} trang truyen`);
+      if (newFound > 0) {
+        this.images.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+        this.images.forEach((img, idx) => {
+          if (img.parentElement) {
+            PageBadgeManager.ensureBadge(img.parentElement, idx);
+          }
+        });
+        this.hud.updateStatus(this.completedImages.size, this.images.length);
+        this.hud.log(`Da phat hien ${this.images.length} trang truyen`);
 
-      if (this.hud.getState() === 'translating') {
-        this.enqueueAllImages();
-      } else {
-        this.restoreCachedTranslations();
+        if (this.hud.getState() === 'translating') {
+          this.enqueueAllImages();
+        } else {
+          this.restoreCachedTranslations();
+        }
       }
+    } finally {
+      this.isDetecting = false;
     }
   }
 
@@ -254,8 +268,8 @@ class SpeedySlateContentApp {
               OverlayRenderer.renderDialogues(
                 wrapper,
                 cached.dialogues,
-                cached.naturalWidth || img.naturalWidth || 800,
-                cached.naturalHeight || img.naturalHeight || 1200,
+                img.naturalWidth || cached.naturalWidth || 800,
+                img.naturalHeight || cached.naturalHeight || 1200,
                 (this.settings?.bubbleTheme || 'auto') as BubbleTheme
               );
               img.dataset.slateStatus = 'translated';
@@ -280,8 +294,12 @@ class SpeedySlateContentApp {
   }
 
   private setupMutationObserver(): void {
+    let debounceTimer: any = null;
     this.mutationObserver = new MutationObserver(() => {
-      this.detectImages();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        this.detectImages();
+      }, 300);
     });
     this.mutationObserver.observe(document.body || document.documentElement, {
       childList: true,
@@ -296,7 +314,12 @@ class SpeedySlateContentApp {
           if (entry.isIntersecting) {
             const img = entry.target as HTMLImageElement;
             const index = this.images.indexOf(img);
-            if (index !== -1 && !this.completedImages.has(img) && this.hud.getState() === 'translating') {
+            if (
+              index !== -1 &&
+              !this.completedImages.has(img) &&
+              (!img.dataset.slateStatus || img.dataset.slateStatus === 'error') &&
+              this.hud.getState() === 'translating'
+            ) {
               this.ocrQueue.enqueue({ index, img });
             }
           }
@@ -313,7 +336,10 @@ class SpeedySlateContentApp {
   private enqueueAllImages(): void {
     for (let i = 0; i < this.images.length; i++) {
       const img = this.images[i];
-      if (!this.completedImages.has(img)) {
+      if (
+        !this.completedImages.has(img) &&
+        (!img.dataset.slateStatus || img.dataset.slateStatus === 'error')
+      ) {
         this.ocrQueue.enqueue({ index: i, img });
       }
     }

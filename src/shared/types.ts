@@ -14,6 +14,12 @@ export interface BoundingBox {
 export interface DialogueItem {
   id: string;
   box: BoundingBox;
+  normBox?: {
+    ymin: number;
+    xmin: number;
+    ymax: number;
+    xmax: number;
+  };
   originalText: string;
   translatedText?: string;
   isDarkBackground?: boolean;

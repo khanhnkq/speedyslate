@@ -1695,16 +1695,27 @@
       for (const item of dialogues) {
         if (!item.translatedText || !item.translatedText.trim()) continue;
         const box = item.box;
-        const expandX = Math.min(box.width * 0.08, 12);
-        const expandY = Math.min(box.height * 0.06, 8);
-        const adjX = Math.max(0, box.x - expandX / 2);
-        const adjY = Math.max(0, box.y - expandY / 2);
-        const adjW = Math.min(naturalWidth - adjX, box.width + expandX);
-        const adjH = Math.min(naturalHeight - adjY, box.height + expandY);
-        const topPct = adjY / naturalHeight * 100;
-        const leftPct = adjX / naturalWidth * 100;
-        const widthPct = adjW / naturalWidth * 100;
-        const minHeightPct = adjH / naturalHeight * 100;
+        let topPct;
+        let leftPct;
+        let widthPct;
+        let minHeightPct;
+        if (item.normBox) {
+          topPct = item.normBox.ymin / 10;
+          leftPct = item.normBox.xmin / 10;
+          widthPct = Math.max(1, (item.normBox.xmax - item.normBox.xmin) / 10);
+          minHeightPct = Math.max(1, (item.normBox.ymax - item.normBox.ymin) / 10);
+        } else {
+          topPct = box.y / naturalHeight * 100;
+          leftPct = box.x / naturalWidth * 100;
+          widthPct = box.width / naturalWidth * 100;
+          minHeightPct = box.height / naturalHeight * 100;
+        }
+        const expandX = Math.min(widthPct * 0.12, 4);
+        const expandY = Math.min(minHeightPct * 0.1, 3);
+        const finalLeft = Math.max(0, leftPct - expandX / 2);
+        const finalTop = Math.max(0, topPct - expandY / 2);
+        const finalWidth = Math.min(100 - finalLeft, widthPct + expandX);
+        const finalMinHeight = Math.min(100 - finalTop, minHeightPct + expandY);
         const bubble = document.createElement("div");
         bubble.className = "speedyslate-bubble";
         bubble.id = item.id;
@@ -1714,17 +1725,17 @@
         const textColor = isDark ? "#ffffff" : "#000000";
         Object.assign(bubble.style, {
           position: "absolute",
-          top: `${topPct}%`,
-          left: `${leftPct}%`,
-          width: `${widthPct}%`,
-          maxWidth: `${Math.min(85, Math.max(25, widthPct + 4))}%`,
+          top: `${finalTop}%`,
+          left: `${finalLeft}%`,
+          width: `${finalWidth}%`,
+          minHeight: `${finalMinHeight}%`,
           height: "auto",
-          minHeight: `${minHeightPct}%`,
           backgroundColor: bg,
           color: textColor,
           border: "none",
           outline: "none",
-          borderRadius: "4px",
+          boxShadow: "none",
+          borderRadius: "3px",
           boxSizing: "border-box",
           padding: "2px 4px",
           display: "flex",
@@ -1742,10 +1753,13 @@
           whiteSpace: "pre-wrap",
           wordBreak: "break-word",
           overflowWrap: "anywhere",
-          hyphens: "auto",
-          boxShadow: "none"
+          hyphens: "auto"
         });
-        const fontSize = this.calculateFontSize(adjW, adjH, item.translatedText.length);
+        const fontSize = this.calculateFontSize(
+          finalWidth / 100 * naturalWidth,
+          finalMinHeight / 100 * naturalHeight,
+          item.translatedText.length
+        );
         bubble.style.fontSize = `${fontSize}px`;
         bubble.textContent = item.translatedText;
         bubble.addEventListener("mouseenter", () => {
@@ -1762,9 +1776,11 @@
      */
     static calculateFontSize(boxW, boxH, textLength) {
       const area = boxW * boxH;
-      let base = Math.sqrt(area / Math.max(1, textLength)) * 0.92;
-      base = Math.max(11, Math.min(20, Math.round(base)));
-      return base;
+      let base = Math.sqrt(area / Math.max(1, textLength)) * 1.18;
+      if (boxH >= 35) {
+        base = Math.max(14, base);
+      }
+      return Math.max(13, Math.min(22, Math.round(base)));
     }
     /**
      * Toggles visibility of all translated overlays on the page
@@ -1911,10 +1927,14 @@
       for (const selector of this.CONTAINER_SELECTORS) {
         const container = document.querySelector(selector);
         if (container && !this.isInsideExcludedZone(container)) {
+          const madaraImgs = Array.from(container.querySelectorAll("img.wp-manga-chapter-img")).filter((img) => !this.isInsideExcludedZone(img) && !img.classList.contains("speedyslate-ignore"));
+          if (madaraImgs.length >= 1) {
+            return madaraImgs.sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
+          }
           const imgs = Array.from(container.querySelectorAll("img"));
           const validComicPanels = imgs.filter((img) => this.isGenuineComicPanel(img));
           if (validComicPanels.length >= 1) {
-            return validComicPanels;
+            return validComicPanels.sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
           }
         }
       }
@@ -2058,6 +2078,8 @@
       wrapper.style.width = "100%";
       wrapper.style.margin = "0 auto";
       wrapper.style.lineHeight = "0";
+      wrapper.style.boxSizing = "border-box";
+      wrapper.style.overflow = "hidden";
       img.parentElement?.insertBefore(wrapper, img);
       wrapper.appendChild(img);
       return wrapper;
@@ -2476,7 +2498,10 @@
     async processOcrTask(task) {
       if (this.ctx.completedImages.has(task.img)) return;
       const img = task.img;
-      const wrapper = img.parentElement;
+      if (img.dataset.slateStatus && img.dataset.slateStatus !== "error") {
+        return;
+      }
+      const wrapper = ToonheyAdapter.wrapImage(img);
       if (!wrapper) return;
       ToonheyAdapter.forceTriggerImage(img);
       const settings = this.ctx.getSettings();
@@ -2522,11 +2547,13 @@
         if (resp?.success) {
           if (resp.cached || resp.isDirectTranslation) {
             if (resp.dialogues && resp.dialogues.length > 0) {
+              const renderW = img.naturalWidth || resp.naturalWidth || compressed.naturalWidth;
+              const renderH = img.naturalHeight || resp.naturalHeight || compressed.naturalHeight;
               OverlayRenderer.renderDialogues(
                 wrapper,
                 resp.dialogues,
-                resp.naturalWidth || compressed.naturalWidth,
-                resp.naturalHeight || compressed.naturalHeight,
+                renderW,
+                renderH,
                 settings?.bubbleTheme || "auto"
               );
               img.dataset.slateStatus = "translated";
@@ -2605,7 +2632,10 @@
     async processTranslationTask(task) {
       if (this.ctx.completedImages.has(task.img)) return;
       const img = task.img;
-      const wrapper = img.parentElement;
+      if (img.dataset.slateStatus === "translated" || img.dataset.slateStatus === "translating") {
+        return;
+      }
+      const wrapper = ToonheyAdapter.wrapImage(img);
       if (!wrapper) return;
       const settings = this.ctx.getSettings();
       const totalKeys = this.getKeyCount();
@@ -2622,9 +2652,16 @@
         this.ctx.hud.log(
           `Trang #${task.index + 1}${totalKeys > 1 ? ` (Key #${estimatedKey}/${totalKeys})` : ""}: \u0110ang d\u1ECBch ${task.dialogues.length} c\xE2u tho\u1EA1i...`
         );
+        const rawSrc = img.dataset.src || img.getAttribute("data-src") || img.src;
+        let imageUrl = rawSrc && !rawSrc.startsWith("data:image/svg") ? rawSrc : img.src;
+        if (imageUrl.startsWith("//")) {
+          imageUrl = window.location.protocol + imageUrl;
+        } else if (imageUrl.startsWith("/")) {
+          imageUrl = window.location.origin + imageUrl;
+        }
         const resp = await SafeMessenger.send({
           action: "TRANSLATE_DIALOGUES",
-          imageUrl: img.src,
+          imageUrl,
           chapterUrl: window.location.href,
           dialogues: task.dialogues,
           naturalWidth: task.naturalWidth,
@@ -2635,11 +2672,13 @@
           return;
         }
         if (resp?.success && Array.isArray(resp.dialogues)) {
+          const renderW = img.naturalWidth || task.naturalWidth;
+          const renderH = img.naturalHeight || task.naturalHeight;
           OverlayRenderer.renderDialogues(
             wrapper,
             resp.dialogues,
-            task.naturalWidth,
-            task.naturalHeight,
+            renderW,
+            renderH,
             settings?.bubbleTheme || "auto"
           );
           img.dataset.slateStatus = "translated";
@@ -2852,28 +2891,41 @@
         this.hud.log(`Loi kiem tra model: ${err.message}`, true);
       }
     }
+    isDetecting = false;
     detectImages() {
-      const rawImages = ToonheyAdapter.getChapterImages();
-      let newFound = 0;
-      for (const img of rawImages) {
-        if (!this.images.includes(img)) {
-          ToonheyAdapter.wrapImage(img);
-          this.images.push(img);
-          const index = this.images.length - 1;
-          if (img.parentElement) {
-            PageBadgeManager.ensureBadge(img.parentElement, index);
+      if (this.isDetecting) return;
+      this.isDetecting = true;
+      try {
+        const rawImages = ToonheyAdapter.getChapterImages();
+        let newFound = 0;
+        for (const img of rawImages) {
+          if (!this.images.includes(img)) {
+            ToonheyAdapter.wrapImage(img);
+            this.images.push(img);
+            const index = this.images.length - 1;
+            if (img.parentElement) {
+              PageBadgeManager.ensureBadge(img.parentElement, index);
+            }
+            newFound++;
           }
-          newFound++;
         }
-      }
-      if (newFound > 0) {
-        this.hud.updateStatus(this.completedImages.size, this.images.length);
-        this.hud.log(`Da phat hien ${this.images.length} trang truyen`);
-        if (this.hud.getState() === "translating") {
-          this.enqueueAllImages();
-        } else {
-          this.restoreCachedTranslations();
+        if (newFound > 0) {
+          this.images.sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
+          this.images.forEach((img, idx) => {
+            if (img.parentElement) {
+              PageBadgeManager.ensureBadge(img.parentElement, idx);
+            }
+          });
+          this.hud.updateStatus(this.completedImages.size, this.images.length);
+          this.hud.log(`Da phat hien ${this.images.length} trang truyen`);
+          if (this.hud.getState() === "translating") {
+            this.enqueueAllImages();
+          } else {
+            this.restoreCachedTranslations();
+          }
         }
+      } finally {
+        this.isDetecting = false;
       }
     }
     async restoreCachedTranslations() {
@@ -2898,8 +2950,8 @@
                 OverlayRenderer.renderDialogues(
                   wrapper,
                   cached.dialogues,
-                  cached.naturalWidth || img.naturalWidth || 800,
-                  cached.naturalHeight || img.naturalHeight || 1200,
+                  img.naturalWidth || cached.naturalWidth || 800,
+                  img.naturalHeight || cached.naturalHeight || 1200,
                   this.settings?.bubbleTheme || "auto"
                 );
                 img.dataset.slateStatus = "translated";
@@ -2921,8 +2973,12 @@
       }
     }
     setupMutationObserver() {
+      let debounceTimer = null;
       this.mutationObserver = new MutationObserver(() => {
-        this.detectImages();
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          this.detectImages();
+        }, 300);
       });
       this.mutationObserver.observe(document.body || document.documentElement, {
         childList: true,
@@ -2936,7 +2992,7 @@
             if (entry.isIntersecting) {
               const img = entry.target;
               const index = this.images.indexOf(img);
-              if (index !== -1 && !this.completedImages.has(img) && this.hud.getState() === "translating") {
+              if (index !== -1 && !this.completedImages.has(img) && (!img.dataset.slateStatus || img.dataset.slateStatus === "error") && this.hud.getState() === "translating") {
                 this.ocrQueue.enqueue({ index, img });
               }
             }
@@ -2951,7 +3007,7 @@
     enqueueAllImages() {
       for (let i = 0; i < this.images.length; i++) {
         const img = this.images[i];
-        if (!this.completedImages.has(img)) {
+        if (!this.completedImages.has(img) && (!img.dataset.slateStatus || img.dataset.slateStatus === "error")) {
           this.ocrQueue.enqueue({ index: i, img });
         }
       }

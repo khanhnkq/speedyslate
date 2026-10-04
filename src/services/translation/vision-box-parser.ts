@@ -23,8 +23,14 @@ export class VisionBoxParser {
       ).trim();
       if (!translatedText) continue;
 
-      const rawBox = item.box_2d || item.box || item.bounding_box;
+      const rawBox = item.text_box_2d || item.box_2d || item.box || item.bounding_box;
       let ymin = 0, xmin = 0, ymax = 0, xmax = 0;
+
+      // Filter out accidental sound effects (SFX / onomatopoeia)
+      const orig = String(item.original_text || item.text || '').trim();
+      if (/^(haha+|hehe+|kaka+|boom|swoosh|gasp|sigh|pant|thump|crash|bam|clang)$/i.test(orig)) {
+        continue;
+      }
 
       let flatBox: any[] = [];
       if (Array.isArray(rawBox)) {
@@ -59,6 +65,12 @@ export class VisionBoxParser {
       dialogues.push({
         id: `${prefix}_${Date.now()}_${i}`,
         box: { x, y, width, height, confidence: 0.95 },
+        normBox: {
+          ymin: normYmin,
+          xmin: normXmin,
+          ymax: normYmax,
+          xmax: normXmax
+        },
         originalText: String(item.original_text || item.text || '').trim(),
         translatedText,
         isDarkBackground: item.background === 'dark'

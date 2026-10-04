@@ -71,11 +71,18 @@ export class ToonheyAdapter {
     for (const selector of this.CONTAINER_SELECTORS) {
       const container = document.querySelector(selector);
       if (container && !this.isInsideExcludedZone(container)) {
+        // In WordPress Manga / Madara readers (Toonily, etc.), genuine panels have .wp-manga-chapter-img
+        const madaraImgs = Array.from(container.querySelectorAll<HTMLImageElement>('img.wp-manga-chapter-img'))
+          .filter((img) => this.isGenuineComicPanel(img));
+        if (madaraImgs.length >= 1) {
+          return madaraImgs.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+        }
+
         const imgs = Array.from(container.querySelectorAll<HTMLImageElement>('img'));
         const validComicPanels = imgs.filter((img) => this.isGenuineComicPanel(img));
         // Inside dedicated reader containers, even 1 image (e.g. nHentai single-page mode) is a valid panel!
         if (validComicPanels.length >= 1) {
-          return validComicPanels;
+          return validComicPanels.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
         }
       }
     }
@@ -173,7 +180,7 @@ export class ToonheyAdapter {
       'logo', 'avatar', 'icon', 'emoji', 'badge', 'button', 'social',
       'banner', 'advertisement', 'facebook', 'twitter', 'discord',
       'tracker', 'gravatar', 'loading', 'spinner', 'placeholder',
-      'thumb', 'cover', 'recommend', 'related'
+      'thumb', 'cover', 'recommend', 'related', '999.png', 'assets/999'
     ];
 
     for (const kw of ignoredKeywords) {
@@ -256,9 +263,17 @@ export class ToonheyAdapter {
     wrapper.className = 'speedyslate-wrapper';
     wrapper.style.position = 'relative';
     wrapper.style.display = 'block';
-    wrapper.style.width = '100%';
+    wrapper.style.width = 'fit-content';
+    wrapper.style.maxWidth = '100%';
     wrapper.style.margin = '0 auto';
     wrapper.style.lineHeight = '0'; // prevent gaps between comic slices
+    wrapper.style.boxSizing = 'border-box';
+    wrapper.style.overflow = 'hidden';
+
+    // Ensure image matches wrapper bounds exactly with no horizontal margins
+    img.style.display = 'block';
+    img.style.maxWidth = '100%';
+    img.style.height = 'auto';
 
     img.parentElement?.insertBefore(wrapper, img);
     wrapper.appendChild(img);

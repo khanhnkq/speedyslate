@@ -44,13 +44,13 @@ export class BubbleAggregator {
 
           // 1. Font-size / Line-height consistency (lines in the same bubble have similar font size)
           const hRatio = Math.min(lastBox.height, candBox.height) / Math.max(lastBox.height, candBox.height);
-          if (hRatio < 0.6) continue;
+          if (hRatio < 0.45) continue;
 
           // 2. Strict vertical gap: measured from the bottom of the immediate last line
           const verticalGap = candBox.y - (lastBox.y + lastBox.height);
-          // In comics, line spacing is between 0.2x and 2.1x of line height
-          const maxAllowedGap = Math.max(lastBox.height, candBox.height) * 2.1;
-          const isVerticallyAdjacent = verticalGap >= -lastBox.height * 0.4 && verticalGap <= maxAllowedGap;
+          // In comics, line spacing is between 0.2x and 2.8x of line height
+          const maxAllowedGap = Math.max(lastBox.height, candBox.height) * 2.8;
+          const isVerticallyAdjacent = verticalGap >= -lastBox.height * 0.5 && verticalGap <= maxAllowedGap;
           if (!isVerticallyAdjacent) continue;
 
           // 3. Horizontal overlap and center alignment
@@ -65,8 +65,8 @@ export class BubbleAggregator {
           const candCenterX = candBox.x + candBox.width / 2;
           const centerDiffRatio = Math.abs(lastCenterX - candCenterX) / Math.max(1, maxW);
 
-          // Must have either strong overlap (>= 40%) or decent overlap (>= 25%) with centered alignment
-          const isAligned = overlapRatio >= 0.4 || (overlapRatio >= 0.25 && centerDiffRatio <= 0.35);
+          // Lines in a speech bubble are horizontally aligned or centered
+          const isAligned = overlapRatio >= 0.25 || centerDiffRatio <= 0.45;
           if (!isAligned) continue;
 
           // Matched: add candidate line to bubble

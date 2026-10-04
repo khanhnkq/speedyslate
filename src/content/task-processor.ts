@@ -36,7 +36,11 @@ export class TaskProcessor {
     if (this.ctx.completedImages.has(task.img)) return;
 
     const img = task.img;
-    const wrapper = img.parentElement;
+    if (img.dataset.slateStatus && img.dataset.slateStatus !== 'error') {
+      return;
+    }
+
+    const wrapper = ToonheyAdapter.wrapImage(img);
     if (!wrapper) return;
 
     // Trigger lazy loading first
@@ -95,11 +99,13 @@ export class TaskProcessor {
         // 1. Direct result from Cache or Vision AI mode (already fully translated with styling)
         if (resp.cached || resp.isDirectTranslation) {
           if (resp.dialogues && resp.dialogues.length > 0) {
+            const renderW = img.naturalWidth || resp.naturalWidth || compressed.naturalWidth;
+            const renderH = img.naturalHeight || resp.naturalHeight || compressed.naturalHeight;
             OverlayRenderer.renderDialogues(
               wrapper,
               resp.dialogues,
-              resp.naturalWidth || compressed.naturalWidth,
-              resp.naturalHeight || compressed.naturalHeight,
+              renderW,
+              renderH,
               (settings?.bubbleTheme || 'auto') as BubbleTheme
             );
             img.dataset.slateStatus = 'translated';
@@ -183,7 +189,11 @@ export class TaskProcessor {
     if (this.ctx.completedImages.has(task.img)) return;
 
     const img = task.img;
-    const wrapper = img.parentElement;
+    if (img.dataset.slateStatus === 'translated' || img.dataset.slateStatus === 'translating') {
+      return;
+    }
+
+    const wrapper = ToonheyAdapter.wrapImage(img);
     if (!wrapper) return;
 
     const settings = this.ctx.getSettings();
@@ -203,9 +213,17 @@ export class TaskProcessor {
         `Trang #${task.index + 1}${totalKeys > 1 ? ` (Key #${estimatedKey}/${totalKeys})` : ''}: Đang dịch ${task.dialogues.length} câu thoại...`
       );
 
+      const rawSrc = img.dataset.src || img.getAttribute('data-src') || img.src;
+      let imageUrl = (rawSrc && !rawSrc.startsWith('data:image/svg')) ? rawSrc : img.src;
+      if (imageUrl.startsWith('//')) {
+        imageUrl = window.location.protocol + imageUrl;
+      } else if (imageUrl.startsWith('/')) {
+        imageUrl = window.location.origin + imageUrl;
+      }
+
       const resp: any = await SafeMessenger.send({
         action: 'TRANSLATE_DIALOGUES',
-        imageUrl: img.src,
+        imageUrl,
         chapterUrl: window.location.href,
         dialogues: task.dialogues,
         naturalWidth: task.naturalWidth,
@@ -218,11 +236,13 @@ export class TaskProcessor {
       }
 
       if (resp?.success && Array.isArray(resp.dialogues)) {
+        const renderW = img.naturalWidth || task.naturalWidth;
+        const renderH = img.naturalHeight || task.naturalHeight;
         OverlayRenderer.renderDialogues(
           wrapper,
           resp.dialogues,
-          task.naturalWidth,
-          task.naturalHeight,
+          renderW,
+          renderH,
           (settings?.bubbleTheme || 'auto') as BubbleTheme
         );
         img.dataset.slateStatus = 'translated';

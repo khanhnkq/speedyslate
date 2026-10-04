@@ -1,7 +1,7 @@
 import { DialogueItem } from './types';
 
 const CACHE_DB_NAME = 'SpeedySlate_Translation_Cache_DB';
-const CACHE_DB_VERSION = 1;
+const CACHE_DB_VERSION = 2;
 const STORE_NAME = 'chapter_translations';
 
 export interface CachedImageTranslation {
@@ -27,6 +27,9 @@ export class TranslationCacheDb {
         const request = indexedDB.open(CACHE_DB_NAME, CACHE_DB_VERSION);
         request.onupgradeneeded = (e) => {
           const db = (e.target as IDBOpenDBRequest).result;
+          if (e.oldVersion < 2 && db.objectStoreNames.contains(STORE_NAME)) {
+            db.deleteObjectStore(STORE_NAME);
+          }
           if (!db.objectStoreNames.contains(STORE_NAME)) {
             const store = db.createObjectStore(STORE_NAME, { keyPath: 'imageUrl' });
             store.createIndex('chapterUrl', 'chapterUrl', { unique: false });

@@ -19,20 +19,34 @@ export class OverlayRenderer {
       if (!item.translatedText || !item.translatedText.trim()) continue;
 
       const box = item.box;
-      // Controlled elastic breathing room to fit dialogue comfortably without exploding
-      const expandX = Math.min(box.width * 0.08, 12);
-      const expandY = Math.min(box.height * 0.06, 8);
+      let topPct: number;
+      let leftPct: number;
+      let widthPct: number;
+      let minHeightPct: number;
 
-      const adjX = Math.max(0, box.x - expandX / 2);
-      const adjY = Math.max(0, box.y - expandY / 2);
-      const adjW = Math.min(naturalWidth - adjX, box.width + expandX);
-      const adjH = Math.min(naturalHeight - adjY, box.height + expandY);
+      if (item.normBox) {
+        // 1. Vision AI normalized 0-1000 scale -> direct percentage (0% - 100%)
+        topPct = item.normBox.ymin / 10;
+        leftPct = item.normBox.xmin / 10;
+        widthPct = Math.max(1, (item.normBox.xmax - item.normBox.xmin) / 10);
+        minHeightPct = Math.max(1, (item.normBox.ymax - item.normBox.ymin) / 10);
+      } else {
+        // 2. Hybrid OCR pixel coordinates -> direct percentage of natural image dimensions
+        topPct = (box.y / naturalHeight) * 100;
+        leftPct = (box.x / naturalWidth) * 100;
+        widthPct = (box.width / naturalWidth) * 100;
+        minHeightPct = (box.height / naturalHeight) * 100;
+      }
 
-      // Convert pixel box to percentage of original image dimensions
-      const topPct = (adjY / naturalHeight) * 100;
-      const leftPct = (adjX / naturalWidth) * 100;
-      const widthPct = (adjW / naturalWidth) * 100;
-      const minHeightPct = (adjH / naturalHeight) * 100;
+      // Add a modest breathing margin (+4% width, +3% height) so the clean background
+      // completely masks and erases the original printed English text without showing edges
+      const expandX = Math.min(widthPct * 0.12, 4);
+      const expandY = Math.min(minHeightPct * 0.10, 3);
+
+      const finalLeft = Math.max(0, leftPct - expandX / 2);
+      const finalTop = Math.max(0, topPct - expandY / 2);
+      const finalWidth = Math.min(100 - finalLeft, widthPct + expandX);
+      const finalMinHeight = Math.min(100 - finalTop, minHeightPct + expandY);
 
       const bubble = document.createElement('div');
       bubble.className = 'speedyslate-bubble';
@@ -44,20 +58,20 @@ export class OverlayRenderer {
       const bg = isDark ? '#111111' : '#ffffff';
       const textColor = isDark ? '#ffffff' : '#000000';
 
-      // Inline styles: tight, clean comic dialogue overlay
+      // Inline styles: direct bounding box overlay exactly matching Toonhey proven behavior
       Object.assign(bubble.style, {
         position: 'absolute',
-        top: `${topPct}%`,
-        left: `${leftPct}%`,
-        width: `${widthPct}%`,
-        maxWidth: `${Math.min(85, Math.max(25, widthPct + 4))}%`,
+        top: `${finalTop}%`,
+        left: `${finalLeft}%`,
+        width: `${finalWidth}%`,
+        minHeight: `${finalMinHeight}%`,
         height: 'auto',
-        minHeight: `${minHeightPct}%`,
         backgroundColor: bg,
         color: textColor,
         border: 'none',
         outline: 'none',
-        borderRadius: '4px',
+        boxShadow: 'none',
+        borderRadius: '3px',
         boxSizing: 'border-box',
         padding: '2px 4px',
         display: 'flex',
@@ -75,12 +89,15 @@ export class OverlayRenderer {
         whiteSpace: 'pre-wrap',
         wordBreak: 'break-word',
         overflowWrap: 'anywhere',
-        hyphens: 'auto',
-        boxShadow: 'none'
+        hyphens: 'auto'
       });
 
       // Compute adaptive font size based on box dimensions and text length
-      const fontSize = this.calculateFontSize(adjW, adjH, item.translatedText.length);
+      const fontSize = this.calculateFontSize(
+        (finalWidth / 100) * naturalWidth,
+        (finalMinHeight / 100) * naturalHeight,
+        item.translatedText.length
+      );
       bubble.style.fontSize = `${fontSize}px`;
 
       bubble.textContent = item.translatedText;
@@ -102,10 +119,14 @@ export class OverlayRenderer {
    */
   private static calculateFontSize(boxW: number, boxH: number, textLength: number): number {
     const area = boxW * boxH;
-    let base = Math.sqrt(area / Math.max(1, textLength)) * 0.92;
-    // Bound font size between 11px and 20px for comic text readability
-    base = Math.max(11, Math.min(20, Math.round(base)));
-    return base;
+    // Multiplier tuned for clear, bold comic typography in Vietnamese
+    let base = Math.sqrt(area / Math.max(1, textLength)) * 1.18;
+    // If bounding box has decent height (>= 35px), ensure font is at least 14px
+    if (boxH >= 35) {
+      base = Math.max(14, base);
+    }
+    // Strict bounds: minimum 13px (guaranteed readable), maximum 22px (headings/shouts)
+    return Math.max(13, Math.min(22, Math.round(base)));
   }
 
   /**

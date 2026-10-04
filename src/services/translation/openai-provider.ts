@@ -1,14 +1,20 @@
+import { DialogueItem } from '../../shared/types';
 import { ITranslationProvider } from './translation-provider.interface';
+import { ApiKeyRotator } from './api-key-rotator';
 
 export class OpenAIProvider implements ITranslationProvider {
   private baseUrl: string;
-  private apiKey: string;
+  private keyRotator: ApiKeyRotator;
   private model: string;
 
-  constructor(baseUrl: string, apiKey: string, model: string) {
+  constructor(baseUrl: string, apiKey: string | string[], model: string) {
     this.baseUrl = baseUrl.trim().replace(/\/+$/, '');
-    this.apiKey = apiKey.trim();
+    this.keyRotator = new ApiKeyRotator(apiKey);
     this.model = model.trim();
+  }
+
+  public get keyCount(): number {
+    return this.keyRotator.count;
   }
 
   public async translateDialogues(texts: string[], targetLang: string): Promise<string[]> {
@@ -34,29 +40,28 @@ RULES FOR TRANSLATION:
    - Return ONLY a JSON object with a single key "translations" containing an array of strings with the EXACT same length and order:
    {"translations": ["CÓ CHUYỆN GÌ ĐANG XẢY RA TRONG ĐÓ THẾ?", "", "Hừ"]}`;
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-    if (this.apiKey) {
-      headers['Authorization'] = `Bearer ${this.apiKey}`;
-    }
-
     const payload: any = {
       model: this.model,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: JSON.stringify(texts) }
       ],
+      response_format: { type: 'json_object' },
       temperature: 0.3
     };
 
-    // Add json_object response_format if not using older models
-    payload.response_format = { type: 'json_object' };
-
     let resp: Response | null = null;
-    const maxRetries = 3;
+    const maxRetries = Math.max(3, this.keyRotator.count * 2);
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const activeKey = this.keyRotator.getNextKey();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      if (activeKey) {
+        headers['Authorization'] = `Bearer ${activeKey}`;
+      }
+
       resp = await fetch(endpoint, {
         method: 'POST',
         headers,
@@ -67,13 +72,24 @@ RULES FOR TRANSLATION:
         const retryAfterSec = Number(resp.headers.get('retry-after'));
         const backoffMs = !isNaN(retryAfterSec) && retryAfterSec > 0
           ? retryAfterSec * 1000
-          : 2500 * Math.pow(2, attempt) + Math.random() * 500;
+          : 2500 * Math.pow(1.4, Math.min(attempt, 3)) + Math.random() * 500;
 
-        console.warn(`[OpenAI/Groq API] 429 Rate limited. Đang chờ ${Math.round(backoffMs)}ms trước khi thử lại (lần ${attempt + 1}/${maxRetries})...`);
+        this.keyRotator.markRateLimited(activeKey, backoffMs);
+
+        // Instant failover: If we have multiple keys, rotate immediately without sleeping!
+        if (this.keyRotator.count > 1) {
+          console.warn(`[OpenAI/Groq API] Key ...${activeKey.slice(-6)} gặp 429. Đang chuyển sang key khác ngay...`);
+          continue;
+        }
+
+        console.warn(`[OpenAI/Groq API] 429 Rate limited. Đang chờ ${Math.round(backoffMs)}ms...`);
         await new Promise((r) => setTimeout(r, backoffMs));
         continue;
       }
 
+      if (resp.ok) {
+        this.keyRotator.markSuccess(activeKey);
+      }
       break;
     }
 
@@ -126,6 +142,178 @@ RULES FOR TRANSLATION:
     }
 
     throw new Error('Không thể phân tích mảng câu dịch từ phản hồi API.');
+  }
+
+  /**
+   * End-to-end Multimodal Vision AI translation:
+   * Sends comic page image to OpenAI-compatible Vision API (OpenAI, OpenRouter, Groq Vision),
+   * detects speech bubbles + 2D bounding boxes, translates dialogues with full visual context,
+   * and identifies background color (dark/light).
+   * STRICT: Never translates sound effects (SFX / onomatopoeia).
+   */
+  public async translateImage(
+    base64Data: string,
+    mimeType: string,
+    targetLang: string,
+    naturalWidth: number,
+    naturalHeight: number
+  ): Promise<DialogueItem[]> {
+    const endpoint = `${this.baseUrl}/chat/completions`;
+    const systemPrompt = `You are an expert manga, manhwa, and comic visual localization specialist.
+Analyze the comic page image.
+
+TASK:
+1. Detect all character speech bubbles, inner thought bubbles, and narrator text boxes.
+2. For each detected dialogue:
+   - Provide a tight 2D bounding box normalized to 0-1000 scale: [ymin, xmin, ymax, xmax].
+   - Transcribe original text.
+   - Translate into natural, expressive, emotionally fitting ${targetLang}. Understand character gender, relationship, tone, and comic atmosphere from the visual drawings to pick proper pronouns.
+   - Classify the bubble background color style:
+     * "dark": speech bubble has black or dark background with white/light text (e.g. demonic, angry, horror, shock).
+     * "light": speech bubble has white or light background with dark/black text (standard comic speech bubble).
+
+CRITICAL NEGATIVE CONSTRAINTS (STRICTLY FORBIDDEN):
+- DO NOT TRANSLATE SOUND EFFECTS (SFX / onomatopoeia / visual action sounds like "BOOM", "SWOOSH", "CRASH", "CLANG", "THUMP", "RUMBLE", "DOKI", stylized sound drawings). You MUST IGNORE all sound effect graphics completely!
+- DO NOT translate scanlation credits, website URLs (e.g. toonhey.com, asura, reaper), group plugs, or chapter/page numbers.
+
+OUTPUT FORMAT:
+Return ONLY a valid JSON object containing a "dialogues" array:
+{
+  "dialogues": [
+    {
+      "box_2d": [ymin, xmin, ymax, xmax],
+      "original_text": "MICHAEL!",
+      "translation": "MICHAEL!",
+      "background": "light"
+    }
+  ]
+}
+If no character dialogues or narrator boxes are found, return {"dialogues": []}.`;
+
+    const payload: any = {
+      model: this.model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `Detect all character speech bubbles and narrator boxes in this comic image. Translate into ${targetLang}. Never translate sound effects (SFX). Return JSON object.`
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:${mimeType || 'image/jpeg'};base64,${base64Data}`
+              }
+            }
+          ]
+        }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.2
+    };
+
+    let resp: Response | null = null;
+    const maxRetries = Math.max(3, this.keyRotator.count * 2);
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const activeKey = this.keyRotator.getNextKey();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      if (activeKey) {
+        headers['Authorization'] = `Bearer ${activeKey}`;
+      }
+
+      resp = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+      });
+
+      if (resp.status === 429 && attempt < maxRetries) {
+        const retryAfterSec = Number(resp.headers.get('retry-after'));
+        const backoffMs = !isNaN(retryAfterSec) && retryAfterSec > 0
+          ? retryAfterSec * 1000
+          : 2500 * Math.pow(1.4, Math.min(attempt, 3)) + Math.random() * 500;
+
+        this.keyRotator.markRateLimited(activeKey, backoffMs);
+
+        // Instant failover: If we have multiple keys, rotate immediately without sleeping!
+        if (this.keyRotator.count > 1) {
+          console.warn(`[OpenAI/Vision API] Key ...${activeKey.slice(-6)} gặp 429. Đang chuyển sang key khác ngay...`);
+          continue;
+        }
+
+        console.warn(`[OpenAI/Vision API] 429 Rate limited. Đang chờ ${Math.round(backoffMs)}ms...`);
+        await new Promise((r) => setTimeout(r, backoffMs));
+        continue;
+      }
+
+      if (resp.ok) {
+        this.keyRotator.markSuccess(activeKey);
+      }
+      break;
+    }
+
+    if (!resp || !resp.ok) {
+      const errText = resp ? await resp.text() : 'Không thể kết nối';
+      let msg = `Vision API lỗi (${resp?.status || 0})`;
+      try {
+        const json = JSON.parse(errText);
+        if (json.error?.message) msg += `: ${json.error.message}`;
+      } catch {
+        msg += `: ${errText.substring(0, 100)}`;
+      }
+      throw new Error(msg);
+    }
+
+    const data = await resp.json();
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(content.trim());
+      const rawList = Array.isArray(parsed) ? parsed : (parsed.dialogues || parsed.items || []);
+      const dialogues: DialogueItem[] = [];
+
+      for (let i = 0; i < rawList.length; i++) {
+        const item = rawList[i];
+        if (!item || !item.translation) continue;
+
+        const box2d = item.box_2d || item.box;
+        if (!Array.isArray(box2d) || box2d.length < 4) continue;
+
+        const [ymin, xmin, ymax, xmax] = box2d;
+        const normYmin = Math.min(ymin, ymax);
+        const normYmax = Math.max(ymin, ymax);
+        const normXmin = Math.min(xmin, xmax);
+        const normXmax = Math.max(xmin, xmax);
+
+        const x = Math.round((normXmin / 1000) * naturalWidth);
+        const y = Math.round((normYmin / 1000) * naturalHeight);
+        const width = Math.round(((normXmax - normXmin) / 1000) * naturalWidth);
+        const height = Math.round(((normYmax - normYmin) / 1000) * naturalHeight);
+
+        if (width < 8 || height < 8) continue;
+
+        dialogues.push({
+          id: `slate_vision_${Date.now()}_${i}`,
+          box: { x, y, width, height, confidence: 0.95 },
+          originalText: String(item.original_text || item.text || '').trim(),
+          translatedText: String(item.translation).trim(),
+          isDarkBackground: item.background === 'dark'
+        });
+      }
+
+      return dialogues;
+    } catch (e: any) {
+      console.error('[OpenAI Vision] Lỗi phân tích JSON:', content, e);
+      throw new Error('Không thể phân tích dữ liệu tọa độ hộp thoại từ Vision API.');
+    }
   }
 
   public async testConnection(): Promise<boolean> {

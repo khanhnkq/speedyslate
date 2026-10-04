@@ -1107,6 +1107,7 @@
     }
   };
   var DEFAULT_SETTINGS = {
+    translationMode: "hybrid_ocr",
     activeProvider: "gemini",
     providers: {
       gemini: {
@@ -2141,6 +2142,74 @@
     }
   };
 
+  // src/content/image-compressor.ts
+  var ImageCompressor = class {
+    /**
+     * Captures and downsizes an image for Vision AI transmission.
+     */
+    static compressForVision(img, maxDim = 1280, quality = 0.85) {
+      const naturalWidth = img.naturalWidth || img.width || 800;
+      const naturalHeight = img.naturalHeight || img.height || 1200;
+      let targetWidth = naturalWidth;
+      let targetHeight = naturalHeight;
+      if (Math.max(naturalWidth, naturalHeight) > maxDim) {
+        if (naturalWidth > naturalHeight) {
+          targetWidth = maxDim;
+          targetHeight = Math.round(naturalHeight / naturalWidth * maxDim);
+        } else {
+          targetHeight = maxDim;
+          targetWidth = Math.round(naturalWidth / naturalHeight * maxDim);
+        }
+      }
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+          const dataUrl = canvas.toDataURL("image/jpeg", quality);
+          return {
+            dataUrl,
+            naturalWidth,
+            naturalHeight,
+            compressedWidth: targetWidth,
+            compressedHeight: targetHeight
+          };
+        }
+      } catch {
+      }
+      return {
+        naturalWidth,
+        naturalHeight,
+        compressedWidth: targetWidth,
+        compressedHeight: targetHeight
+      };
+    }
+  };
+
+  // src/content/missing-banner.ts
+  var ModelMissingBanner = class {
+    static show() {
+      if (document.getElementById("speedyslate-missing-banner")) return;
+      const banner = document.createElement("div");
+      banner.id = "speedyslate-missing-banner";
+      banner.style.cssText = `
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      background: #111111; color: #F5F5F4; padding: 10px 18px;
+      border-radius: 9999px; z-index: 2147483647; box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+      font-family: 'DM Sans', system-ui, -apple-system, sans-serif; font-size: 12px; display: flex; align-items: center; gap: 12px;
+      border: 1px solid rgba(168, 85, 247, 0.4); user-select: none;
+    `;
+      banner.innerHTML = `
+      <span><b style="color: #A855F7;">SpeedySlate</b>: Ch\u01B0a t\u1EA3i model OCR (~10MB). M\u1EDF popup c\xE0i \u0111\u1EB7t \u0111\u1EC3 t\u1EA3i model.</span>
+      <button style="background: #A855F7; border: none; color: #ffffff; padding: 4px 12px; border-radius: 9999px; cursor: pointer; font-weight: 600; font-size: 11px;">\u0110\xF3ng</button>
+    `;
+      banner.querySelector("button")?.addEventListener("click", () => banner.remove());
+      document.body?.appendChild(banner);
+    }
+  };
+
   // src/shared/debug-logger.ts
   var import_webextension_polyfill2 = __toESM(require_browser_polyfill(), 1);
   var STORAGE_KEY = "speedyslate_debug_logs";
@@ -2534,57 +2603,51 @@
       }
       img.dataset.slateStatus = "ocr_running";
       PageBadgeManager.updateBadge(wrapper, task.index, "ocr_running");
-      let dataUrl;
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth || img.width || 800;
-        canvas.height = img.naturalHeight || img.height || 1200;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0);
-          dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-        }
-      } catch {
-      }
+      const compressed = ImageCompressor.compressForVision(img, 1280, 0.85);
       const resp = await import_webextension_polyfill3.default.runtime.sendMessage({
         action: "OCR_IMAGE",
         imageUrl,
         chapterUrl: window.location.href,
-        dataUrl
+        dataUrl: compressed.dataUrl,
+        naturalWidth: compressed.naturalWidth,
+        naturalHeight: compressed.naturalHeight
       });
       if (resp?.success) {
-        if (resp.cached) {
+        if (resp.cached || resp.isDirectTranslation) {
           if (resp.dialogues && resp.dialogues.length > 0) {
             OverlayRenderer.renderDialogues(
               wrapper,
               resp.dialogues,
-              resp.naturalWidth || img.naturalWidth || 800,
-              resp.naturalHeight || img.naturalHeight || 1200,
+              resp.naturalWidth || compressed.naturalWidth,
+              resp.naturalHeight || compressed.naturalHeight,
               this.settings?.bubbleTheme || "auto"
             );
             img.dataset.slateStatus = "translated";
             PageBadgeManager.updateBadge(wrapper, task.index, "translated", resp.dialogues.length);
+            this.hud.log(
+              resp.cached ? `Trang #${task.index + 1}: N\u1EA1p t\u1EEB Cache (0ms)` : `Trang #${task.index + 1}: Vision AI \u0111\xE3 d\u1ECBch ${resp.dialogues.length} c\xE2u tho\u1EA1i`
+            );
           } else {
             img.dataset.slateStatus = "no_text";
             PageBadgeManager.updateBadge(wrapper, task.index, "no_text");
+            this.hud.log(`Trang #${task.index + 1}: Kh\xF4ng c\xF3 ch\u1EEF tho\u1EA1i`);
           }
           this.markImageCompleted(img);
-          this.hud.log(`Trang #${task.index + 1}: Nap tu Cache (0ms)`);
         } else if (!resp.dialogues || resp.dialogues.length === 0) {
           img.dataset.slateStatus = "no_text";
           PageBadgeManager.updateBadge(wrapper, task.index, "no_text");
           this.markImageCompleted(img);
-          this.hud.log(`Trang #${task.index + 1}: Khong co chu`);
+          this.hud.log(`Trang #${task.index + 1}: Kh\xF4ng c\xF3 ch\u1EEF`);
         } else {
           img.dataset.slateStatus = "ocr_done";
           PageBadgeManager.updateBadge(wrapper, task.index, "ocr_done", resp.dialogues.length);
-          this.hud.log(`Trang #${task.index + 1}: Da quet ${resp.dialogues.length} cau thoai, dang cho dich...`);
+          this.hud.log(`Trang #${task.index + 1}: \u0110\xE3 qu\xE9t ${resp.dialogues.length} c\xE2u tho\u1EA1i, \u0111ang ch\u1EDD d\u1ECBch...`);
           this.translationQueue.enqueue({
             index: task.index,
             img: task.img,
             dialogues: resp.dialogues,
-            naturalWidth: resp.naturalWidth || img.naturalWidth || 800,
-            naturalHeight: resp.naturalHeight || img.naturalHeight || 1200
+            naturalWidth: resp.naturalWidth || compressed.naturalWidth,
+            naturalHeight: resp.naturalHeight || compressed.naturalHeight
           });
         }
       } else {
@@ -2643,22 +2706,7 @@
       }
     }
     showModelMissingBanner() {
-      if (document.getElementById("speedyslate-missing-banner")) return;
-      const banner = document.createElement("div");
-      banner.id = "speedyslate-missing-banner";
-      banner.style.cssText = `
-      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-      background: #111111; color: #F5F5F4; padding: 10px 18px;
-      border-radius: 9999px; z-index: 2147483647; box-shadow: 0 8px 24px rgba(0,0,0,0.45);
-      font-family: 'DM Sans', system-ui, -apple-system, sans-serif; font-size: 12px; display: flex; align-items: center; gap: 12px;
-      border: 1px solid rgba(168, 85, 247, 0.4); user-select: none;
-    `;
-      banner.innerHTML = `
-      <span><b style="color: #A855F7;">SpeedySlate</b>: Ch\u01B0a t\u1EA3i model OCR (~10MB). M\u1EDF popup c\xE0i \u0111\u1EB7t \u0111\u1EC3 t\u1EA3i model.</span>
-      <button style="background: #A855F7; border: none; color: #ffffff; padding: 4px 12px; border-radius: 9999px; cursor: pointer; font-weight: 600; font-size: 11px;">\u0110\xF3ng</button>
-    `;
-      banner.querySelector("button")?.addEventListener("click", () => banner.remove());
-      document.body?.appendChild(banner);
+      ModelMissingBanner.show();
     }
   };
   window.addEventListener("error", (e) => {

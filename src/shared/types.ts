@@ -50,7 +50,10 @@ export type BubbleTheme = 'light' | 'dark' | 'auto';
 
 export type OcrBackend = 'webgpu' | 'wasm';
 
+export type TranslationMode = 'hybrid_ocr' | 'vision_ai';
+
 export interface ExtensionSettings {
+  translationMode: TranslationMode;
   activeProvider: ProviderType;
   providers: Record<ProviderType, ProviderConfig>;
   targetLanguage: string;

@@ -100,6 +100,13 @@ body {
   font-weight: 500;
 }
 
+.field-label-row { display: flex; justify-content: space-between; align-items: center; }
+.field-hint { font-size: 10px; color: var(--ink2); line-height: 1.35; }
+.text-area {
+  resize: vertical; min-height: 44px; font-family: 'DM Mono', monospace;
+  font-size: 10.5px; line-height: 1.4; white-space: pre;
+}
+
 /* ── Inputs ──────────────────────────────────────────────────────────────── */
 .text-input,
 .select-input {
@@ -417,3 +424,24 @@ body {
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* ── Translation Mode Selector (Radio Cards) ────────────────────────── */
+.mode-selector-grid { display: flex; flex-direction: column; gap: 8px; }
+.mode-card-option {
+  position: relative; display: flex; cursor: pointer; border: 1px solid var(--line);
+  background: #FFFFFF; border-radius: 6px; padding: 8px 10px; transition: all 0.15s ease-in-out; user-select: none;
+}
+.mode-card-option input[type="radio"] { position: absolute; top: 10px; right: 10px; accent-color: var(--accent); }
+.mode-card-content { display: flex; flex-direction: column; gap: 2px; padding-right: 20px; }
+.mode-card-header { display: flex; align-items: center; gap: 6px; }
+.mode-badge-icon { font-size: 13px; line-height: 1; }
+.mode-card-title { font-size: 12px; font-weight: 600; color: var(--ink); }
+.mode-card-desc { font-size: 10.5px; line-height: 1.35; color: var(--ink2); }
+.mode-card-option:has(input[type="radio"]:checked) { border-color: var(--accent); background: rgba(168, 85, 247, 0.04); }
+.mode-card-option:hover { border-color: var(--accent); }
+.vision-mode-notice {
+  background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.3);
+  border-radius: 4px; padding: 6px 8px; font-size: 10.5px; line-height: 1.4; color: var(--ink); margin-bottom: 8px;
+}
+.section-dimmed { opacity: 0.55; filter: grayscale(0.5); transition: opacity 0.2s ease; }
+

@@ -4,6 +4,7 @@ import { API_PRESETS, OCR_MODEL_PRESETS } from '../shared/presets';
 import { StorageService } from '../shared/storage';
 import { TranslationCacheDb } from '../shared/translation-db';
 import { BubbleTheme, ExtensionSettings, ProviderType } from '../shared/types';
+import { ApiKeyRotator } from '../services/translation/api-key-rotator';
 import { DebugLogger } from '../shared/debug-logger';
 
 class PopupController {
@@ -15,6 +16,12 @@ class PopupController {
   private webgpuToggle = document.getElementById('toggle-webgpu') as HTMLInputElement;
   private modelHub!: ModelHubController;
 
+  // DOM Elements - Mode
+  private radioModeHybrid = document.getElementById('radio-mode-hybrid') as HTMLInputElement;
+  private radioModeVision = document.getElementById('radio-mode-vision') as HTMLInputElement;
+  private sectionOcrModels = document.getElementById('section-ocr-models') as HTMLElement;
+  private visionNotice = document.getElementById('vision-mode-notice') as HTMLElement;
+
   private backendPollTimer: ReturnType<typeof setInterval> | null = null;
 
   // DOM Elements - API
@@ -22,7 +29,8 @@ class PopupController {
   private baseUrlInput = document.getElementById('input-base-url') as HTMLInputElement;
   private modelPresetSelect = document.getElementById('select-model-preset') as HTMLSelectElement;
   private customModelInput = document.getElementById('input-custom-model') as HTMLInputElement;
-  private apiKeyInput = document.getElementById('input-api-key') as HTMLInputElement;
+  private apiKeyInput = document.getElementById('input-api-key') as HTMLTextAreaElement;
+  private apiKeyCountBadge = document.getElementById('api-key-count-badge') as HTMLElement;
   private rateLimitInput = document.getElementById('input-rate-limit') as HTMLInputElement;
   private testBtn = document.getElementById('btn-test-connection') as HTMLButtonElement;
   private testResult = document.getElementById('test-result') as HTMLElement;
@@ -77,10 +85,33 @@ class PopupController {
     // Restore WebGPU toggle state
     this.webgpuToggle.checked = this.settings.useWebGpu ?? true;
 
+    // Restore Translation Mode
+    const currentMode = this.settings.translationMode || 'hybrid_ocr';
+    if (currentMode === 'vision_ai' && this.radioModeVision) {
+      this.radioModeVision.checked = true;
+    } else if (this.radioModeHybrid) {
+      this.radioModeHybrid.checked = true;
+    }
+    this.applyModeUI(currentMode);
+
     this.attachEventListeners();
     await this.updateCacheStats();
     await this.loadDebugLogs();
     this.startBackendStatusPolling();
+  }
+
+  private applyModeUI(mode: string): void {
+    const isVision = mode === 'vision_ai';
+    if (this.sectionOcrModels) {
+      if (isVision) {
+        this.sectionOcrModels.classList.add('section-dimmed');
+      } else {
+        this.sectionOcrModels.classList.remove('section-dimmed');
+      }
+    }
+    if (this.visionNotice) {
+      this.visionNotice.style.display = isVision ? 'block' : 'none';
+    }
   }
 
   private renderProviderPresets(): void {
@@ -107,6 +138,7 @@ class PopupController {
 
     this.baseUrlInput.value = savedConfig.baseUrl || preset.baseUrl;
     this.apiKeyInput.value = savedConfig.apiKey || '';
+    this.updateApiKeyCount();
 
     // Populate suggested models dropdown
     this.modelPresetSelect.innerHTML = '';
@@ -116,7 +148,6 @@ class PopupController {
       opt.textContent = m;
       this.modelPresetSelect.appendChild(opt);
     }
-
     const currentModel = savedConfig.model || preset.defaultModel;
     if (preset.suggestedModels.includes(currentModel)) {
       this.modelPresetSelect.value = currentModel;
@@ -125,6 +156,13 @@ class PopupController {
 
     const defaultDelay = preset.defaultDelayMs ?? 1200;
     this.rateLimitInput.value = String(this.settings.rateLimitDelayMs ?? defaultDelay);
+  }
+
+  private updateApiKeyCount(): void {
+    if (!this.apiKeyInput || !this.apiKeyCountBadge) return;
+    const count = ApiKeyRotator.parseKeys(this.apiKeyInput.value).length;
+    this.apiKeyCountBadge.textContent = `${count} key${count > 1 ? 's (xoay vòng)' : ''}`;
+    this.apiKeyCountBadge.style.color = count > 1 ? 'var(--accent)' : 'var(--ink2)';
   }
 
   private loadDisplayPreferences(): void {
@@ -197,6 +235,21 @@ class PopupController {
   }
 
   private attachEventListeners(): void {
+    // Translation Mode radio toggle
+    const onModeChange = () => {
+      const mode = this.radioModeVision?.checked ? 'vision_ai' : 'hybrid_ocr';
+      this.settings.translationMode = mode;
+      this.applyModeUI(mode);
+      StorageService.saveSettings(this.settings);
+    };
+    this.radioModeHybrid?.addEventListener('change', onModeChange);
+    this.radioModeVision?.addEventListener('change', onModeChange);
+
+    // API Key input live count
+    this.apiKeyInput?.addEventListener('input', () => {
+      this.updateApiKeyCount();
+    });
+
     // WebGPU toggle
     this.webgpuToggle.addEventListener('change', async () => {
       this.settings.useWebGpu = this.webgpuToggle.checked;
@@ -348,16 +401,18 @@ class PopupController {
 
   private async saveCurrentFormToSettings(): Promise<void> {
     const curType = this.providerSelect.value as ProviderType;
+    this.settings.translationMode = this.radioModeVision?.checked ? 'vision_ai' : 'hybrid_ocr';
     this.settings.activeProvider = curType;
     this.settings.bubbleTheme = this.themeSelect.value as BubbleTheme;
     this.settings.autoScrollSpeed = Number(this.speedInput.value) || 3;
     this.settings.rateLimitDelayMs = Number(this.rateLimitInput.value) || 1200;
 
+    const keys = ApiKeyRotator.parseKeys(this.apiKeyInput.value);
     this.settings.providers[curType] = {
       type: curType,
       name: API_PRESETS[curType].name,
       baseUrl: this.baseUrlInput.value.trim(),
-      apiKey: this.apiKeyInput.value.trim(),
+      apiKey: keys.join('\n'),
       model: this.customModelInput.value.trim()
     };
 

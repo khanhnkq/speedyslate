@@ -213,6 +213,7 @@ export const OCR_MODEL_PRESETS: OcrModelPreset[] = [
 ];
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
+  translationMode: 'hybrid_ocr',
   activeProvider: 'gemini',
   providers: {
     gemini: {

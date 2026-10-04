@@ -6,7 +6,9 @@ import { DialogueItem } from '../shared/types';
 import { API_PRESETS, OCR_MODEL_PRESETS } from '../shared/presets';
 import { TranslationProviderFactory } from '../services/translation/provider-factory';
 import { ApiRateLimiter } from '../services/translation/rate-limiter';
+import { ApiKeyRotator } from '../services/translation/api-key-rotator';
 import { ocrWorkerClient } from './ocr-worker-client';
+import { ImageFetcher } from './image-fetcher';
 import { DebugLogger } from '../shared/debug-logger';
 
 // ---------------------------------------------------------------------------
@@ -126,8 +128,66 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
           }
         }
 
-        // 2. Load OCR model via Dedicated Worker / Offscreen
         const settings = await StorageService.getSettings();
+
+        // 2. Multimodal Vision AI Mode (Direct End-to-End Image Translation)
+        if (settings.translationMode === 'vision_ai') {
+          try {
+            const provider = TranslationProviderFactory.createProvider(settings);
+            if (!provider.translateImage) {
+              return {
+                success: false,
+                error: `Nhà cung cấp ${settings.activeProvider} chưa hỗ trợ Multimodal Vision AI.`
+              };
+            }
+
+            const { base64Data, mimeType } = await ImageFetcher.getBase64Data(dataUrl, imageUrl);
+            const targetLang = settings.targetLanguage || 'Tiếng Việt';
+            const width = msg.naturalWidth || msg.width || 800;
+            const height = msg.naturalHeight || msg.height || 1200;
+
+            const rawKey = settings.providers[settings.activeProvider]?.apiKey || '';
+            const keyCount = ApiKeyRotator.parseKeys(rawKey).length;
+            const baseDelay =
+              settings.rateLimitDelayMs !== undefined
+                ? settings.rateLimitDelayMs
+                : (API_PRESETS[settings.activeProvider]?.defaultDelayMs ?? 1500);
+
+            // Multiple keys reduce required delay proportionally (min 200ms)
+            const minDelayMs = keyCount > 1
+              ? Math.max(200, Math.round(baseDelay / keyCount))
+              : baseDelay;
+
+            const dialogues = await ApiRateLimiter.throttle(minDelayMs, () =>
+              provider.translateImage!(base64Data, mimeType, targetLang, width, height)
+            );
+
+            // Save to Cache DB
+            if (imageUrl && dialogues.length > 0) {
+              await TranslationCacheDb.saveTranslation(
+                imageUrl,
+                msg.chapterUrl || '',
+                dialogues,
+                width,
+                height
+              );
+            }
+
+            return {
+              success: true,
+              cached: false,
+              isDirectTranslation: true,
+              dialogues,
+              naturalWidth: width,
+              naturalHeight: height
+            };
+          } catch (err: any) {
+            DebugLogger.error('Background:VisionAI', err.message, err);
+            return { success: false, error: err.message || 'Lỗi nhận diện Vision AI' };
+          }
+        }
+
+        // 3. Hybrid OCR Mode: Load OCR model via Dedicated Worker / Offscreen
         const modelId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'pp-ocrv4-english';
         try {
           await ocrWorkerClient.ensureModelLoaded(modelId, settings.useWebGpu ?? true);
@@ -135,7 +195,7 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
           return { success: false, error: err.message };
         }
 
-        // 3. Run PaddleOCR
+        // 4. Run PaddleOCR / Comic-Det in Web Worker
         try {
           const { dialogues, width, height } = await ocrWorkerClient.runOcr({ dataUrl, imageUrl });
           return { success: true, cached: false, dialogues, naturalWidth: width, naturalHeight: height };
@@ -155,10 +215,16 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
         const provider = TranslationProviderFactory.createProvider(settings);
         const targetLang = settings.targetLanguage || 'Tiếng Việt';
 
-        const minDelayMs =
+        const rawKey = settings.providers[settings.activeProvider]?.apiKey || '';
+        const keyCount = ApiKeyRotator.parseKeys(rawKey).length;
+        const baseDelay =
           settings.rateLimitDelayMs !== undefined
             ? settings.rateLimitDelayMs
             : (API_PRESETS[settings.activeProvider]?.defaultDelayMs ?? 1200);
+
+        const minDelayMs = keyCount > 1
+          ? Math.max(200, Math.round(baseDelay / keyCount))
+          : baseDelay;
 
         const translations = await ApiRateLimiter.throttle(minDelayMs, () =>
           provider.translateDialogues(texts, targetLang)

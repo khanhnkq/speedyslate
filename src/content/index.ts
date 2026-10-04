@@ -6,6 +6,8 @@ import { OverlayRenderer } from './overlay/overlay-renderer';
 import { OrderedTaskQueue, OcrTask, TranslationTask } from './priority-queue';
 import { ToonheyAdapter } from './toonhey-adapter';
 import { PageBadgeManager } from './page-badge';
+import { ImageCompressor } from './image-compressor';
+import { ModelMissingBanner } from './missing-banner';
 import { DebugLogger } from '../shared/debug-logger';
 
 class SpeedySlateContentApp {
@@ -305,61 +307,58 @@ class SpeedySlateContentApp {
     img.dataset.slateStatus = 'ocr_running';
     PageBadgeManager.updateBadge(wrapper, task.index, 'ocr_running');
 
-    let dataUrl: string | undefined;
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth || img.width || 800;
-      canvas.height = img.naturalHeight || img.height || 1200;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(img, 0, 0);
-        dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-      }
-    } catch {
-      // Background will fetch directly if canvas is tainted
-    }
+    // Downscale and compress image (max 1280px) to drastically reduce latency and token usage
+    const compressed = ImageCompressor.compressForVision(img, 1280, 0.85);
 
     const resp: any = await browser.runtime.sendMessage({
       action: 'OCR_IMAGE',
       imageUrl,
       chapterUrl: window.location.href,
-      dataUrl
+      dataUrl: compressed.dataUrl,
+      naturalWidth: compressed.naturalWidth,
+      naturalHeight: compressed.naturalHeight
     });
 
     if (resp?.success) {
-      if (resp.cached) {
+      // 1. Direct result from Cache or Vision AI mode (already fully translated with styling)
+      if (resp.cached || resp.isDirectTranslation) {
         if (resp.dialogues && resp.dialogues.length > 0) {
           OverlayRenderer.renderDialogues(
             wrapper,
             resp.dialogues,
-            resp.naturalWidth || img.naturalWidth || 800,
-            resp.naturalHeight || img.naturalHeight || 1200,
+            resp.naturalWidth || compressed.naturalWidth,
+            resp.naturalHeight || compressed.naturalHeight,
             (this.settings?.bubbleTheme || 'auto') as BubbleTheme
           );
           img.dataset.slateStatus = 'translated';
           PageBadgeManager.updateBadge(wrapper, task.index, 'translated', resp.dialogues.length);
+          this.hud.log(
+            resp.cached
+              ? `Trang #${task.index + 1}: Nạp từ Cache (0ms)`
+              : `Trang #${task.index + 1}: Vision AI đã dịch ${resp.dialogues.length} câu thoại`
+          );
         } else {
           img.dataset.slateStatus = 'no_text';
           PageBadgeManager.updateBadge(wrapper, task.index, 'no_text');
+          this.hud.log(`Trang #${task.index + 1}: Không có chữ thoại`);
         }
         this.markImageCompleted(img);
-        this.hud.log(`Trang #${task.index + 1}: Nap tu Cache (0ms)`);
       } else if (!resp.dialogues || resp.dialogues.length === 0) {
         img.dataset.slateStatus = 'no_text';
         PageBadgeManager.updateBadge(wrapper, task.index, 'no_text');
         this.markImageCompleted(img);
-        this.hud.log(`Trang #${task.index + 1}: Khong co chu`);
+        this.hud.log(`Trang #${task.index + 1}: Không có chữ`);
       } else {
-        // Co chu -> Day vao hang doi dich Consumer (serialized rate limiter)
+        // 2. Hybrid OCR Mode: Text extracted locally, forward to translation queue
         img.dataset.slateStatus = 'ocr_done';
         PageBadgeManager.updateBadge(wrapper, task.index, 'ocr_done', resp.dialogues.length);
-        this.hud.log(`Trang #${task.index + 1}: Da quet ${resp.dialogues.length} cau thoai, dang cho dich...`);
+        this.hud.log(`Trang #${task.index + 1}: Đã quét ${resp.dialogues.length} câu thoại, đang chờ dịch...`);
         this.translationQueue.enqueue({
           index: task.index,
           img: task.img,
           dialogues: resp.dialogues,
-          naturalWidth: resp.naturalWidth || img.naturalWidth || 800,
-          naturalHeight: resp.naturalHeight || img.naturalHeight || 1200
+          naturalWidth: resp.naturalWidth || compressed.naturalWidth,
+          naturalHeight: resp.naturalHeight || compressed.naturalHeight
         });
       }
     } else {
@@ -433,23 +432,7 @@ class SpeedySlateContentApp {
   }
 
   private showModelMissingBanner(): void {
-    if (document.getElementById('speedyslate-missing-banner')) return;
-
-    const banner = document.createElement('div');
-    banner.id = 'speedyslate-missing-banner';
-    banner.style.cssText = `
-      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-      background: #111111; color: #F5F5F4; padding: 10px 18px;
-      border-radius: 9999px; z-index: 2147483647; box-shadow: 0 8px 24px rgba(0,0,0,0.45);
-      font-family: 'DM Sans', system-ui, -apple-system, sans-serif; font-size: 12px; display: flex; align-items: center; gap: 12px;
-      border: 1px solid rgba(168, 85, 247, 0.4); user-select: none;
-    `;
-    banner.innerHTML = `
-      <span><b style="color: #A855F7;">SpeedySlate</b>: Chưa tải model OCR (~10MB). Mở popup cài đặt để tải model.</span>
-      <button style="background: #A855F7; border: none; color: #ffffff; padding: 4px 12px; border-radius: 9999px; cursor: pointer; font-weight: 600; font-size: 11px;">Đóng</button>
-    `;
-    banner.querySelector('button')?.addEventListener('click', () => banner.remove());
-    document.body?.appendChild(banner);
+    ModelMissingBanner.show();
   }
 }
 

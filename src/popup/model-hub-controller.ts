@@ -117,7 +117,7 @@ export class ModelHubController {
       if (deleteBtn) {
         deleteBtn.addEventListener('click', async (e) => {
           e.stopPropagation();
-          await this.handleDelete(preset);
+          await this.handleDelete(preset, deleteBtn);
         });
       }
 
@@ -163,16 +163,32 @@ export class ModelHubController {
 
       browser.runtime.sendMessage({ action: 'WARMUP_OCR' }).catch(() => {});
     } catch (err: any) {
-      alert(`Tải model ${preset.name} thất bại: ${err.message}`);
-      await this.render();
+      if (progressLabel) progressLabel.textContent = `Lỗi: ${err.message}`;
+      setTimeout(() => this.render(), 2500);
     } finally {
       this.isDownloading = false;
     }
   }
 
-  private async handleDelete(preset: OcrModelPreset): Promise<void> {
-    const confirmMsg = `Bạn có chắc muốn xóa model "${preset.name}" để giải phóng bộ nhớ?`;
-    if (!confirm(confirmMsg)) return;
+  private async handleDelete(preset: OcrModelPreset, btn: HTMLButtonElement): Promise<void> {
+    if (btn.dataset.confirming !== 'true') {
+      btn.dataset.confirming = 'true';
+      btn.textContent = 'Chắc chắn xóa?';
+      btn.style.color = '#ef4444';
+      btn.style.borderColor = '#ef4444';
+      setTimeout(() => {
+        if (btn.dataset.confirming === 'true') {
+          btn.dataset.confirming = 'false';
+          btn.textContent = '🗑 Xóa';
+          btn.style.color = '';
+          btn.style.borderColor = '';
+        }
+      }, 3500);
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Đang xóa...';
 
     try {
       await browser.runtime.sendMessage({
@@ -182,7 +198,8 @@ export class ModelHubController {
       await ModelDbService.deleteModel(preset.id);
       await this.render();
     } catch (err: any) {
-      alert(`Lỗi khi xóa model: ${err.message}`);
+      btn.textContent = 'Lỗi xóa';
+      setTimeout(() => this.render(), 1500);
     }
   }
 }

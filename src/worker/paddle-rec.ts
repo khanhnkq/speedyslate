@@ -86,7 +86,7 @@ export class PaddleRecEngine {
         const cleanText = text.replace(/\s+/g, ' ').trim();
         // Ignore noise, empty text, or non-alphanumeric graphic artifacts (e.g. "--", "..", "|")
         const hasLetterOrDigit = /[\p{L}\p{N}]/u.test(cleanText);
-        if (cleanText.length > 0 && hasLetterOrDigit && confidence > 0.35) {
+        if (cleanText.length > 0 && hasLetterOrDigit && confidence > 0.28) {
           results.push({
             id: `bubble-${Date.now()}-${counter}`,
             box,

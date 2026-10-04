@@ -4,8 +4,8 @@ import { ImageUtils } from './image-utils';
 
 export class PaddleDetEngine {
   private session: ort.InferenceSession;
-  private thresh: number = 0.25;
-  private boxThresh: number = 0.40;
+  private thresh: number = 0.10;
+  private boxThresh: number = 0.15;
   private unclipRatio: number = 1.65;
 
   constructor(session: ort.InferenceSession) {
@@ -75,13 +75,12 @@ export class PaddleDetEngine {
         originalHeight
       );
 
-      // Filter tiny noise while preserving short words/dialogues
-      // Strictly filter out giant image artifacts, panel borders, and background drawings
+      // Filter tiny noise while preserving wide shout bubbles and dialogues
+      // Only filter out true full-image outer frame borders
       const isTooTiny = clamped.width < 8 || clamped.height < 8;
-      const isTooHuge = clamped.width > originalWidth * 0.85 || clamped.height > originalHeight * 0.38;
-      const isAreaExcessive = (clamped.width * clamped.height) / (originalWidth * originalHeight) > 0.16;
+      const isWholePageBorder = clamped.width >= originalWidth * 0.98 && clamped.height >= originalHeight * 0.94;
 
-      if (!isTooTiny && !isTooHuge && !isAreaExcessive) {
+      if (!isTooTiny && !isWholePageBorder) {
         scaledBoxes.push(clamped);
       }
     }
@@ -118,7 +117,7 @@ export class PaddleDetEngine {
           if (used.has(j)) continue;
           const other = merged[j];
 
-          // Check vertical alignment (same text line)
+          // Check vertical alignment (same text line with italic tolerance)
           const topA = cur.y;
           const botA = cur.y + cur.height;
           const topB = other.y;
@@ -126,24 +125,24 @@ export class PaddleDetEngine {
 
           const overlapY = Math.max(0, Math.min(botA, botB) - Math.max(topA, topB));
           const minH = Math.min(cur.height, other.height);
-          const isSameLine = overlapY / Math.max(1, minH) >= 0.60;
+          const isSameLine = overlapY / Math.max(1, minH) >= 0.40;
 
           if (isSameLine) {
-            // Check horizontal proximity (word spacing in comic fonts)
+            // Check horizontal proximity (natural word spacing in comic fonts)
             const leftA = cur.x;
             const rightA = cur.x + cur.width;
             const leftB = other.x;
             const rightB = other.x + other.width;
 
             const gapX = Math.max(0, Math.max(leftA, leftB) - Math.min(rightA, rightB));
-            const maxAllowedGap = Math.min(cur.height, other.height) * 1.35;
+            const maxAllowedGap = Math.max(cur.height, other.height) * 2.2;
 
             const newLeft = Math.min(leftA, leftB);
             const newRight = Math.max(rightA, rightB);
             const mergedW = newRight - newLeft;
 
             // Only merge if gap is small and merged width stays within reading limits
-            if (gapX <= maxAllowedGap && mergedW <= maxWidthLimit * 0.85) {
+            if (gapX <= maxAllowedGap && mergedW <= maxWidthLimit * 0.96) {
               const newTop = Math.min(topA, topB);
               const newBot = Math.max(botA, botB);
 

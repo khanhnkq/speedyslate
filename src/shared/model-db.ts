@@ -217,7 +217,7 @@ export class ModelDbService {
     // 2. Also delete via secondary index to clean up any orphaned records
     try {
       const index = store.index('modelId');
-      const req = index.getAllKeys(IDBKeyRange.only(modelId));
+      const req = index.getAllKeys(modelId);
       req.onsuccess = () => {
         if (Array.isArray(req.result)) {
           for (const key of req.result) {

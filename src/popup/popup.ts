@@ -209,18 +209,48 @@ class PopupController {
       }
     });
 
-    // Clear Cache DB
+    // Clear Cache DB (2-click tactile confirmation, no popup-closing window.confirm)
+    let isConfirmingClear = false;
+    let clearResetTimer: any = null;
+
     this.clearCacheBtn.addEventListener('click', async () => {
-      if (!confirm('Bạn có chắc chắn muốn dọn sạch toàn bộ cache truyện đã lưu?')) return;
+      if (!isConfirmingClear) {
+        isConfirmingClear = true;
+        this.clearCacheBtn.textContent = 'Chắc chắn xóa? (Bấm lại)';
+        this.clearCacheBtn.style.color = '#ef4444';
+        this.clearCacheBtn.style.borderColor = '#ef4444';
+        clearResetTimer = setTimeout(() => {
+          isConfirmingClear = false;
+          this.clearCacheBtn.textContent = 'Dọn sạch cache';
+          this.clearCacheBtn.style.color = '';
+          this.clearCacheBtn.style.borderColor = '';
+        }, 3500);
+        return;
+      }
+
+      if (clearResetTimer) clearTimeout(clearResetTimer);
+      isConfirmingClear = false;
       this.clearCacheBtn.disabled = true;
+      this.clearCacheBtn.textContent = 'Đang dọn...';
       try {
+        await browser.runtime.sendMessage({ action: 'CLEAR_ALL_CACHE' });
         await TranslationCacheDb.clearAllCache();
         await this.updateCacheStats();
-        alert('✓ Đã dọn sạch toàn bộ cache bản dịch thành công!');
+        this.clearCacheBtn.textContent = '✓ Đã dọn sạch!';
+        this.clearCacheBtn.style.color = '#10b981';
+        this.clearCacheBtn.style.borderColor = '#10b981';
+        setTimeout(() => {
+          this.clearCacheBtn.textContent = 'Dọn sạch cache';
+          this.clearCacheBtn.style.color = '';
+          this.clearCacheBtn.style.borderColor = '';
+          this.clearCacheBtn.disabled = false;
+        }, 2000);
       } catch (err: any) {
-        alert('Lỗi dọn cache: ' + err.message);
-      } finally {
-        this.clearCacheBtn.disabled = false;
+        this.clearCacheBtn.textContent = 'Lỗi dọn cache';
+        setTimeout(() => {
+          this.clearCacheBtn.textContent = 'Dọn sạch cache';
+          this.clearCacheBtn.disabled = false;
+        }, 2000);
       }
     });
 

@@ -56,7 +56,8 @@ export class OverlayRenderer {
         backgroundColor: bg,
         color: textColor,
         border: 'none',
-        borderRadius: isDark ? '6px' : '8px',
+        outline: 'none',
+        borderRadius: '4px',
         boxSizing: 'border-box',
         padding: '2px 4px',
         display: 'flex',
@@ -75,9 +76,7 @@ export class OverlayRenderer {
         wordBreak: 'break-word',
         overflowWrap: 'anywhere',
         hyphens: 'auto',
-        boxShadow: isDark
-          ? '0 0 0 1px rgba(255,255,255,0.18)'
-          : '0 0 0 1px rgba(0,0,0,0.10)'
+        boxShadow: 'none'
       });
 
       // Compute adaptive font size based on box dimensions and text length

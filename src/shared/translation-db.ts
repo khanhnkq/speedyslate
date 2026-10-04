@@ -97,16 +97,21 @@ export class TranslationCacheDb {
     const db = await this.getDb();
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    const index = store.index('chapterUrl');
-    const req = index.getAllKeys(chapterUrl);
+    const targetNorm = (chapterUrl || '').split('#')[0].split('?')[0].replace(/\/+$/, '');
 
     return new Promise((resolve, reject) => {
+      const req = store.getAll();
       req.onsuccess = () => {
-        const keys = req.result;
-        for (const k of keys) {
-          store.delete(k);
+        const records: CachedImageTranslation[] = req.result || [];
+        let deleted = 0;
+        for (const r of records) {
+          const recNorm = (r.chapterUrl || '').split('#')[0].split('?')[0].replace(/\/+$/, '');
+          if (!targetNorm || recNorm === targetNorm || r.chapterUrl === chapterUrl) {
+            store.delete(r.imageUrl);
+            deleted++;
+          }
         }
-        tx.oncomplete = () => resolve(keys.length);
+        tx.oncomplete = () => resolve(deleted);
       };
       req.onerror = () => reject(req.error);
       tx.onerror = () => reject(tx.error);
@@ -121,7 +126,7 @@ export class TranslationCacheDb {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
     store.clear();
-    await new Promise<void>((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });

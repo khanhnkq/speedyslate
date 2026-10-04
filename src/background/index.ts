@@ -92,6 +92,11 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
         return { success: true, deleted };
       }
 
+      case 'CLEAR_ALL_CACHE': {
+        await TranslationCacheDb.clearAllCache();
+        return { success: true };
+      }
+
       case 'GET_CHAPTER_TRANSLATIONS': {
         const { imageUrls } = msg;
         const results: Record<string, any> = {};

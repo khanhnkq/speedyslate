@@ -10,6 +10,7 @@ export type PageBadgeStatus =
 export interface PageBadgeKeyInfo {
   keyIndex?: number;
   totalKeys?: number;
+  errorMessage?: string;
 }
 
 /**
@@ -111,10 +112,24 @@ export class PageBadgeManager {
         dotColor = '#444444';
         statusText = 'Không chữ';
         break;
-      case 'error':
+      case 'error': {
         dotColor = '#ef4444';
-        statusText = 'Lỗi';
+        const rawErr = (keyInfo?.errorMessage || '').toLowerCase();
+        if (rawErr.includes('timeout') || rawErr.includes('quá thời gian')) {
+          statusText = 'Timeout 27s';
+        } else if (rawErr.includes('429')) {
+          statusText = 'Limit (429)';
+        } else if (rawErr.includes('403')) {
+          statusText = 'Từ chối (403)';
+        } else if (rawErr.includes('401')) {
+          statusText = 'Key sai (401)';
+        } else if (rawErr.includes('safety')) {
+          statusText = 'Chặn 18+';
+        } else {
+          statusText = keyInfo?.errorMessage ? keyInfo.errorMessage.slice(0, 18) : 'Lỗi';
+        }
         break;
+      }
     }
 
     const pulseAnim = isPulsing ? 'animation: speedyslatePulse 1.2s infinite ease-in-out;' : '';
@@ -123,6 +138,12 @@ export class PageBadgeManager {
       keyInfo?.keyIndex !== undefined
         ? `<span style="background: rgba(168, 85, 247, 0.22); border: 1px solid rgba(168, 85, 247, 0.5); color: #e9d5ff; border-radius: 4px; padding: 1px 5px; font-size: 10px; font-weight: 700; letter-spacing: 0.02em;">Key #${keyInfo.keyIndex}${keyInfo.totalKeys && keyInfo.totalKeys > 1 ? `/${keyInfo.totalKeys}` : ''}</span>`
         : '';
+
+    const statusSpan = statusText
+      ? status === 'error'
+        ? `<span style="color: #f87171; font-weight: 700; font-size: 10px; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.45); border-radius: 4px; padding: 1px 5px;">${statusText}</span>`
+        : `<span style="color: #999999; font-weight: 500; font-size: 10px;">${statusText}</span>`
+      : '';
 
     badge.innerHTML = `
       <style>
@@ -134,16 +155,25 @@ export class PageBadgeManager {
       <span style="width: 6px; height: 6px; border-radius: 50%; background: ${dotColor}; box-shadow: 0 0 5px ${dotColor}; display: inline-block; ${pulseAnim}"></span>
       <span style="color: #F5F5F4; font-weight: 700;">#${pageIndex + 1}</span>
       ${keyBadge}
-      ${statusText ? `<span style="color: #999999; font-weight: 500; font-size: 10px;">${statusText}</span>` : ''}
+      ${statusSpan}
     `;
 
-    // Dynamic border color based on status
-    if (status === 'translated' || status === 'translating' || status === 'ocr_running') {
+    // Dynamic border color and tooltip based on status
+    if (status === 'error') {
+      badge.style.border = '1px solid rgba(239, 68, 68, 0.5)';
+      badge.title = keyInfo?.errorMessage ? `Trang #${pageIndex + 1}: ${keyInfo.errorMessage}` : 'Đã xảy ra lỗi';
+      badge.style.pointerEvents = 'auto';
+      badge.style.cursor = 'help';
+    } else if (status === 'translated' || status === 'translating' || status === 'ocr_running') {
       badge.style.border = '1px solid rgba(168, 85, 247, 0.4)';
-    } else if (status === 'error') {
-      badge.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+      badge.title = '';
+      badge.style.pointerEvents = 'none';
+      badge.style.cursor = 'default';
     } else {
       badge.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+      badge.title = '';
+      badge.style.pointerEvents = 'none';
+      badge.style.cursor = 'default';
     }
   }
 }

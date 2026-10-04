@@ -1326,6 +1326,13 @@
       </svg>
     `.trim();
     }
+    static alert(size = 15, color = "#ef4444") {
+      return `
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <path d="M12 9V14M12 17.5V18M12 3L2 21H22L12 3Z" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    `.trim();
+    }
   };
 
   // src/content/hud/hud.ts
@@ -1485,7 +1492,7 @@
       });
     }
     handlePrimaryClick() {
-      if (this.state === "idle") {
+      if (this.state === "idle" || this.state === "error") {
         this.setState("translating");
         this.callbacks.onToggleTranslate();
       } else if (this.state === "translating") {
@@ -1609,17 +1616,18 @@
         left: `${Math.max(12, rect.left)}px`,
         bottom: `${window.innerHeight - rect.top + 8}px`,
         zIndex: "2147483647",
-        background: "#111111",
-        color: "#F5F5F4",
-        border: "1px solid rgba(239, 68, 68, 0.5)",
+        background: "#1c1010",
+        color: "#fee2e2",
+        border: "1px solid rgba(239, 68, 68, 0.7)",
         borderRadius: "8px",
-        padding: "6px 12px",
+        padding: "8px 14px",
         fontSize: "11px",
         fontFamily: "system-ui, -apple-system, sans-serif",
-        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.45)",
+        boxShadow: "0 8px 30px rgba(0, 0, 0, 0.6)",
         pointerEvents: "none",
         transition: "opacity 0.2s ease",
-        maxWidth: "280px"
+        maxWidth: "340px",
+        lineHeight: "1.4"
       });
       this.toast.textContent = message;
       document.body.appendChild(this.toast);
@@ -1631,7 +1639,7 @@
             this.toast = null;
           }, 200);
         }
-      }, 3500);
+      }, 6e3);
     }
     render() {
       switch (this.state) {
@@ -1642,6 +1650,15 @@
           <span>D\u1ECBch truy\u1EC7n${countTxt}</span>
         `;
           this.btn.title = "B\u1EA5m \u0111\u1EC3 b\u1EAFt \u0111\u1EA7u d\u1ECBch truy\u1EC7n \u2022 Chu\u1ED9t ph\u1EA3i m\u1EDF menu";
+          break;
+        }
+        case "error": {
+          const prog = this.totalCount > 0 ? ` (${this.translatedCount}/${this.totalCount})` : "";
+          this.btn.innerHTML = `
+          ${ChubbyIcons.alert(14, "#ef4444")}
+          <span style="color: #fca5a5;">L\u1ED7i d\u1ECBch${prog}</span>
+        `;
+          this.btn.title = "C\xF3 l\u1ED7i x\u1EA3y ra khi d\u1ECBch \u2022 B\u1EA5m \u0111\u1EC3 th\u1EED l\u1EA1i \u2022 Chu\u1ED9t ph\u1EA3i m\u1EDF menu";
           break;
         }
         case "translating": {
@@ -2112,13 +2129,28 @@
           dotColor = "#444444";
           statusText = "Kh\xF4ng ch\u1EEF";
           break;
-        case "error":
+        case "error": {
           dotColor = "#ef4444";
-          statusText = "L\u1ED7i";
+          const rawErr = (keyInfo?.errorMessage || "").toLowerCase();
+          if (rawErr.includes("timeout") || rawErr.includes("qu\xE1 th\u1EDDi gian")) {
+            statusText = "Timeout 27s";
+          } else if (rawErr.includes("429")) {
+            statusText = "Limit (429)";
+          } else if (rawErr.includes("403")) {
+            statusText = "T\u1EEB ch\u1ED1i (403)";
+          } else if (rawErr.includes("401")) {
+            statusText = "Key sai (401)";
+          } else if (rawErr.includes("safety")) {
+            statusText = "Ch\u1EB7n 18+";
+          } else {
+            statusText = keyInfo?.errorMessage ? keyInfo.errorMessage.slice(0, 18) : "L\u1ED7i";
+          }
           break;
+        }
       }
       const pulseAnim = isPulsing ? "animation: speedyslatePulse 1.2s infinite ease-in-out;" : "";
       const keyBadge = keyInfo?.keyIndex !== void 0 ? `<span style="background: rgba(168, 85, 247, 0.22); border: 1px solid rgba(168, 85, 247, 0.5); color: #e9d5ff; border-radius: 4px; padding: 1px 5px; font-size: 10px; font-weight: 700; letter-spacing: 0.02em;">Key #${keyInfo.keyIndex}${keyInfo.totalKeys && keyInfo.totalKeys > 1 ? `/${keyInfo.totalKeys}` : ""}</span>` : "";
+      const statusSpan = statusText ? status === "error" ? `<span style="color: #f87171; font-weight: 700; font-size: 10px; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.45); border-radius: 4px; padding: 1px 5px;">${statusText}</span>` : `<span style="color: #999999; font-weight: 500; font-size: 10px;">${statusText}</span>` : "";
       badge.innerHTML = `
       <style>
         @keyframes speedyslatePulse {
@@ -2129,14 +2161,23 @@
       <span style="width: 6px; height: 6px; border-radius: 50%; background: ${dotColor}; box-shadow: 0 0 5px ${dotColor}; display: inline-block; ${pulseAnim}"></span>
       <span style="color: #F5F5F4; font-weight: 700;">#${pageIndex + 1}</span>
       ${keyBadge}
-      ${statusText ? `<span style="color: #999999; font-weight: 500; font-size: 10px;">${statusText}</span>` : ""}
+      ${statusSpan}
     `;
-      if (status === "translated" || status === "translating" || status === "ocr_running") {
+      if (status === "error") {
+        badge.style.border = "1px solid rgba(239, 68, 68, 0.5)";
+        badge.title = keyInfo?.errorMessage ? `Trang #${pageIndex + 1}: ${keyInfo.errorMessage}` : "\u0110\xE3 x\u1EA3y ra l\u1ED7i";
+        badge.style.pointerEvents = "auto";
+        badge.style.cursor = "help";
+      } else if (status === "translated" || status === "translating" || status === "ocr_running") {
         badge.style.border = "1px solid rgba(168, 85, 247, 0.4)";
-      } else if (status === "error") {
-        badge.style.border = "1px solid rgba(239, 68, 68, 0.4)";
+        badge.title = "";
+        badge.style.pointerEvents = "none";
+        badge.style.cursor = "default";
       } else {
         badge.style.border = "1px solid rgba(255, 255, 255, 0.12)";
+        badge.title = "";
+        badge.style.pointerEvents = "none";
+        badge.style.cursor = "default";
       }
     }
   };
@@ -2509,16 +2550,19 @@
           }
         } else {
           img.dataset.slateStatus = "error";
+          const errMsg = resp?.error || "L\u1ED7i nh\u1EADn di\u1EC7n OCR";
           PageBadgeManager.updateBadge(
             wrapper,
             task.index,
             "error",
             void 0,
-            isVision && totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : void 0
+            isVision && totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys, errorMessage: errMsg } : { errorMessage: errMsg }
           );
-          const errMsg = resp?.error || "L\u1ED7i nh\u1EADn di\u1EC7n OCR";
           this.ctx.hud.log(`L\u1ED7i OCR trang #${task.index + 1}: ${errMsg}`, true);
           DebugLogger.error("Content:OCR", `Trang #${task.index + 1}: ${errMsg}`);
+          if (this.ctx.ocrQueue.size() <= 1 && this.ctx.translationQueue.size() === 0) {
+            this.ctx.hud.setState("error");
+          }
         }
       } catch (err) {
         const errMsg = err?.message || String(err);
@@ -2532,10 +2576,13 @@
           task.index,
           "error",
           void 0,
-          isVision && totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : void 0
+          isVision && totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys, errorMessage: errMsg } : { errorMessage: errMsg }
         );
         this.ctx.hud.log(`L\u1ED7i OCR trang #${task.index + 1}: ${errMsg}`, true);
         DebugLogger.error("Content:OCR", `Trang #${task.index + 1}: ${errMsg}`, err);
+        if (this.ctx.ocrQueue.size() <= 1 && this.ctx.translationQueue.size() === 0) {
+          this.ctx.hud.setState("error");
+        }
       }
     }
     async processTranslationTask(task) {
@@ -2594,16 +2641,19 @@
           );
         } else {
           img.dataset.slateStatus = "error";
+          const errMsg = resp?.error || "L\u1ED7i API d\u1ECBch";
           PageBadgeManager.updateBadge(
             wrapper,
             task.index,
             "error",
             void 0,
-            totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : void 0
+            totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys, errorMessage: errMsg } : { errorMessage: errMsg }
           );
-          const errMsg = resp?.error || "L\u1ED7i API d\u1ECBch";
           this.ctx.hud.log(`L\u1ED7i d\u1ECBch trang #${task.index + 1}: ${errMsg}`, true);
           DebugLogger.error("Content:Translate", `Trang #${task.index + 1}: ${errMsg}`);
+          if (this.ctx.translationQueue.size() <= 1 && this.ctx.ocrQueue.size() === 0) {
+            this.ctx.hud.setState("error");
+          }
         }
       } catch (err) {
         const errMsg = err?.message || String(err);
@@ -2617,10 +2667,13 @@
           task.index,
           "error",
           void 0,
-          totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : void 0
+          totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys, errorMessage: errMsg } : { errorMessage: errMsg }
         );
         this.ctx.hud.log(`L\u1ED7i d\u1ECBch trang #${task.index + 1}: ${errMsg}`, true);
         DebugLogger.error("Content:Translate", `Trang #${task.index + 1}: ${errMsg}`, err);
+        if (this.ctx.translationQueue.size() <= 1 && this.ctx.ocrQueue.size() === 0) {
+          this.ctx.hud.setState("error");
+        }
       }
     }
   };

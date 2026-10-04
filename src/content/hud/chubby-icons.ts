@@ -120,4 +120,12 @@ export class ChubbyIcons {
       </svg>
     `.trim();
   }
+
+  public static alert(size = 15, color = '#ef4444'): string {
+    return `
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <path d="M12 9V14M12 17.5V18M12 3L2 21H22L12 3Z" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    `.trim();
+  }
 }

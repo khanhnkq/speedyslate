@@ -59,6 +59,30 @@ export class ApiKeyRotator {
   }
 
   /**
+   * Checks if all registered keys are currently in cooldown due to HTTP 429
+   */
+  public areAllKeysRateLimited(): { allLimited: boolean; minRemainingMs: number } {
+    if (this.keys.length === 0) return { allLimited: false, minRemainingMs: 0 };
+    const now = Date.now();
+    let minRemaining = Infinity;
+    let inCooldownCount = 0;
+
+    for (const key of this.keys) {
+      const cooldownUntil = ApiKeyRotator.globalCooldowns.get(key) || 0;
+      if (now < cooldownUntil) {
+        inCooldownCount++;
+        const rem = cooldownUntil - now;
+        if (rem < minRemaining) minRemaining = rem;
+      }
+    }
+
+    return {
+      allLimited: inCooldownCount === this.keys.length,
+      minRemainingMs: minRemaining === Infinity ? 0 : minRemaining
+    };
+  }
+
+  /**
    * Masks key for secure logging (e.g. AIza...e3f4).
    */
   public static maskKey(key: string): string {

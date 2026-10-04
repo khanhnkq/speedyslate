@@ -421,7 +421,11 @@ function withMessageTimeout<T>(
 ): Promise<T> {
   let timer: any;
   const timeoutPromise = new Promise<T>((resolve) => {
-    timer = setTimeout(() => resolve(timeoutResult), ms);
+    timer = setTimeout(() => {
+      console.warn(`[SpeedySlate] Background message timed out after ${ms}ms`);
+      DebugLogger.error('Background:Timeout', `Tác vụ nền quá thời gian chờ (${Math.round(ms / 1000)}s)`);
+      resolve(timeoutResult);
+    }, ms);
   });
   return Promise.race([
     promise.then((res) => {

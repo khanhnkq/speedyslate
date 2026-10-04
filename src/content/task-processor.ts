@@ -133,16 +133,19 @@ export class TaskProcessor {
         }
       } else {
         img.dataset.slateStatus = 'error';
+        const errMsg = resp?.error || 'Lỗi nhận diện OCR';
         PageBadgeManager.updateBadge(
           wrapper,
           task.index,
           'error',
           undefined,
-          isVision && totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : undefined
+          isVision && totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys, errorMessage: errMsg } : { errorMessage: errMsg }
         );
-        const errMsg = resp?.error || 'Lỗi nhận diện OCR';
         this.ctx.hud.log(`Lỗi OCR trang #${task.index + 1}: ${errMsg}`, true);
         DebugLogger.error('Content:OCR', `Trang #${task.index + 1}: ${errMsg}`);
+        if (this.ctx.ocrQueue.size() <= 1 && this.ctx.translationQueue.size() === 0) {
+          this.ctx.hud.setState('error');
+        }
       }
     } catch (err: any) {
       const errMsg = err?.message || String(err);
@@ -156,10 +159,13 @@ export class TaskProcessor {
         task.index,
         'error',
         undefined,
-        isVision && totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : undefined
+        isVision && totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys, errorMessage: errMsg } : { errorMessage: errMsg }
       );
       this.ctx.hud.log(`Lỗi OCR trang #${task.index + 1}: ${errMsg}`, true);
       DebugLogger.error('Content:OCR', `Trang #${task.index + 1}: ${errMsg}`, err);
+      if (this.ctx.ocrQueue.size() <= 1 && this.ctx.translationQueue.size() === 0) {
+        this.ctx.hud.setState('error');
+      }
     }
   }
 
@@ -225,16 +231,19 @@ export class TaskProcessor {
         );
       } else {
         img.dataset.slateStatus = 'error';
+        const errMsg = resp?.error || 'Lỗi API dịch';
         PageBadgeManager.updateBadge(
           wrapper,
           task.index,
           'error',
           undefined,
-          totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : undefined
+          totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys, errorMessage: errMsg } : { errorMessage: errMsg }
         );
-        const errMsg = resp?.error || 'Lỗi API dịch';
         this.ctx.hud.log(`Lỗi dịch trang #${task.index + 1}: ${errMsg}`, true);
         DebugLogger.error('Content:Translate', `Trang #${task.index + 1}: ${errMsg}`);
+        if (this.ctx.translationQueue.size() <= 1 && this.ctx.ocrQueue.size() === 0) {
+          this.ctx.hud.setState('error');
+        }
       }
     } catch (err: any) {
       const errMsg = err?.message || String(err);
@@ -248,10 +257,13 @@ export class TaskProcessor {
         task.index,
         'error',
         undefined,
-        totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : undefined
+        totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys, errorMessage: errMsg } : { errorMessage: errMsg }
       );
       this.ctx.hud.log(`Lỗi dịch trang #${task.index + 1}: ${errMsg}`, true);
       DebugLogger.error('Content:Translate', `Trang #${task.index + 1}: ${errMsg}`, err);
+      if (this.ctx.translationQueue.size() <= 1 && this.ctx.ocrQueue.size() === 0) {
+        this.ctx.hud.setState('error');
+      }
     }
   }
 }

@@ -3,6 +3,7 @@ import { ITranslationProvider } from './translation-provider.interface';
 import { ApiKeyRotator } from './api-key-rotator';
 import { DebugLogger } from '../../shared/debug-logger';
 import { JsonExtractor } from './json-extractor';
+import { VisionBoxParser } from './vision-box-parser';
 
 export class GeminiProvider implements ITranslationProvider {
   private keyRotator: ApiKeyRotator;
@@ -65,7 +66,13 @@ RULES FOR COMIC TRANSLATION:
     };
 
     let resp: Response | null = null;
-    const maxRetries = Math.max(3, this.keyRotator.count * 2);
+    const limitCheck = this.keyRotator.areAllKeysRateLimited();
+    if (limitCheck.allLimited) {
+      const sec = Math.ceil(limitCheck.minRemainingMs / 1000);
+      throw new Error(`Tất cả (${this.keyRotator.count}) API key đều đang bị giới hạn (429 Rate Limit). Vui lòng đợi ${sec}s.`);
+    }
+
+    const maxRetries = Math.min(this.keyRotator.count, 3);
     let lastErrorMsg = '';
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -73,17 +80,26 @@ RULES FOR COMIC TRANSLATION:
       const maskedKey = ApiKeyRotator.maskKey(activeKey);
       const endpoint = `${this.baseUrl}/models/${this.model}:generateContent?key=${activeKey}`;
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 18000);
+
       try {
         resp = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(requestBody)
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
         });
       } catch (netErr: any) {
-        lastErrorMsg = `Lỗi mạng: ${netErr?.message || netErr}`;
-        DebugLogger.warn('Gemini API', `Key ${maskedKey} gặp lỗi mạng. Đang đổi key hoặc thử lại...`);
+        clearTimeout(timeoutId);
+        if (netErr.name === 'AbortError') {
+          lastErrorMsg = `Quá thời gian phản hồi từ Gemini API (timeout 18s). Key ${maskedKey}`;
+        } else {
+          lastErrorMsg = `Lỗi mạng: ${netErr?.message || netErr}`;
+        }
+        DebugLogger.warn('Gemini API', `${lastErrorMsg}. Đang đổi key hoặc thử lại...`);
         if (attempt < maxRetries && this.keyRotator.hasMultipleKeys) {
           continue;
         }
@@ -93,6 +109,7 @@ RULES FOR COMIC TRANSLATION:
         }
         break;
       }
+      clearTimeout(timeoutId);
 
       if (resp.ok) {
         this.lastKeyIndex = this.keyRotator.getKeyIndex(activeKey);
@@ -133,6 +150,12 @@ RULES FOR COMIC TRANSLATION:
           : 2500 * Math.pow(1.4, Math.min(attempt, 3)) + Math.random() * 500;
 
         this.keyRotator.markRateLimited(activeKey, backoffMs);
+
+        const checkAll = this.keyRotator.areAllKeysRateLimited();
+        if (checkAll.allLimited) {
+          const sec = Math.ceil(checkAll.minRemainingMs / 1000);
+          throw new Error(`Tất cả (${this.keyRotator.count}) API key đều đang bị giới hạn (429 Rate Limit). Vui lòng đợi ${sec}s.`);
+        }
 
         if (this.keyRotator.hasMultipleKeys && attempt < maxRetries) {
           DebugLogger.warn('Gemini API', `Key ${maskedKey} gặp 429 (Rate limit). Chuyển sang key khác ngay...`);
@@ -284,7 +307,13 @@ CRITICAL NEGATIVE CONSTRAINTS:
     };
 
     let resp: Response | null = null;
-    const maxRetries = Math.max(3, this.keyRotator.count * 2);
+    const limitCheck = this.keyRotator.areAllKeysRateLimited();
+    if (limitCheck.allLimited) {
+      const sec = Math.ceil(limitCheck.minRemainingMs / 1000);
+      throw new Error(`Tất cả (${this.keyRotator.count}) API key đều đang bị giới hạn (429 Rate Limit). Vui lòng đợi ${sec}s.`);
+    }
+
+    const maxRetries = Math.min(this.keyRotator.count, 3);
     let lastErrorMsg = '';
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -292,15 +321,24 @@ CRITICAL NEGATIVE CONSTRAINTS:
       const maskedKey = ApiKeyRotator.maskKey(activeKey);
       const endpoint = `${this.baseUrl}/models/${this.model}:generateContent?key=${activeKey}`;
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 18000);
+
       try {
         resp = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody)
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
         });
       } catch (netErr: any) {
-        lastErrorMsg = `Lỗi mạng: ${netErr?.message || netErr}`;
-        DebugLogger.warn('Gemini Vision API', `Key ${maskedKey} gặp lỗi mạng. Đang đổi key hoặc thử lại...`);
+        clearTimeout(timeoutId);
+        if (netErr.name === 'AbortError') {
+          lastErrorMsg = `Quá thời gian phản hồi từ Gemini API (timeout 18s). Key ${maskedKey}`;
+        } else {
+          lastErrorMsg = `Lỗi mạng: ${netErr?.message || netErr}`;
+        }
+        DebugLogger.warn('Gemini Vision API', `${lastErrorMsg}. Đang đổi key hoặc thử lại...`);
         if (attempt < maxRetries && this.keyRotator.hasMultipleKeys) {
           continue;
         }
@@ -310,6 +348,7 @@ CRITICAL NEGATIVE CONSTRAINTS:
         }
         break;
       }
+      clearTimeout(timeoutId);
 
       if (resp.ok) {
         this.lastKeyIndex = this.keyRotator.getKeyIndex(activeKey);
@@ -350,6 +389,12 @@ CRITICAL NEGATIVE CONSTRAINTS:
           : 2500 * Math.pow(1.4, Math.min(attempt, 3)) + Math.random() * 500;
 
         this.keyRotator.markRateLimited(activeKey, backoffMs);
+
+        const checkAll = this.keyRotator.areAllKeysRateLimited();
+        if (checkAll.allLimited) {
+          const sec = Math.ceil(checkAll.minRemainingMs / 1000);
+          throw new Error(`Tất cả (${this.keyRotator.count}) API key đều đang bị giới hạn (429 Rate Limit). Vui lòng đợi ${sec}s.`);
+        }
 
         if (this.keyRotator.hasMultipleKeys && attempt < maxRetries) {
           DebugLogger.warn('Gemini Vision API', `Key ${maskedKey} gặp 429 (Rate limit). Chuyển sang key khác ngay...`);
@@ -412,60 +457,7 @@ CRITICAL NEGATIVE CONSTRAINTS:
 
     try {
       const rawList = JsonExtractor.extractDialogueItems(candidateText);
-      const dialogues: DialogueItem[] = [];
-
-      for (let i = 0; i < rawList.length; i++) {
-        const item = rawList[i];
-        if (!item) continue;
-
-        const translatedText = String(
-          item.translation || item.translated_text || item.vietnamese || item.text || ''
-        ).trim();
-        if (!translatedText) continue;
-
-        const rawBox = item.box_2d || item.box || item.bounding_box;
-        let ymin = 0, xmin = 0, ymax = 0, xmax = 0;
-
-        let flatBox: any[] = [];
-        if (Array.isArray(rawBox)) {
-          flatBox = Array.isArray(rawBox[0]) ? rawBox[0] : rawBox;
-        }
-
-        if (flatBox.length >= 4) {
-          [ymin, xmin, ymax, xmax] = flatBox.map(Number);
-        } else if (rawBox && typeof rawBox === 'object') {
-          ymin = Number(rawBox.ymin ?? rawBox.top ?? 0);
-          xmin = Number(rawBox.xmin ?? rawBox.left ?? 0);
-          ymax = Number(rawBox.ymax ?? rawBox.bottom ?? 0);
-          xmax = Number(rawBox.xmax ?? rawBox.right ?? 0);
-        } else {
-          continue;
-        }
-
-        if (isNaN(ymin) || isNaN(xmin) || isNaN(ymax) || isNaN(xmax)) continue;
-
-        const normYmin = Math.min(ymin, ymax);
-        const normYmax = Math.max(ymin, ymax);
-        const normXmin = Math.min(xmin, xmax);
-        const normXmax = Math.max(xmin, xmax);
-
-        const x = Math.round((normXmin / 1000) * naturalWidth);
-        const y = Math.round((normYmin / 1000) * naturalHeight);
-        const width = Math.round(((normXmax - normXmin) / 1000) * naturalWidth);
-        const height = Math.round(((normYmax - normYmin) / 1000) * naturalHeight);
-
-        if (width < 8 || height < 8) continue;
-
-        dialogues.push({
-          id: `slate_vision_${Date.now()}_${i}`,
-          box: { x, y, width, height, confidence: 0.95 },
-          originalText: String(item.original_text || item.text || '').trim(),
-          translatedText,
-          isDarkBackground: item.background === 'dark'
-        });
-      }
-
-      return dialogues;
+      return VisionBoxParser.parseItems(rawList, naturalWidth, naturalHeight);
     } catch (e: any) {
       DebugLogger.error('Gemini Vision', `Lỗi parse JSON. Raw AI text: ${candidateText.substring(0, 300)}`, e);
       throw new Error('Không thể phân tích dữ liệu tọa độ hộp thoại từ Gemini Vision.');

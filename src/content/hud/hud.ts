@@ -1,6 +1,6 @@
 import { ChubbyIcons } from './chubby-icons';
 
-export type HudState = 'idle' | 'translating' | 'paused' | 'completed';
+export type HudState = 'idle' | 'translating' | 'paused' | 'completed' | 'error';
 
 export interface HudCallbacks {
   onToggleTranslate: () => void;
@@ -191,7 +191,7 @@ export class FloatingHud {
   }
 
   private handlePrimaryClick(): void {
-    if (this.state === 'idle') {
+    if (this.state === 'idle' || this.state === 'error') {
       this.setState('translating');
       this.callbacks.onToggleTranslate();
     } else if (this.state === 'translating') {
@@ -334,17 +334,18 @@ export class FloatingHud {
       left: `${Math.max(12, rect.left)}px`,
       bottom: `${window.innerHeight - rect.top + 8}px`,
       zIndex: '2147483647',
-      background: '#111111',
-      color: '#F5F5F4',
-      border: '1px solid rgba(239, 68, 68, 0.5)',
+      background: '#1c1010',
+      color: '#fee2e2',
+      border: '1px solid rgba(239, 68, 68, 0.7)',
       borderRadius: '8px',
-      padding: '6px 12px',
+      padding: '8px 14px',
       fontSize: '11px',
       fontFamily: 'system-ui, -apple-system, sans-serif',
-      boxShadow: '0 8px 24px rgba(0, 0, 0, 0.45)',
+      boxShadow: '0 8px 30px rgba(0, 0, 0, 0.6)',
       pointerEvents: 'none',
       transition: 'opacity 0.2s ease',
-      maxWidth: '280px'
+      maxWidth: '340px',
+      lineHeight: '1.4'
     });
     this.toast.textContent = message;
     document.body.appendChild(this.toast);
@@ -357,7 +358,7 @@ export class FloatingHud {
           this.toast = null;
         }, 200);
       }
-    }, 3500);
+    }, 6000);
   }
 
   private render(): void {
@@ -369,6 +370,15 @@ export class FloatingHud {
           <span>Dịch truyện${countTxt}</span>
         `;
         this.btn.title = 'Bấm để bắt đầu dịch truyện • Chuột phải mở menu';
+        break;
+      }
+      case 'error': {
+        const prog = this.totalCount > 0 ? ` (${this.translatedCount}/${this.totalCount})` : '';
+        this.btn.innerHTML = `
+          ${ChubbyIcons.alert(14, '#ef4444')}
+          <span style="color: #fca5a5;">Lỗi dịch${prog}</span>
+        `;
+        this.btn.title = 'Có lỗi xảy ra khi dịch • Bấm để thử lại • Chuột phải mở menu';
         break;
       }
       case 'translating': {

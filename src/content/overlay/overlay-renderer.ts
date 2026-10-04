@@ -38,10 +38,12 @@ export class OverlayRenderer {
         minHeightPct = (box.height / naturalHeight) * 100;
       }
 
-      // Add a modest breathing margin (+4% width, +3% height) so the clean background
-      // completely masks and erases the original printed English text without showing edges
-      const expandX = Math.min(widthPct * 0.12, 4);
-      const expandY = Math.min(minHeightPct * 0.10, 3);
+      // Add a small, calibrated margin (+4px width, +3px height) converted to image percentage
+      // so the background stays tight to the text without expanding into giant boxes on tall strips
+      const padPixelX = 4;
+      const padPixelY = 3;
+      const expandX = (padPixelX * 2 / Math.max(1, naturalWidth)) * 100;
+      const expandY = (padPixelY * 2 / Math.max(1, naturalHeight)) * 100;
 
       const finalLeft = Math.max(0, leftPct - expandX / 2);
       const finalTop = Math.max(0, topPct - expandY / 2);
@@ -120,13 +122,13 @@ export class OverlayRenderer {
   private static calculateFontSize(boxW: number, boxH: number, textLength: number): number {
     const area = boxW * boxH;
     // Multiplier tuned for clear, bold comic typography in Vietnamese
-    let base = Math.sqrt(area / Math.max(1, textLength)) * 1.18;
-    // If bounding box has decent height (>= 35px), ensure font is at least 14px
-    if (boxH >= 35) {
+    let base = Math.sqrt(area / Math.max(1, textLength)) * 1.25;
+    // If bounding box has decent height (>= 28px), ensure font is at least 14px
+    if (boxH >= 28) {
       base = Math.max(14, base);
     }
-    // Strict bounds: minimum 13px (guaranteed readable), maximum 22px (headings/shouts)
-    return Math.max(13, Math.min(22, Math.round(base)));
+    // Strict bounds: minimum 13px (guaranteed readable), maximum 24px (headings/shouts)
+    return Math.max(13, Math.min(24, Math.round(base)));
   }
 
   /**

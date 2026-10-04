@@ -1710,8 +1710,10 @@
           widthPct = box.width / naturalWidth * 100;
           minHeightPct = box.height / naturalHeight * 100;
         }
-        const expandX = Math.min(widthPct * 0.12, 4);
-        const expandY = Math.min(minHeightPct * 0.1, 3);
+        const padPixelX = 4;
+        const padPixelY = 3;
+        const expandX = padPixelX * 2 / Math.max(1, naturalWidth) * 100;
+        const expandY = padPixelY * 2 / Math.max(1, naturalHeight) * 100;
         const finalLeft = Math.max(0, leftPct - expandX / 2);
         const finalTop = Math.max(0, topPct - expandY / 2);
         const finalWidth = Math.min(100 - finalLeft, widthPct + expandX);
@@ -1776,11 +1778,11 @@
      */
     static calculateFontSize(boxW, boxH, textLength) {
       const area = boxW * boxH;
-      let base = Math.sqrt(area / Math.max(1, textLength)) * 1.18;
-      if (boxH >= 35) {
+      let base = Math.sqrt(area / Math.max(1, textLength)) * 1.25;
+      if (boxH >= 28) {
         base = Math.max(14, base);
       }
-      return Math.max(13, Math.min(22, Math.round(base)));
+      return Math.max(13, Math.min(24, Math.round(base)));
     }
     /**
      * Toggles visibility of all translated overlays on the page
@@ -1927,7 +1929,7 @@
       for (const selector of this.CONTAINER_SELECTORS) {
         const container = document.querySelector(selector);
         if (container && !this.isInsideExcludedZone(container)) {
-          const madaraImgs = Array.from(container.querySelectorAll("img.wp-manga-chapter-img")).filter((img) => !this.isInsideExcludedZone(img) && !img.classList.contains("speedyslate-ignore"));
+          const madaraImgs = Array.from(container.querySelectorAll("img.wp-manga-chapter-img")).filter((img) => this.isGenuineComicPanel(img));
           if (madaraImgs.length >= 1) {
             return madaraImgs.sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
           }
@@ -2015,7 +2017,9 @@
         "thumb",
         "cover",
         "recommend",
-        "related"
+        "related",
+        "999.png",
+        "assets/999"
       ];
       for (const kw of ignoredKeywords) {
         if (src.includes(kw) || className.includes(kw) || id.includes(kw)) {
@@ -2075,11 +2079,15 @@
       wrapper.className = "speedyslate-wrapper";
       wrapper.style.position = "relative";
       wrapper.style.display = "block";
-      wrapper.style.width = "100%";
+      wrapper.style.width = "fit-content";
+      wrapper.style.maxWidth = "100%";
       wrapper.style.margin = "0 auto";
       wrapper.style.lineHeight = "0";
       wrapper.style.boxSizing = "border-box";
       wrapper.style.overflow = "hidden";
+      img.style.display = "block";
+      img.style.maxWidth = "100%";
+      img.style.height = "auto";
       img.parentElement?.insertBefore(wrapper, img);
       wrapper.appendChild(img);
       return wrapper;
@@ -2441,21 +2449,19 @@
   // src/content/image-compressor.ts
   var ImageCompressor = class {
     /**
-     * Captures and downsizes an image for Vision AI transmission.
+     * Captures and optimizes an image for Vision AI transmission.
+     * Only scales down width if naturalWidth exceeds maxDim (1280px).
+     * Does NOT squash width when height is tall!
      */
     static compressForVision(img, maxDim = 1280, quality = 0.85) {
       const naturalWidth = img.naturalWidth || img.width || 800;
       const naturalHeight = img.naturalHeight || img.height || 1200;
       let targetWidth = naturalWidth;
       let targetHeight = naturalHeight;
-      if (Math.max(naturalWidth, naturalHeight) > maxDim) {
-        if (naturalWidth > naturalHeight) {
-          targetWidth = maxDim;
-          targetHeight = Math.round(naturalHeight / naturalWidth * maxDim);
-        } else {
-          targetHeight = maxDim;
-          targetWidth = Math.round(naturalWidth / naturalHeight * maxDim);
-        }
+      if (naturalWidth > maxDim) {
+        const scale = maxDim / naturalWidth;
+        targetWidth = maxDim;
+        targetHeight = Math.round(naturalHeight * scale);
       }
       try {
         const canvas = document.createElement("canvas");
@@ -2481,6 +2487,58 @@
         compressedWidth: targetWidth,
         compressedHeight: targetHeight
       };
+    }
+    /**
+     * Slices a tall continuous webtoon image strip into standard page-sized chunks
+     * (e.g. 2200px height with 150px overlap) for high-accuracy Vision AI / OCR.
+     */
+    static sliceForProcessing(img, maxSliceHeight = 2200, overlap = 150, quality = 0.85) {
+      const naturalWidth = img.naturalWidth || img.width || 800;
+      const naturalHeight = img.naturalHeight || img.height || 1200;
+      if (naturalHeight <= maxSliceHeight + 200) {
+        const compressed = this.compressForVision(img, 1280, quality);
+        if (compressed.dataUrl) {
+          return [
+            {
+              dataUrl: compressed.dataUrl,
+              startY: 0,
+              sliceHeight: naturalHeight,
+              naturalWidth,
+              naturalHeight
+            }
+          ];
+        }
+        return [];
+      }
+      let targetWidth = naturalWidth;
+      if (naturalWidth > 1280) {
+        targetWidth = 1280;
+      }
+      const slices = [];
+      const step = maxSliceHeight - overlap;
+      for (let startY = 0; startY < naturalHeight; startY += step) {
+        const currentH = Math.min(maxSliceHeight, naturalHeight - startY);
+        const targetH = naturalWidth > 1280 ? Math.round(currentH / naturalWidth * 1280) : currentH;
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = targetWidth;
+          canvas.height = targetH;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) continue;
+          ctx.drawImage(img, 0, startY, naturalWidth, currentH, 0, 0, targetWidth, targetH);
+          const dataUrl = canvas.toDataURL("image/jpeg", quality);
+          slices.push({
+            dataUrl,
+            startY,
+            sliceHeight: currentH,
+            naturalWidth,
+            naturalHeight
+          });
+        } catch {
+          break;
+        }
+      }
+      return slices;
     }
   };
 
@@ -2522,6 +2580,12 @@
           imageUrl = window.location.protocol + imageUrl;
         } else if (imageUrl.startsWith("/")) {
           imageUrl = window.location.origin + imageUrl;
+        }
+        const naturalWidth = img.naturalWidth || img.width || 800;
+        const naturalHeight = img.naturalHeight || img.height || 1200;
+        if (isVision && naturalHeight > 2200) {
+          await this.processVisionStrip(task, wrapper, imageUrl, naturalWidth, naturalHeight);
+          return;
         }
         img.dataset.slateStatus = "ocr_running";
         PageBadgeManager.updateBadge(
@@ -2731,6 +2795,154 @@
           this.ctx.hud.setState("error");
         }
       }
+    }
+    /**
+     * Slices tall continuous webtoon strips into individual page chunks (e.g. 2200px each)
+     * for Vision AI to avoid horizontal squashing, box displacement, and hallucinated panels.
+     */
+    async processVisionStrip(task, wrapper, imageUrl, naturalWidth, naturalHeight) {
+      const img = task.img;
+      const settings = this.ctx.getSettings();
+      const totalKeys = this.getKeyCount();
+      const estimatedKey = totalKeys > 0 ? task.index % totalKeys + 1 : void 0;
+      if (imageUrl) {
+        try {
+          const cacheCheck = await SafeMessenger.send({
+            action: "OCR_IMAGE",
+            imageUrl,
+            chapterUrl: window.location.href
+          });
+          if (cacheCheck?.success && cacheCheck.cached) {
+            if (cacheCheck.dialogues && cacheCheck.dialogues.length > 0) {
+              OverlayRenderer.renderDialogues(
+                wrapper,
+                cacheCheck.dialogues,
+                naturalWidth,
+                naturalHeight,
+                settings?.bubbleTheme || "auto"
+              );
+              img.dataset.slateStatus = "translated";
+              PageBadgeManager.updateBadge(wrapper, task.index, "translated", cacheCheck.dialogues.length);
+              this.ctx.hud.log(`Trang #${task.index + 1}: N\u1EA1p t\u1EEB Cache (0ms)`);
+            } else {
+              img.dataset.slateStatus = "no_text";
+              PageBadgeManager.updateBadge(wrapper, task.index, "no_text");
+              this.ctx.hud.log(`Trang #${task.index + 1}: Kh\xF4ng c\xF3 ch\u1EEF tho\u1EA1i`);
+            }
+            this.ctx.markImageCompleted(img);
+            return;
+          }
+        } catch {
+        }
+      }
+      const slices = ImageCompressor.sliceForProcessing(img, 2200, 150);
+      if (slices.length === 0) {
+        img.dataset.slateStatus = "error";
+        PageBadgeManager.updateBadge(wrapper, task.index, "error", void 0, { errorMessage: "Kh\xF4ng th\u1EC3 ph\xE2n \u0111o\u1EA1n \u1EA3nh" });
+        return;
+      }
+      img.dataset.slateStatus = "ocr_running";
+      PageBadgeManager.updateBadge(
+        wrapper,
+        task.index,
+        "ocr_running",
+        void 0,
+        totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : void 0
+      );
+      const allDialogues = [];
+      let lastKeyIndex = estimatedKey;
+      for (let sIdx = 0; sIdx < slices.length; sIdx++) {
+        const slice = slices[sIdx];
+        this.ctx.hud.log(
+          `Trang #${task.index + 1}: Vision AI \u0111ang d\u1ECBch \u0111o\u1EA1n ${sIdx + 1}/${slices.length}...`
+        );
+        const resp = await SafeMessenger.send({
+          action: "OCR_IMAGE",
+          chapterUrl: window.location.href,
+          dataUrl: slice.dataUrl,
+          naturalWidth: slice.naturalWidth,
+          naturalHeight: slice.sliceHeight
+        });
+        if (resp?.isContextInvalidated) {
+          this.ctx.onContextInvalidated();
+          return;
+        }
+        if (resp?.success && Array.isArray(resp.dialogues)) {
+          if (resp.keyIndex) lastKeyIndex = resp.keyIndex;
+          for (const d of resp.dialogues) {
+            if (!d.normBox) continue;
+            const sliceH = slice.sliceHeight;
+            const slicePixelYmin = d.normBox.ymin / 1e3 * sliceH;
+            const slicePixelYmax = d.normBox.ymax / 1e3 * sliceH;
+            const globalPixelYmin = slice.startY + slicePixelYmin;
+            const globalPixelYmax = slice.startY + slicePixelYmax;
+            const globalNormYmin = Math.round(globalPixelYmin / naturalHeight * 1e3);
+            const globalNormYmax = Math.round(globalPixelYmax / naturalHeight * 1e3);
+            const remappedDialogue = {
+              ...d,
+              box: {
+                x: Math.round(d.normBox.xmin / 1e3 * naturalWidth),
+                y: Math.round(globalPixelYmin),
+                width: Math.round((d.normBox.xmax - d.normBox.xmin) / 1e3 * naturalWidth),
+                height: Math.round(globalPixelYmax - globalPixelYmin),
+                confidence: d.box?.confidence ?? 0.95
+              },
+              normBox: {
+                ymin: globalNormYmin,
+                xmin: d.normBox.xmin,
+                ymax: globalNormYmax,
+                xmax: d.normBox.xmax
+              }
+            };
+            if (slice.startY > 0 && slicePixelYmin < 180) {
+              const isDup = allDialogues.some((existing) => {
+                if (!existing.normBox) return false;
+                const yDiff = Math.abs(existing.normBox.ymin - globalNormYmin);
+                const xDiff = Math.abs(existing.normBox.xmin - d.normBox.xmin);
+                return yDiff < 20 && xDiff < 25;
+              });
+              if (isDup) continue;
+            }
+            allDialogues.push(remappedDialogue);
+          }
+        }
+      }
+      if (allDialogues.length > 0) {
+        OverlayRenderer.renderDialogues(
+          wrapper,
+          allDialogues,
+          naturalWidth,
+          naturalHeight,
+          settings?.bubbleTheme || "auto"
+        );
+        img.dataset.slateStatus = "translated";
+        PageBadgeManager.updateBadge(
+          wrapper,
+          task.index,
+          "translated",
+          allDialogues.length,
+          lastKeyIndex ? { keyIndex: lastKeyIndex, totalKeys } : void 0
+        );
+        this.ctx.hud.log(
+          `Trang #${task.index + 1}: Vision AI \u0111\xE3 ho\xE0n t\u1EA5t ${allDialogues.length} c\xE2u tho\u1EA1i`
+        );
+        if (imageUrl) {
+          SafeMessenger.send({
+            action: "SAVE_TRANSLATION",
+            imageUrl,
+            chapterUrl: window.location.href,
+            dialogues: allDialogues,
+            width: naturalWidth,
+            height: naturalHeight
+          }).catch(() => {
+          });
+        }
+      } else {
+        img.dataset.slateStatus = "no_text";
+        PageBadgeManager.updateBadge(wrapper, task.index, "no_text");
+        this.ctx.hud.log(`Trang #${task.index + 1}: Kh\xF4ng t\xECm th\u1EA5y ch\u1EEF tho\u1EA1i`);
+      }
+      this.ctx.markImageCompleted(img);
     }
   };
 

@@ -4,6 +4,7 @@ import { ITextDetector } from './detector-interface';
 import { ComicDetEngine } from './comic-det';
 import { PaddleDetEngine } from './paddle-det';
 import { PaddleRecEngine } from './paddle-rec';
+import { StripSlicer } from './strip-slicer';
 
 // Configure ONNX Runtime Web for Dedicated Worker environment
 // wasmPaths must be local — AMO Compliance: No remote code execution
@@ -191,8 +192,8 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
             if (!ctx) throw new Error('Không thể tạo 2D context trong Worker');
             ctx.drawImage(bitmap, 0, 0);
 
-            // 1. Text Detection (runs serialized on detSession)
-            const boxes = await detEngine.detectText(canvas, width, height);
+            // 1. Text Detection (runs serialized on detSession, auto-slices if tall webtoon strip)
+            const boxes = await StripSlicer.detectWithSlicing(canvas, width, height, detEngine);
 
             // 2. Text Recognition (runs serialized on recSession)
             const dialogues = await recEngine.recognizeBoxes(canvas, boxes);

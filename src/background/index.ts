@@ -141,6 +141,14 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
         return { success: true, translations: results };
       }
 
+      case 'SAVE_TRANSLATION': {
+        const { imageUrl, chapterUrl, dialogues, width, height } = msg;
+        if (imageUrl && Array.isArray(dialogues)) {
+          await TranslationCacheDb.saveTranslation(imageUrl, chapterUrl || '', dialogues, width, height);
+        }
+        return { success: true };
+      }
+
       case 'OCR_IMAGE': {
         const { imageUrl, dataUrl } = msg;
 

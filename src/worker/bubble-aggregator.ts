@@ -81,7 +81,7 @@ export class BubbleAggregator {
     }
 
     // 2. Build aggregated DialogueItem for each speech bubble
-    return groups.map((group, groupIdx) => {
+    const rawDialogues = groups.map((group, groupIdx) => {
       // Sort lines in group top to bottom
       group.sort((a, b) => a.box.y - b.box.y);
 
@@ -129,5 +129,39 @@ export class BubbleAggregator {
         isDarkBackground
       };
     });
+
+    // 3. Deduplicate overlapping bubbles (e.g. multiple detector hits for same bubble)
+    const deduped: DialogueItem[] = [];
+    for (const d of rawDialogues) {
+      const isDuplicate = deduped.some((existing) => {
+        const iou = this.calculateIoU(existing.box, d.box);
+        if (iou > 0.45) return true;
+
+        const textA = existing.originalText.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const textB = d.originalText.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (textA && textB && (textA === textB || textA.includes(textB) || textB.includes(textA))) {
+          if (iou > 0.20) return true;
+        }
+        return false;
+      });
+
+      if (!isDuplicate) {
+        deduped.push(d);
+      }
+    }
+
+    return deduped;
+  }
+
+  private static calculateIoU(a: BoundingBox, b: BoundingBox): number {
+    const xOverlap = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+    const yOverlap = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+    const intersection = xOverlap * yOverlap;
+    if (intersection <= 0) return 0;
+
+    const areaA = a.width * a.height;
+    const areaB = b.width * b.height;
+    const union = areaA + areaB - intersection;
+    return union > 0 ? intersection / union : 0;
   }
 }

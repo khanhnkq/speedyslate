@@ -1,0 +1,211 @@
+/*
+ * SpeedySlate — Model Hub Styles
+ * Minimalist Anime Editorial Model Cards
+ */
+
+.storage-tag {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--ink2);
+  background: #EAEAE8;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.model-cards-container {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 250px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.model-card {
+  background: #FFFFFF;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.model-card:hover {
+  border-color: #C4B5FD;
+}
+
+.model-card.active {
+  border-color: var(--accent);
+  background: #FAF5FF;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.model-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.model-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+}
+
+.model-radio-circle {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.model-card.active .model-radio-circle {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 2px #fff;
+}
+
+.model-title-block {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.model-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-size-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  color: var(--ink2);
+}
+
+.model-card-badge {
+  font-size: 9.5px;
+  font-family: 'DM Mono', monospace;
+  padding: 1.5px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.model-card-badge.ready {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+
+.model-card-badge.not_downloaded {
+  background: #F5F5F4;
+  color: #78716C;
+}
+
+.model-card-badge.downloading {
+  background: #EDE9FE;
+  color: var(--accent);
+}
+
+.model-desc {
+  font-size: 10px;
+  color: var(--ink2);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.model-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 1px;
+  padding-top: 4px;
+  border-top: 1px dashed #EAEAE8;
+}
+
+.btn-card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 3px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.btn-card-action:hover {
+  background: #F5F5F4;
+}
+
+.btn-card-download {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.btn-card-download:hover {
+  background: #FAF5FF;
+}
+
+.btn-card-delete {
+  border-color: #E2E2E0;
+  color: #DC2626;
+}
+
+.btn-card-delete:hover {
+  background: #FEF2F2;
+  border-color: #FCA5A5;
+}
+
+.card-progress-bar-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card-progress-track {
+  flex: 1;
+  height: 4px;
+  background: #EAEAE8;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.card-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.15s;
+}
+
+.card-progress-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  color: var(--ink2);
+}

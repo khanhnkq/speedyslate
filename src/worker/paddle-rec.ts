@@ -11,6 +11,10 @@ export class PaddleRecEngine {
     this.session = session;
     // Split keysText by line, preserving character order
     this.characters = keysText.split(/\r?\n/);
+    // In PaddleOCR CTC models, the last class index represents SPACE (' ')
+    if (this.characters.length > 0) {
+      this.characters[this.characters.length - 1] = ' ';
+    }
   }
 
   /**
@@ -27,25 +31,30 @@ export class PaddleRecEngine {
     let counter = 0;
     for (const box of boxes) {
       counter++;
-      const cropW = Math.max(1, Math.round(box.width));
-      const cropH = Math.max(1, Math.round(box.height));
+      // 1. Add slight padding to prevent edge characters from being clipped
+      const padX = 2;
+      const padY = 1;
+      const srcX = Math.max(0, box.x - padX);
+      const srcY = Math.max(0, box.y - padY);
+      const srcW = Math.max(1, Math.min(sourceCanvas.width - srcX, box.width + padX * 2));
+      const srcH = Math.max(1, Math.min(sourceCanvas.height - srcY, box.height + padY * 2));
 
-      // 1. Calculate target width preserving ratio
-      const ratio = cropW / cropH;
-      let targetW = Math.max(32, Math.min(480, Math.round(this.targetH * ratio)));
+      // 2. Calculate target width preserving ratio (up to 960px for full lines)
+      const ratio = srcW / srcH;
+      let targetW = Math.max(32, Math.min(960, Math.round(this.targetH * ratio)));
       targetW = Math.round(targetW / 8) * 8; // round to multiple of 8
 
-      // 2. Crop and resize to targetH x targetW
+      // 3. Crop and resize to targetH x targetW
       const cropCanvas = new OffscreenCanvas(targetW, this.targetH);
       const cropCtx = cropCanvas.getContext('2d');
       if (!cropCtx) continue;
 
       cropCtx.drawImage(
         sourceCanvas,
-        box.x,
-        box.y,
-        cropW,
-        cropH,
+        srcX,
+        srcY,
+        srcW,
+        srcH,
         0,
         0,
         targetW,
@@ -74,9 +83,10 @@ export class PaddleRecEngine {
           outputTensor.dims
         );
 
-        const cleanText = text.trim();
-        // Ignore single noisy punctuation or meaningless 1-char symbols
-        if (cleanText.length > 0 && confidence > 0.4) {
+        const cleanText = text.replace(/\s+/g, ' ').trim();
+        // Ignore noise, empty text, or non-alphanumeric graphic artifacts (e.g. "--", "..", "|")
+        const hasLetterOrDigit = /[\p{L}\p{N}]/u.test(cleanText);
+        if (cleanText.length > 0 && hasLetterOrDigit && confidence > 0.35) {
           results.push({
             id: `bubble-${Date.now()}-${counter}`,
             box,
@@ -93,26 +103,39 @@ export class PaddleRecEngine {
   }
 
   /**
-   * Fast brightness calculation on sampled pixels
-   * Returns true if background is predominantly dark
+   * Fast background luminance check sampling the outer perimeter of the text box
+   * where text characters do not reside.
+   * Returns true if the background is dark (e.g. black speech balloon in manhwa/manga).
    */
   private detectDarkBackground(imageData: ImageData): boolean {
     const data = imageData.data;
-    let totalLuma = 0;
+    const w = imageData.width;
+    const h = imageData.height;
+    if (w <= 0 || h <= 0) return false;
 
-    // Sample every 4th pixel for speed
+    let edgeLuma = 0;
     let samples = 0;
-    for (let i = 0; i < data.length; i += 16) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      // ITU-R BT.601 luminance
-      totalLuma += 0.299 * r + 0.587 * g + 0.114 * b;
-      samples++;
+
+    // Sample top and bottom margin rows
+    for (let x = 0; x < w; x += 3) {
+      const idxTop = (0 * w + x) * 4;
+      edgeLuma += 0.299 * data[idxTop] + 0.587 * data[idxTop + 1] + 0.114 * data[idxTop + 2];
+      const idxBot = ((h - 1) * w + x) * 4;
+      edgeLuma += 0.299 * data[idxBot] + 0.587 * data[idxBot + 1] + 0.114 * data[idxBot + 2];
+      samples += 2;
     }
 
-    const avgLuma = samples > 0 ? totalLuma / samples : 255;
-    return avgLuma < 110;
+    // Sample left and right margin columns
+    for (let y = 1; y < h - 1; y += 2) {
+      const idxLeft = (y * w + 0) * 4;
+      edgeLuma += 0.299 * data[idxLeft] + 0.587 * data[idxLeft + 1] + 0.114 * data[idxLeft + 2];
+      const idxRight = (y * w + (w - 1)) * 4;
+      edgeLuma += 0.299 * data[idxRight] + 0.587 * data[idxRight + 1] + 0.114 * data[idxRight + 2];
+      samples += 2;
+    }
+
+    const avgLuma = samples > 0 ? edgeLuma / samples : 255;
+    return avgLuma < 105;
   }
 
   /**

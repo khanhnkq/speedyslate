@@ -1,94 +1,90 @@
 import browser from 'webextension-polyfill';
-import * as ort from 'onnxruntime-web';
-import { ModelDbService } from '../shared/model-db';
 import { StorageService } from '../shared/storage';
 import { TranslationCacheDb } from '../shared/translation-db';
+import { ModelDbService } from '../shared/model-db';
 import { DialogueItem } from '../shared/types';
-import { API_PRESETS } from '../shared/presets';
+import { API_PRESETS, OCR_MODEL_PRESETS } from '../shared/presets';
 import { TranslationProviderFactory } from '../services/translation/provider-factory';
 import { ApiRateLimiter } from '../services/translation/rate-limiter';
-import { PaddleDetEngine } from '../worker/paddle-det';
-import { PaddleRecEngine } from '../worker/paddle-rec';
-import { BubbleAggregator } from '../worker/bubble-aggregator';
+import { ocrWorkerClient } from './ocr-worker-client';
+import { DebugLogger } from '../shared/debug-logger';
 
-// Configure ONNX Runtime for background environment
-ort.env.wasm.wasmPaths = browser.runtime.getURL('');
-ort.env.wasm.numThreads = 1; // Single-thread SIMD: 100% compatible with MV3 background
-ort.env.wasm.simd = true;
-
-let detEngine: PaddleDetEngine | null = null;
-let recEngine: PaddleRecEngine | null = null;
-let activeModelId: string | null = null;
-let isInitializingModel = false;
-
-async function ensureModelLoaded(modelId: string): Promise<void> {
-  if (detEngine && recEngine && activeModelId === modelId) {
-    return;
-  }
-  if (isInitializingModel) {
-    while (isInitializingModel) {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    if (detEngine && recEngine && activeModelId === modelId) return;
-  }
-
-  isInitializingModel = true;
-  try {
-    const status = await ModelDbService.getModelStatus(modelId);
-    if (status.status !== 'ready') {
-      throw new Error(`Model OCR "${modelId}" chưa được tải. Vui lòng mở popup tiện ích để tải model.`);
-    }
-
-    const buffers = await ModelDbService.getModelBuffers(modelId);
-    const sessionOpts: ort.InferenceSession.SessionOptions = {
-      executionProviders: ['wasm'],
-      graphOptimizationLevel: 'all'
-    };
-
-    const [detSession, recSession] = await Promise.all([
-      ort.InferenceSession.create(buffers.detBuffer, sessionOpts),
-      ort.InferenceSession.create(buffers.recBuffer, sessionOpts)
-    ]);
-
-    detEngine = new PaddleDetEngine(detSession);
-    recEngine = new PaddleRecEngine(recSession, buffers.keysText);
-    activeModelId = modelId;
-  } catch (err: any) {
-    console.error('[SpeedySlate Background] Model init error:', err);
-    throw new Error(`Lỗi nạp model OCR: ${err?.message || String(err)}`);
-  } finally {
-    isInitializingModel = false;
-  }
+// ---------------------------------------------------------------------------
+// Global error catching for Background Service Worker / Event Page
+// ---------------------------------------------------------------------------
+if (typeof self !== 'undefined') {
+  self.addEventListener('error', (event: any) => {
+    DebugLogger.error('Background:GlobalError', event.message || String(event), event.error);
+  });
+  self.addEventListener('unhandledrejection', (event: any) => {
+    DebugLogger.error('Background:UnhandledRejection', event.reason?.message || String(event.reason), event.reason);
+  });
 }
 
-async function getImageBitmapFromInput(dataUrl?: string, imageUrl?: string): Promise<ImageBitmap> {
-  if (dataUrl) {
-    const res = await fetch(dataUrl);
-    const blob = await res.blob();
-    return await createImageBitmap(blob);
-  }
-  if (imageUrl) {
-    // Background fetch bypasses CORS
-    const res = await fetch(imageUrl);
-    const blob = await res.blob();
-    return await createImageBitmap(blob);
-  }
-  throw new Error('Thiếu dữ liệu ảnh (dataUrl hoặc imageUrl)');
-}
+// NOTE: ONNX Runtime (onnxruntime-web) MUST NOT be imported here.
+// Chrome MV3 Service Workers forbid dynamic import() which ONNX uses internally.
+// All ONNX inference runs inside Dedicated Web Worker / Offscreen Document.
+// ---------------------------------------------------------------------------
 
-browser.runtime.onMessage.addListener(async (rawMsg: any) => {
-  const msg = rawMsg;
-
+async function handleBackgroundMessage(msg: any): Promise<any> {
   try {
     switch (msg.action) {
       case 'PING':
         return { success: true, message: 'SpeedySlate Background Ready' };
 
+      // ── Status: which backend is the OCR worker running on ──────────────
+      case 'GET_OCR_STATUS': {
+        return {
+          success: true,
+          backend: ocrWorkerClient.activeBackend ?? 'idle'
+        };
+      }
+
+      // ── Pre-warm OCR backend if model is ready ──────────────────────────
+      case 'WARMUP_OCR': {
+        const settings = await StorageService.getSettings();
+        const modelId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'pp-ocrv4-english';
+        const modelStatus = await ModelDbService.getModelStatus(modelId);
+        if (modelStatus.status === 'ready') {
+          await ocrWorkerClient.ensureModelLoaded(modelId, settings.useWebGpu ?? true);
+        }
+        return {
+          success: true,
+          backend: ocrWorkerClient.activeBackend ?? 'idle'
+        };
+      }
+
+      // ── Setting changed: reset model so next OCR picks up new backend ───
+      case 'SET_WEBGPU': {
+        await ocrWorkerClient.resetForBackendChange();
+        const settings = await StorageService.getSettings();
+        const modelId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'pp-ocrv4-english';
+        const modelStatus = await ModelDbService.getModelStatus(modelId);
+        if (modelStatus.status === 'ready') {
+          await ocrWorkerClient.ensureModelLoaded(modelId, settings.useWebGpu ?? true);
+        }
+        return {
+          success: true,
+          backend: ocrWorkerClient.activeBackend ?? 'idle'
+        };
+      }
+
       case 'CHECK_MODEL_STATUS': {
         const settings = await StorageService.getSettings();
-        const modelId = msg.modelId || settings.activeOcrModelId || 'paddle-en-slim';
+        const modelId = msg.modelId || settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'pp-ocrv4-english';
         const status = await ModelDbService.getModelStatus(modelId);
         return { success: true, status };
+      }
+
+      case 'DELETE_MODEL': {
+        const { modelId } = msg;
+        if (modelId) {
+          await ModelDbService.deleteModel(modelId);
+          if (ocrWorkerClient.currentModelId === modelId) {
+            await ocrWorkerClient.resetForBackendChange();
+          }
+        }
+        return { success: true };
       }
 
       case 'CLEAR_CHAPTER_CACHE': {
@@ -102,9 +98,7 @@ browser.runtime.onMessage.addListener(async (rawMsg: any) => {
         if (Array.isArray(imageUrls)) {
           for (const url of imageUrls) {
             const cached = await TranslationCacheDb.getTranslation(url);
-            if (cached) {
-              results[url] = cached;
-            }
+            if (cached) results[url] = cached;
           }
         }
         return { success: true, translations: results };
@@ -113,7 +107,7 @@ browser.runtime.onMessage.addListener(async (rawMsg: any) => {
       case 'OCR_IMAGE': {
         const { imageUrl, dataUrl, chapterUrl } = msg;
 
-        // 1. Kiểm tra cache IndexedDB trước
+        // 1. Check IndexedDB cache first
         if (imageUrl) {
           const cached = await TranslationCacheDb.getTranslation(imageUrl);
           if (cached) {
@@ -127,47 +121,23 @@ browser.runtime.onMessage.addListener(async (rawMsg: any) => {
           }
         }
 
-        // 2. Nạp Model OCR trong Background
+        // 2. Load OCR model via Dedicated Worker / Offscreen
         const settings = await StorageService.getSettings();
-        const modelId = settings.activeOcrModelId || 'paddle-en-slim';
+        const modelId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'pp-ocrv4-english';
         try {
-          await ensureModelLoaded(modelId);
+          await ocrWorkerClient.ensureModelLoaded(modelId, settings.useWebGpu ?? true);
         } catch (err: any) {
           return { success: false, error: err.message };
         }
 
-        if (!detEngine || !recEngine) {
-          return { success: false, error: 'Không thể khởi tạo engine OCR' };
-        }
+        // 3. Run PaddleOCR
+        const { dialogues, width, height } = await ocrWorkerClient.runOcr({ dataUrl, imageUrl });
 
-        // 3. Lấy ảnh và vẽ lên OffscreenCanvas
-        const bitmap = await getImageBitmapFromInput(dataUrl, imageUrl);
-        const width = bitmap.width;
-        const height = bitmap.height;
-
-        const canvas = new OffscreenCanvas(width, height);
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('Không thể tạo 2D context');
-        ctx.drawImage(bitmap, 0, 0);
-        bitmap.close();
-
-        // 4. Chạy PaddleOCR cục bộ - Hoàn toàn không rate limit (0ms delay)
-        const boxes = await detEngine.detectText(canvas, width, height);
-        const rawLines = await recEngine.recognizeBoxes(canvas, boxes);
-        const dialogues: DialogueItem[] = BubbleAggregator.aggregateDialogues(rawLines, width, height);
-
-        // Nếu không có chữ, lưu vào cache là [] để không phải quét lại khi F5
         if (dialogues.length === 0 && imageUrl) {
           await TranslationCacheDb.saveTranslation(imageUrl, chapterUrl || '', [], width, height);
         }
 
-        return {
-          success: true,
-          cached: false,
-          dialogues,
-          naturalWidth: width,
-          naturalHeight: height
-        };
+        return { success: true, cached: false, dialogues, naturalWidth: width, naturalHeight: height };
       }
 
       case 'TRANSLATE_DIALOGUES': {
@@ -176,46 +146,54 @@ browser.runtime.onMessage.addListener(async (rawMsg: any) => {
           return { success: true, dialogues: [] };
         }
 
-        // Dịch bằng API Text (Gemini / OpenAI-compatible) với Rate Limiter an toàn
         const settings = await StorageService.getSettings();
         const texts = dialogues.map((d: DialogueItem) => d.originalText);
         const provider = TranslationProviderFactory.createProvider(settings);
         const targetLang = settings.targetLanguage || 'Tiếng Việt';
 
-        // Xác định khoảng cách giãn cách tối thiểu (ms) theo provider hoặc settings
-        const minDelayMs = settings.rateLimitDelayMs !== undefined
-          ? settings.rateLimitDelayMs
-          : (API_PRESETS[settings.activeProvider]?.defaultDelayMs ?? 1200);
+        const minDelayMs =
+          settings.rateLimitDelayMs !== undefined
+            ? settings.rateLimitDelayMs
+            : (API_PRESETS[settings.activeProvider]?.defaultDelayMs ?? 1200);
 
         const translations = await ApiRateLimiter.throttle(minDelayMs, () =>
           provider.translateDialogues(texts, targetLang)
         );
 
+        const validDialogues: DialogueItem[] = [];
         dialogues.forEach((d: DialogueItem, i: number) => {
-          d.translatedText = translations[i] || d.originalText;
+          const trans = translations[i];
+          if (typeof trans === 'string') {
+            const clean = trans.trim();
+            // If AI returned empty string, it's watermark/junk -> omit from comic bubbles!
+            if (clean.length > 0) {
+              d.translatedText = clean;
+              validDialogues.push(d);
+            }
+          } else if (d.originalText && d.originalText.trim().length > 0) {
+            d.translatedText = d.originalText.trim();
+            validDialogues.push(d);
+          }
         });
 
-        // Lưu vào Cache DB
+        // Save to cache DB
         if (imageUrl) {
           await TranslationCacheDb.saveTranslation(
             imageUrl,
             chapterUrl || '',
-            dialogues,
+            validDialogues,
             naturalWidth || 800,
             naturalHeight || 1200
           );
         }
 
-        return {
-          success: true,
-          dialogues
-        };
+        return { success: true, dialogues: validDialogues };
       }
 
       case 'TRANSLATE_IMAGE': {
         const { imageUrl, chapterUrl, dataUrl } = msg;
 
-        // 1. Kiểm tra cache IndexedDB trước
+        // 1. Cache check
         if (imageUrl) {
           const cached = await TranslationCacheDb.getTranslation(imageUrl);
           if (cached && cached.dialogues?.length > 0) {
@@ -229,34 +207,17 @@ browser.runtime.onMessage.addListener(async (rawMsg: any) => {
           }
         }
 
-        // 2. Nạp Model OCR trong Background
+        // 2. Load model via Worker
         const settings = await StorageService.getSettings();
-        const modelId = settings.activeOcrModelId || 'paddle-en-slim';
+        const modelId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'pp-ocrv4-server-heavy';
         try {
-          await ensureModelLoaded(modelId);
+          await ocrWorkerClient.ensureModelLoaded(modelId, settings.useWebGpu ?? true);
         } catch (err: any) {
           return { success: false, error: err.message };
         }
 
-        if (!detEngine || !recEngine) {
-          return { success: false, error: 'Không thể khởi tạo engine OCR' };
-        }
-
-        // 3. Lấy ảnh và vẽ lên OffscreenCanvas
-        const bitmap = await getImageBitmapFromInput(dataUrl, imageUrl);
-        const width = bitmap.width;
-        const height = bitmap.height;
-
-        const canvas = new OffscreenCanvas(width, height);
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('Không thể tạo 2D context');
-        ctx.drawImage(bitmap, 0, 0);
-        bitmap.close();
-
-        // 4. Chạy PaddleOCR
-        const boxes = await detEngine.detectText(canvas, width, height);
-        const rawLines = await recEngine.recognizeBoxes(canvas, boxes);
-        const dialogues: DialogueItem[] = BubbleAggregator.aggregateDialogues(rawLines, width, height);
+        // 3. Run OCR
+        const { dialogues, width, height } = await ocrWorkerClient.runOcr({ dataUrl, imageUrl });
 
         if (dialogues.length === 0) {
           if (imageUrl) {
@@ -265,35 +226,41 @@ browser.runtime.onMessage.addListener(async (rawMsg: any) => {
           return { success: true, cached: false, dialogues: [], naturalWidth: width, naturalHeight: height };
         }
 
-        // 5. Dịch bằng API Text với Rate Limiter
+        // 4. Translate dialogues
         const texts = dialogues.map((d) => d.originalText);
         const provider = TranslationProviderFactory.createProvider(settings);
         const targetLang = settings.targetLanguage || 'Tiếng Việt';
 
-        const minDelayMs = settings.rateLimitDelayMs !== undefined
-          ? settings.rateLimitDelayMs
-          : (API_PRESETS[settings.activeProvider]?.defaultDelayMs ?? 1200);
+        const minDelayMs =
+          settings.rateLimitDelayMs !== undefined
+            ? settings.rateLimitDelayMs
+            : (API_PRESETS[settings.activeProvider]?.defaultDelayMs ?? 1200);
 
         const translations = await ApiRateLimiter.throttle(minDelayMs, () =>
           provider.translateDialogues(texts, targetLang)
         );
 
+        const validDialogues: DialogueItem[] = [];
         dialogues.forEach((d, i) => {
-          d.translatedText = translations[i] || d.originalText;
+          const trans = translations[i];
+          if (typeof trans === 'string') {
+            const clean = trans.trim();
+            if (clean.length > 0) {
+              d.translatedText = clean;
+              validDialogues.push(d);
+            }
+          } else if (d.originalText && d.originalText.trim().length > 0) {
+            d.translatedText = d.originalText.trim();
+            validDialogues.push(d);
+          }
         });
 
-        // 6. Lưu vào Cache DB
+        // 5. Save cache
         if (imageUrl) {
-          await TranslationCacheDb.saveTranslation(imageUrl, chapterUrl || '', dialogues, width, height);
+          await TranslationCacheDb.saveTranslation(imageUrl, chapterUrl || '', validDialogues, width, height);
         }
 
-        return {
-          success: true,
-          cached: false,
-          dialogues,
-          naturalWidth: width,
-          naturalHeight: height
-        };
+        return { success: true, cached: false, dialogues: validDialogues, naturalWidth: width, naturalHeight: height };
       }
 
       case 'TEST_CONNECTION': {
@@ -303,13 +270,34 @@ browser.runtime.onMessage.addListener(async (rawMsg: any) => {
         return { success: ok };
       }
 
+      case 'GET_DEBUG_LOGS': {
+        const logs = await DebugLogger.getLogs();
+        return { success: true, logs };
+      }
+
+      case 'CLEAR_DEBUG_LOGS': {
+        await DebugLogger.clearLogs();
+        return { success: true };
+      }
+
       default:
         return { success: false, error: 'Action không hợp lệ' };
     }
   } catch (err: any) {
+    const errorMsg = err?.message || 'Lỗi xử lý trong background';
     console.error('[SpeedySlate Background] Error:', err);
-    return { success: false, error: err?.message || 'Lỗi xử lý trong background' };
+    await DebugLogger.error('Background', errorMsg, err);
+    return { success: false, error: errorMsg };
   }
+}
+
+// Listen for messages targeted to Background
+// CRITICAL (chrome-extensions rule): return undefined synchronously if targeted to OFFSCREEN_OCR!
+browser.runtime.onMessage.addListener((rawMsg: any) => {
+  if (rawMsg?.target === 'OFFSCREEN_OCR') {
+    return undefined;
+  }
+  return handleBackgroundMessage(rawMsg);
 });
 
-console.log('[SpeedySlate] Background AI Service Initialized');
+console.log('[SpeedySlate] Background Service Initialized (Hybrid Worker/Offscreen)');

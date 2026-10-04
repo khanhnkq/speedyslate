@@ -208,19 +208,72 @@ export class ModelDbService {
     const db = await this.getDb();
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    const index = store.index('modelId');
-    const req = index.getAllKeys(modelId);
 
-    return new Promise((resolve, reject) => {
+    // 1. Explicitly delete known component primary keys
+    store.delete(`${modelId}:det`);
+    store.delete(`${modelId}:rec`);
+    store.delete(`${modelId}:keys`);
+
+    // 2. Also delete via secondary index to clean up any orphaned records
+    try {
+      const index = store.index('modelId');
+      const req = index.getAllKeys(IDBKeyRange.only(modelId));
       req.onsuccess = () => {
-        const keys = req.result;
-        for (const key of keys) {
-          store.delete(key);
+        if (Array.isArray(req.result)) {
+          for (const key of req.result) {
+            store.delete(key);
+          }
         }
       };
+    } catch {
+      // index query fallback
+    }
+
+    return new Promise((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
+  }
+
+  /**
+   * Queries status and disk footprint for all models in a single fast read transaction
+   */
+  public static async getAllDownloadedModels(): Promise<Map<string, { ready: boolean; sizeBytes: number }>> {
+    try {
+      const db = await this.getDb();
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.getAll();
+
+      return new Promise((resolve) => {
+        req.onsuccess = () => {
+          const records: StoredModelRecord[] = req.result || [];
+          const modelMap = new Map<string, { det: boolean; rec: boolean; keys: boolean; sizeBytes: number }>();
+          for (const r of records) {
+            if (!modelMap.has(r.modelId)) {
+              modelMap.set(r.modelId, { det: false, rec: false, keys: false, sizeBytes: 0 });
+            }
+            const item = modelMap.get(r.modelId)!;
+            if (r.type === 'det') item.det = true;
+            if (r.type === 'rec') item.rec = true;
+            if (r.type === 'keys') item.keys = true;
+            item.sizeBytes += r.sizeBytes || 0;
+          }
+
+          const result = new Map<string, { ready: boolean; sizeBytes: number }>();
+          for (const [mid, item] of modelMap.entries()) {
+            result.set(mid, {
+              ready: item.det && item.rec && item.keys,
+              sizeBytes: item.sizeBytes
+            });
+          }
+          resolve(result);
+        };
+        req.onerror = () => resolve(new Map());
+      });
+    } catch {
+      return new Map();
+    }
   }
 
   /**

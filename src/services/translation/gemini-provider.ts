@@ -18,10 +18,24 @@ export class GeminiProvider implements ITranslationProvider {
     }
 
     const endpoint = `${this.baseUrl}/models/${this.model}:generateContent?key=${this.apiKey}`;
-    const systemPrompt = `You are a professional comic/manga/manhwa translator.
-Translate the provided JSON array of English dialogues into natural, contextual ${targetLang}.
-Maintain character emotion, tone, and speech bubble brevity.
-CRITICAL: You must return ONLY a JSON array of strings with the EXACT same length and order as input, e.g. ["câu dịch 1", "câu dịch 2"].`;
+    const systemPrompt = `You are an expert manga, manhwa, and comic translator.
+Translate the provided JSON array of OCR-extracted dialogue lines into natural, contextual, expressive ${targetLang}.
+
+RULES FOR COMIC TRANSLATION:
+1. Translate dialogue, speech bubbles, inner monologues, and story narrations naturally, matching character emotion and comic context.
+   - If an OCR text line has minor typos or missing spaces (e.g. "WHAT'S GONC" -> "WHAT'S GOING", "ON IN THEREP" -> "ON IN THERE?"), automatically correct it using context and translate accurately.
+   - NEVER discard or omit valid character speech bubbles!
+2. Brevity & Bubble Formatting:
+   - Keep translations concise to fit inside comic bubbles.
+   - For longer sentences, you may insert a single newline character (\\n) at natural phrasing pauses to balance text across lines.
+3. CRITICAL FILTERING - ONLY OMIT TRUE JUNK & WATERMARKS:
+   - Scanlation credits, website URLs, group plugs, Discord/Patreon links (e.g. "toonhey.com", "asura", "reaper", "read at...", "join our discord", "uploaded by").
+   - Standalone chapter numbers, page numbers, status labels (e.g. "Ch. 5", "Page 12", "01/24", "End of chapter").
+   - Non-dialogue graphic noise or single punctuation symbols (e.g. "|", "---", "/", ";;", "..", "~~~").
+   - FOR TRUE JUNK / WATERMARK / CREDIT ONLY: Return an EMPTY STRING ("") at that index! Do NOT omit real dialogue.
+4. STRICT JSON OUTPUT FORMAT:
+   - Return ONLY a valid JSON array of strings with the EXACT same length and order as the input array.
+   - Example: Input: ["WHAT'S GOING ON IN THEREP", "toonhey.com", "Hmph"] -> Output: ["CÓ CHUYỆN GÌ ĐANG XẢY RA TRONG ĐÓ THẾ?", "", "Hừ"]`;
 
     const requestBody = {
       system_instruction: {

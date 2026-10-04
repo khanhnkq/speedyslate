@@ -1017,7 +1017,7 @@
   });
 
   // src/content/index.ts
-  var import_webextension_polyfill2 = __toESM(require_browser_polyfill(), 1);
+  var import_webextension_polyfill3 = __toESM(require_browser_polyfill(), 1);
 
   // src/shared/storage.ts
   var import_webextension_polyfill = __toESM(require_browser_polyfill(), 1);
@@ -1160,11 +1160,12 @@
       }
     },
     targetLanguage: "Ti\u1EBFng Vi\u1EC7t",
-    bubbleTheme: "light",
+    bubbleTheme: "auto",
     autoScrollSpeed: 3,
     autoPrefetch: true,
-    activeOcrModelId: "paddle-en-slim",
-    rateLimitDelayMs: 1200
+    activeOcrModelId: "pp-ocrv4-server-heavy",
+    rateLimitDelayMs: 1200,
+    useWebGpu: true
   };
 
   // src/shared/storage.ts
@@ -1308,6 +1309,13 @@
       </svg>
     `.trim();
     }
+    static spinner(size = 14, color = "#A855F7") {
+      return `
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle; animation: speedyslateSpin 0.9s linear infinite;">
+        <circle cx="12" cy="12" r="9" stroke="${color}" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="36 18" />
+      </svg>
+    `.trim();
+    }
     static pulseDot(color = "#10b981") {
       return `
       <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background-color:${color}; box-shadow:0 0 8px ${color}; margin-right:6px; flex-shrink:0;"></span>
@@ -1317,42 +1325,101 @@
 
   // src/content/hud/hud.ts
   var FloatingHud = class {
-    container;
-    miniBadge;
-    translateBtn;
-    progressLabel;
-    eyeBtn;
-    clearBtn;
-    logDot;
-    logTicker;
-    logListContainer;
-    isVisible = true;
+    btn;
+    menu = null;
+    toast = null;
+    toastTimer = null;
     state = "idle";
-    showLogHistory = false;
-    logs = [];
+    isVisible = true;
+    translatedCount = 0;
+    totalCount = 0;
     callbacks;
+    // Drag tracking
+    startX = 0;
+    startY = 0;
+    initialLeft = 0;
+    initialTop = 0;
+    hasMoved = false;
     constructor(callbacks) {
       this.callbacks = callbacks;
-      this.miniBadge = document.createElement("div");
-      this.miniBadge.id = "speedyslate-mini-badge";
-      this.initMiniBadge();
-      this.container = document.createElement("div");
-      this.container.id = "speedyslate-hud-root";
-      this.render();
-      this.makeDraggable(this.container);
+      this.injectStyles();
+      this.btn = document.createElement("button");
+      this.btn.id = "speedyslate-floating-btn";
+      this.initButton();
+      this.setupEvents();
       this.mountToBody();
+      this.render();
+    }
+    injectStyles() {
+      if (document.getElementById("speedyslate-hud-styles")) return;
+      const style = document.createElement("style");
+      style.id = "speedyslate-hud-styles";
+      style.textContent = `
+      @keyframes speedyslateSpin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      #speedyslate-floating-btn {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 2147483647;
+        background: #111111;
+        color: #F5F5F4;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 9999px;
+        padding: 8px 16px;
+        height: 38px;
+        font-family: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        user-select: none;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.15);
+        transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+        outline: none;
+        white-space: nowrap;
+      }
+      #speedyslate-floating-btn:hover {
+        border-color: #A855F7;
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 10px rgba(168, 85, 247, 0.25);
+      }
+      #speedyslate-floating-btn:active {
+        transform: translateY(0px) scale(0.98);
+      }
+      .speedyslate-menu-item {
+        padding: 8px 12px;
+        font-size: 11px;
+        font-weight: 500;
+        color: #F5F5F4;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: background 0.12s ease;
+      }
+      .speedyslate-menu-item:hover {
+        background: rgba(168, 85, 247, 0.18);
+        color: #ffffff;
+      }
+    `;
+      (document.head || document.documentElement).appendChild(style);
+    }
+    initButton() {
+      this.btn.setAttribute("type", "button");
+      this.btn.title = "SpeedySlate \u2022 B\u1EA5m \u0111\u1EC3 d\u1ECBch \u2022 Chu\u1ED9t ph\u1EA3i m\u1EDF t\xF9y ch\u1ECDn";
     }
     mountToBody() {
       const tryMount = () => {
         const root = document.body || document.documentElement;
-        if (root) {
-          if (!document.getElementById("speedyslate-mini-badge")) {
-            root.appendChild(this.miniBadge);
-          }
-          if (!document.getElementById("speedyslate-hud-root")) {
-            root.appendChild(this.container);
-          }
-        } else {
+        if (root && !document.getElementById("speedyslate-floating-btn")) {
+          root.appendChild(this.btn);
+        } else if (!root) {
           setTimeout(tryMount, 50);
         }
       };
@@ -1362,29 +1429,140 @@
         tryMount();
       }
     }
-    log(message, isError = false) {
-      const time = (/* @__PURE__ */ new Date()).toLocaleTimeString("vi-VN", { hour12: false });
-      const formatted = `[${time}] ${message}`;
-      this.logs.unshift(formatted);
-      if (this.logs.length > 30) this.logs.pop();
-      if (this.logTicker) {
-        this.logTicker.textContent = message;
-        this.logTicker.style.color = isError ? "#f87171" : "#cbd5e1";
+    setupEvents() {
+      this.btn.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        this.hasMoved = false;
+        this.startX = e.clientX;
+        this.startY = e.clientY;
+        const rect = this.btn.getBoundingClientRect();
+        this.initialLeft = rect.left;
+        this.initialTop = rect.top;
+        const onMouseMove = (moveEvent) => {
+          const dx = moveEvent.clientX - this.startX;
+          const dy = moveEvent.clientY - this.startY;
+          if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+            this.hasMoved = true;
+            this.closeMenu();
+          }
+          if (this.hasMoved) {
+            this.btn.style.bottom = "auto";
+            this.btn.style.right = "auto";
+            this.btn.style.left = `${this.initialLeft + dx}px`;
+            this.btn.style.top = `${this.initialTop + dy}px`;
+          }
+        };
+        const onMouseUp = () => {
+          document.removeEventListener("mousemove", onMouseMove);
+          document.removeEventListener("mouseup", onMouseUp);
+        };
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+      });
+      this.btn.addEventListener("click", (e) => {
+        if (this.hasMoved) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        this.closeMenu();
+        this.handlePrimaryClick();
+      });
+      this.btn.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggleMenu();
+      });
+      document.addEventListener("click", (e) => {
+        if (this.menu && !this.menu.contains(e.target) && e.target !== this.btn) {
+          this.closeMenu();
+        }
+      });
+    }
+    handlePrimaryClick() {
+      if (this.state === "idle") {
+        this.setState("translating");
+        this.callbacks.onToggleTranslate();
+      } else if (this.state === "translating") {
+        this.setState("paused");
+        this.callbacks.onToggleTranslate();
+      } else if (this.state === "paused") {
+        this.setState("translating");
+        this.callbacks.onToggleTranslate();
+      } else if (this.state === "completed") {
+        this.isVisible = !this.isVisible;
+        this.callbacks.onToggleVisibility(this.isVisible);
+        this.render();
       }
-      if (this.logDot) {
-        const dotColor = isError ? "#ef4444" : this.state === "translating" ? "#ec4899" : "#10b981";
-        this.logDot.innerHTML = ChubbyIcons.pulseDot(dotColor);
+    }
+    toggleMenu() {
+      if (this.menu) {
+        this.closeMenu();
+      } else {
+        this.openMenu();
       }
-      if (this.logListContainer) {
-        this.logListContainer.innerHTML = this.logs.map((l) => `<div style="padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">${l}</div>`).join("");
+    }
+    openMenu() {
+      this.closeMenu();
+      const rect = this.btn.getBoundingClientRect();
+      this.menu = document.createElement("div");
+      this.menu.id = "speedyslate-floating-menu";
+      Object.assign(this.menu.style, {
+        position: "fixed",
+        left: `${Math.max(12, rect.left)}px`,
+        bottom: `${window.innerHeight - rect.top + 8}px`,
+        zIndex: "2147483647",
+        background: "#111111",
+        border: "1px solid rgba(255, 255, 255, 0.16)",
+        borderRadius: "8px",
+        overflow: "hidden",
+        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.45)",
+        minWidth: "160px",
+        userSelect: "none"
+      });
+      const itemVis = document.createElement("div");
+      itemVis.className = "speedyslate-menu-item";
+      itemVis.innerHTML = `
+      ${ChubbyIcons.eye(14, "#A855F7")}
+      <span>${this.isVisible ? "\u1EA8n b\u1EA3n d\u1ECBch (Xem g\u1ED1c)" : "Hi\u1EC7n l\u1EA1i b\u1EA3n d\u1ECBch"}</span>
+    `;
+      itemVis.onclick = (e) => {
+        e.stopPropagation();
+        this.isVisible = !this.isVisible;
+        this.callbacks.onToggleVisibility(this.isVisible);
+        this.closeMenu();
+        this.render();
+      };
+      const itemClear = document.createElement("div");
+      itemClear.className = "speedyslate-menu-item";
+      itemClear.style.borderTop = "1px solid rgba(255, 255, 255, 0.08)";
+      itemClear.innerHTML = `
+      ${ChubbyIcons.broom(14, "#A855F7")}
+      <span>X\xF3a cache ch\u01B0\u01A1ng & d\u1ECBch l\u1EA1i</span>
+    `;
+      itemClear.onclick = (e) => {
+        e.stopPropagation();
+        this.closeMenu();
+        this.callbacks.onClearChapterCache();
+        this.setState("idle");
+      };
+      this.menu.appendChild(itemVis);
+      this.menu.appendChild(itemClear);
+      document.body.appendChild(this.menu);
+    }
+    closeMenu() {
+      if (this.menu) {
+        this.menu.remove();
+        this.menu = null;
       }
     }
     updateStatus(translatedCount, totalCount) {
-      if (this.progressLabel) {
-        this.progressLabel.textContent = `${translatedCount} / ${totalCount} trang`;
-      }
+      this.translatedCount = translatedCount;
+      this.totalCount = totalCount;
       if (totalCount > 0 && translatedCount >= totalCount && this.state === "translating") {
         this.setState("completed");
+      } else {
+        this.render();
       }
     }
     getState() {
@@ -1392,264 +1570,96 @@
     }
     setState(state) {
       this.state = state;
-      if (!this.translateBtn) return;
-      switch (state) {
-        case "idle":
-          this.translateBtn.innerHTML = `
-          <div style="display:flex; align-items:center; justify-content:center; gap:8px;">
-            ${ChubbyIcons.play(16, "#ffffff")}
-            <span>B\u1EAFt \u0111\u1EA7u d\u1ECBch truy\u1EC7n</span>
-          </div>
-        `;
-          this.translateBtn.style.background = "linear-gradient(135deg, #6366f1, #8b5cf6)";
-          this.translateBtn.style.boxShadow = "0 4px 16px rgba(99, 102, 241, 0.4)";
-          break;
-        case "translating":
-          this.translateBtn.innerHTML = `
-          <div style="display:flex; align-items:center; justify-content:center; gap:8px;">
-            ${ChubbyIcons.pause(16, "#ffffff")}
-            <span>\u0110ang d\u1ECBch... (B\u1EA5m t\u1EA1m d\u1EEBng)</span>
-          </div>
-        `;
-          this.translateBtn.style.background = "linear-gradient(135deg, #ec4899, #f43f5e)";
-          this.translateBtn.style.boxShadow = "0 4px 16px rgba(236, 72, 153, 0.45)";
-          break;
-        case "paused":
-          this.translateBtn.innerHTML = `
-          <div style="display:flex; align-items:center; justify-content:center; gap:8px;">
-            ${ChubbyIcons.play(16, "#ffffff")}
-            <span>Ti\u1EBFp t\u1EE5c d\u1ECBch truy\u1EC7n</span>
-          </div>
-        `;
-          this.translateBtn.style.background = "linear-gradient(135deg, #f59e0b, #d97706)";
-          this.translateBtn.style.boxShadow = "0 4px 16px rgba(245, 158, 11, 0.4)";
-          break;
-        case "completed":
-          this.translateBtn.innerHTML = `
-          <div style="display:flex; align-items:center; justify-content:center; gap:8px;">
-            ${ChubbyIcons.checkCircle(16, "#ffffff")}
-            <span>\u0110\xE3 d\u1ECBch xong to\xE0n b\u1ED9</span>
-          </div>
-        `;
-          this.translateBtn.style.background = "linear-gradient(135deg, #10b981, #059669)";
-          this.translateBtn.style.boxShadow = "0 4px 16px rgba(16, 185, 129, 0.4)";
-          break;
+      this.render();
+    }
+    log(message, isError = false) {
+      this.btn.title = `SpeedySlate: ${message}`;
+      if (isError) {
+        this.showToast(message);
       }
     }
-    initMiniBadge() {
-      Object.assign(this.miniBadge.style, {
+    showToast(message) {
+      if (this.toast) {
+        this.toast.remove();
+        if (this.toastTimer) clearTimeout(this.toastTimer);
+      }
+      const rect = this.btn.getBoundingClientRect();
+      this.toast = document.createElement("div");
+      Object.assign(this.toast.style, {
         position: "fixed",
-        bottom: "90px",
-        right: "20px",
+        left: `${Math.max(12, rect.left)}px`,
+        bottom: `${window.innerHeight - rect.top + 8}px`,
         zIndex: "2147483647",
-        background: "linear-gradient(135deg, #ec4899, #8b5cf6)",
-        color: "#ffffff",
-        width: "48px",
-        height: "48px",
-        borderRadius: "50%",
-        boxShadow: "0 8px 25px rgba(236, 72, 153, 0.5), 0 0 12px rgba(139, 92, 246, 0.5)",
-        display: "none",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "pointer",
-        userSelect: "none",
-        border: "2px solid rgba(255, 255, 255, 0.8)",
-        transition: "transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)"
+        background: "#111111",
+        color: "#F5F5F4",
+        border: "1px solid rgba(239, 68, 68, 0.5)",
+        borderRadius: "8px",
+        padding: "6px 12px",
+        fontSize: "11px",
+        fontFamily: "system-ui, -apple-system, sans-serif",
+        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.45)",
+        pointerEvents: "none",
+        transition: "opacity 0.2s ease",
+        maxWidth: "280px"
       });
-      this.miniBadge.innerHTML = ChubbyIcons.bolt(22, "#ffffff");
-      this.miniBadge.title = "M\u1EDF b\u1EA3ng \u0111i\u1EC1u khi\u1EC3n SpeedySlate";
-      this.miniBadge.onmouseenter = () => this.miniBadge.style.transform = "scale(1.12)";
-      this.miniBadge.onmouseleave = () => this.miniBadge.style.transform = "scale(1)";
-      this.miniBadge.onclick = () => this.toggleExpand(true);
-    }
-    toggleExpand(expand) {
-      this.container.style.display = expand ? "flex" : "none";
-      this.miniBadge.style.display = expand ? "none" : "flex";
+      this.toast.textContent = message;
+      document.body.appendChild(this.toast);
+      this.toastTimer = setTimeout(() => {
+        if (this.toast) {
+          this.toast.style.opacity = "0";
+          setTimeout(() => {
+            this.toast?.remove();
+            this.toast = null;
+          }, 200);
+        }
+      }, 3500);
     }
     render() {
-      Object.assign(this.container.style, {
-        position: "fixed",
-        bottom: "90px",
-        right: "20px",
-        zIndex: "2147483647",
-        background: "rgba(16, 16, 26, 0.92)",
-        backdropFilter: "blur(20px) saturate(180%)",
-        color: "#ffffff",
-        padding: "14px 16px",
-        borderRadius: "18px",
-        boxShadow: "0 16px 45px rgba(0, 0, 0, 0.7), 0 0 20px rgba(139, 92, 246, 0.25)",
-        fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        fontSize: "13px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "10px",
-        border: "1px solid rgba(168, 85, 247, 0.35)",
-        userSelect: "none",
-        width: "320px",
-        maxWidth: "90vw"
-      });
-      const headerRow = document.createElement("div");
-      headerRow.style.cssText = `
-      display: flex; align-items: center; justify-content: space-between;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 8px; cursor: move;
-    `;
-      const titleBox = document.createElement("div");
-      titleBox.style.cssText = "display: flex; align-items: center; gap: 7px;";
-      titleBox.innerHTML = `
-      ${ChubbyIcons.bolt(18, "#ec4899")}
-      <span style="background: linear-gradient(90deg, #f472b6, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: 800; font-size: 14px; letter-spacing: -0.3px;">SpeedySlate</span>
-      <span style="font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 8px; background: rgba(168,85,247,0.22); color: #c084fc; border: 1px solid rgba(168,85,247,0.35);">AI</span>
-    `;
-      const minBtn = document.createElement("button");
-      minBtn.innerHTML = ChubbyIcons.close(12, "#94a3b8");
-      minBtn.title = "Thu nh\u1ECF c\u1EEDa s\u1ED5";
-      minBtn.style.cssText = `
-      background: rgba(255, 255, 255, 0.08); color: #94a3b8; border: none; border-radius: 8px;
-      padding: 4px 6px; cursor: pointer; display: flex; align-items: center; justify-content: center;
-      transition: all 0.2s;
-    `;
-      minBtn.onmouseenter = () => {
-        minBtn.style.background = "rgba(239, 68, 68, 0.3)";
-        minBtn.innerHTML = ChubbyIcons.close(12, "#ffffff");
-      };
-      minBtn.onmouseleave = () => {
-        minBtn.style.background = "rgba(255, 255, 255, 0.08)";
-        minBtn.innerHTML = ChubbyIcons.close(12, "#94a3b8");
-      };
-      minBtn.onclick = () => this.toggleExpand(false);
-      headerRow.appendChild(titleBox);
-      headerRow.appendChild(minBtn);
-      this.translateBtn = document.createElement("button");
-      this.translateBtn.style.cssText = `
-      background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #ffffff;
-      border: none; border-radius: 12px; padding: 10px 14px; font-weight: 700;
-      cursor: pointer; font-size: 13px; width: 100%; transition: all 0.2s;
-      box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4); text-align: center;
-    `;
-      this.translateBtn.onmousedown = () => this.translateBtn.style.transform = "scale(0.97)";
-      this.translateBtn.onmouseup = () => this.translateBtn.style.transform = "scale(1)";
-      this.translateBtn.onmouseenter = () => this.translateBtn.style.filter = "brightness(1.1)";
-      this.translateBtn.onmouseleave = () => {
-        this.translateBtn.style.transform = "scale(1)";
-        this.translateBtn.style.filter = "brightness(1)";
-      };
-      this.translateBtn.onclick = () => {
-        if (this.state === "idle" || this.state === "paused" || this.state === "completed") {
-          this.setState("translating");
-        } else {
-          this.setState("paused");
+      switch (this.state) {
+        case "idle": {
+          const countTxt = this.totalCount > 0 ? ` (${this.totalCount})` : "";
+          this.btn.innerHTML = `
+          ${ChubbyIcons.bolt(14, "#A855F7")}
+          <span>D\u1ECBch truy\u1EC7n${countTxt}</span>
+        `;
+          this.btn.title = "B\u1EA5m \u0111\u1EC3 b\u1EAFt \u0111\u1EA7u d\u1ECBch truy\u1EC7n \u2022 Chu\u1ED9t ph\u1EA3i m\u1EDF menu";
+          break;
         }
-        this.callbacks.onToggleTranslate();
-      };
-      this.setState("idle");
-      const row2 = document.createElement("div");
-      row2.style.cssText = "display: flex; align-items: center; justify-content: space-between; gap: 8px;";
-      const progressWrapper = document.createElement("div");
-      progressWrapper.style.cssText = `
-      display: flex; align-items: center; gap: 6px; background: rgba(255, 255, 255, 0.06);
-      padding: 5px 10px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.08);
-    `;
-      const bookIconSpan = document.createElement("span");
-      bookIconSpan.innerHTML = ChubbyIcons.book(15, "#38bdf8");
-      this.progressLabel = document.createElement("span");
-      this.progressLabel.textContent = "0 / 0 trang";
-      this.progressLabel.style.cssText = "font-weight: 700; color: #f1f5f9; font-size: 12px;";
-      progressWrapper.appendChild(bookIconSpan);
-      progressWrapper.appendChild(this.progressLabel);
-      const toolsWrapper = document.createElement("div");
-      toolsWrapper.style.cssText = "display: flex; gap: 6px;";
-      this.eyeBtn = document.createElement("button");
-      this.eyeBtn.title = "\u1EA8n / Hi\u1EC7n ch\u1EEF d\u1ECBch (Xem tranh g\u1ED1c)";
-      this.eyeBtn.innerHTML = ChubbyIcons.eye(15, "#e2e8f0");
-      this.eyeBtn.style.cssText = `
-      background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 9px; color: #fff; padding: 6px 9px; cursor: pointer; display: flex; align-items: center;
-      transition: background 0.2s;
-    `;
-      this.eyeBtn.onclick = () => {
-        this.isVisible = !this.isVisible;
-        this.eyeBtn.style.opacity = this.isVisible ? "1" : "0.4";
-        this.callbacks.onToggleVisibility(this.isVisible);
-      };
-      this.clearBtn = document.createElement("button");
-      this.clearBtn.title = "D\u1ECDn s\u1EA1ch cache b\u1EA3n d\u1ECBch c\u1EE7a ch\u01B0\u01A1ng n\xE0y \u0111\u1EC3 d\u1ECBch l\u1EA1i";
-      this.clearBtn.innerHTML = ChubbyIcons.broom(15, "#e2e8f0");
-      this.clearBtn.style.cssText = `
-      background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 9px; color: #fff; padding: 6px 9px; cursor: pointer; display: flex; align-items: center;
-      transition: background 0.2s;
-    `;
-      this.clearBtn.onclick = () => this.callbacks.onClearChapterCache();
-      const logToggleBtn = document.createElement("button");
-      logToggleBtn.title = "B\u1EADt / T\u1EAFt xem nh\u1EADt k\xFD ho\u1EA1t \u0111\u1ED9ng";
-      logToggleBtn.innerHTML = ChubbyIcons.document(15, "#e2e8f0");
-      logToggleBtn.style.cssText = `
-      background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 9px; color: #fff; padding: 6px 9px; cursor: pointer; display: flex; align-items: center;
-      transition: background 0.2s;
-    `;
-      logToggleBtn.onclick = () => {
-        this.showLogHistory = !this.showLogHistory;
-        this.logListContainer.style.display = this.showLogHistory ? "block" : "none";
-      };
-      toolsWrapper.appendChild(this.eyeBtn);
-      toolsWrapper.appendChild(this.clearBtn);
-      toolsWrapper.appendChild(logToggleBtn);
-      row2.appendChild(progressWrapper);
-      row2.appendChild(toolsWrapper);
-      const logRow = document.createElement("div");
-      logRow.style.cssText = `
-      background: rgba(0, 0, 0, 0.45); border-radius: 10px; padding: 7px 10px;
-      font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis;
-      white-space: nowrap; border: 1px solid rgba(255, 255, 255, 0.06);
-    `;
-      this.logDot = document.createElement("span");
-      this.logDot.innerHTML = ChubbyIcons.pulseDot("#10b981");
-      this.logTicker = document.createElement("span");
-      this.logTicker.textContent = "SpeedySlate s\u1EB5n s\xE0ng";
-      this.logTicker.style.color = "#cbd5e1";
-      this.logTicker.style.overflow = "hidden";
-      this.logTicker.style.textOverflow = "ellipsis";
-      logRow.appendChild(this.logDot);
-      logRow.appendChild(this.logTicker);
-      this.logListContainer = document.createElement("div");
-      this.logListContainer.style.cssText = `
-      max-height: 130px; overflow-y: auto; background: rgba(0, 0, 0, 0.6); border-radius: 10px;
-      padding: 6px 10px; font-size: 10px; font-family: ui-monospace, SFMono-Regular, monospace;
-      color: #94a3b8; display: none; border: 1px solid rgba(255, 255, 255, 0.08);
-    `;
-      this.container.appendChild(headerRow);
-      this.container.appendChild(this.translateBtn);
-      this.container.appendChild(row2);
-      this.container.appendChild(logRow);
-      this.container.appendChild(this.logListContainer);
-    }
-    makeDraggable(el) {
-      let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-      const header = el.firstElementChild;
-      if (header) {
-        header.onmousedown = (e) => {
-          if (e.target.tagName === "BUTTON" || e.target.closest("button")) return;
-          e.preventDefault();
-          pos3 = e.clientX;
-          pos4 = e.clientY;
-          document.onmouseup = () => {
-            document.onmouseup = null;
-            document.onmousemove = null;
-          };
-          document.onmousemove = (me) => {
-            me.preventDefault();
-            pos1 = pos3 - me.clientX;
-            pos2 = pos4 - me.clientY;
-            pos3 = me.clientX;
-            pos4 = me.clientY;
-            el.style.bottom = "auto";
-            el.style.right = "auto";
-            el.style.top = `${el.offsetTop - pos2}px`;
-            el.style.left = `${el.offsetLeft - pos1}px`;
-          };
-        };
+        case "translating": {
+          const prog = this.totalCount > 0 ? ` ${this.translatedCount}/${this.totalCount}` : "...";
+          this.btn.innerHTML = `
+          ${ChubbyIcons.spinner(14, "#A855F7")}
+          <span>\u0110ang d\u1ECBch${prog}</span>
+        `;
+          this.btn.title = "\u0110ang d\u1ECBch truy\u1EC7n... B\u1EA5m \u0111\u1EC3 t\u1EA1m d\u1EEBng";
+          break;
+        }
+        case "paused": {
+          const prog = this.totalCount > 0 ? ` (${this.translatedCount}/${this.totalCount})` : "";
+          this.btn.innerHTML = `
+          ${ChubbyIcons.play(13, "#F5F5F4")}
+          <span>Ti\u1EBFp t\u1EE5c${prog}</span>
+        `;
+          this.btn.title = "B\u1EA5m \u0111\u1EC3 ti\u1EBFp t\u1EE5c d\u1ECBch";
+          break;
+        }
+        case "completed": {
+          if (this.isVisible) {
+            const prog = this.totalCount > 0 ? ` (${this.totalCount})` : "";
+            this.btn.innerHTML = `
+            ${ChubbyIcons.checkCircle(14, "#A855F7")}
+            <span>\u0110\xE3 d\u1ECBch${prog}</span>
+          `;
+            this.btn.title = "B\u1EA5m \u0111\u1EC3 \u1EA9n b\u1EA3n d\u1ECBch (Xem tranh g\u1ED1c) \u2022 Chu\u1ED9t ph\u1EA3i m\u1EDF menu";
+          } else {
+            this.btn.innerHTML = `
+            ${ChubbyIcons.eye(14, "#F5F5F4")}
+            <span>Xem tranh g\u1ED1c</span>
+          `;
+            this.btn.title = "B\u1EA5m \u0111\u1EC3 hi\u1EC7n l\u1EA1i b\u1EA3n d\u1ECBch \u2022 Chu\u1ED9t ph\u1EA3i m\u1EDF menu";
+          }
+          break;
+        }
       }
     }
   };
@@ -1659,16 +1669,22 @@
     /**
      * Renders translated speech bubbles over the wrapped image
      */
-    static renderDialogues(wrapper, dialogues, naturalWidth, naturalHeight, theme = "light") {
+    static renderDialogues(wrapper, dialogues, naturalWidth, naturalHeight, theme = "auto") {
       const existing = wrapper.querySelectorAll(".speedyslate-bubble");
       existing.forEach((el) => el.remove());
       for (const item of dialogues) {
-        if (!item.translatedText) continue;
+        if (!item.translatedText || !item.translatedText.trim()) continue;
         const box = item.box;
-        const topPct = box.y / naturalHeight * 100;
-        const leftPct = box.x / naturalWidth * 100;
-        const widthPct = box.width / naturalWidth * 100;
-        const heightPct = box.height / naturalHeight * 100;
+        const expandX = Math.min(box.width * 0.08, 12);
+        const expandY = Math.min(box.height * 0.06, 8);
+        const adjX = Math.max(0, box.x - expandX / 2);
+        const adjY = Math.max(0, box.y - expandY / 2);
+        const adjW = Math.min(naturalWidth - adjX, box.width + expandX);
+        const adjH = Math.min(naturalHeight - adjY, box.height + expandY);
+        const topPct = adjY / naturalHeight * 100;
+        const leftPct = adjX / naturalWidth * 100;
+        const widthPct = adjW / naturalWidth * 100;
+        const minHeightPct = adjH / naturalHeight * 100;
         const bubble = document.createElement("div");
         bubble.className = "speedyslate-bubble";
         bubble.id = item.id;
@@ -1681,28 +1697,34 @@
           top: `${topPct}%`,
           left: `${leftPct}%`,
           width: `${widthPct}%`,
-          minHeight: `${heightPct}%`,
+          maxWidth: `${Math.min(85, Math.max(25, widthPct + 4))}%`,
+          height: "auto",
+          minHeight: `${minHeightPct}%`,
           backgroundColor: bg,
           color: textColor,
           border: "none",
-          borderRadius: "2px",
+          borderRadius: isDark ? "6px" : "8px",
           boxSizing: "border-box",
-          padding: "1px 2px",
+          padding: "2px 4px",
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
           textAlign: "center",
           fontFamily: "'Comic Sans MS', 'Bangers', 'Segoe UI', system-ui, sans-serif",
           fontWeight: "bold",
-          lineHeight: "1.2",
+          lineHeight: "1.22",
           zIndex: "50",
           cursor: "pointer",
           transition: "opacity 0.15s ease-in-out",
           userSelect: "text",
+          whiteSpace: "pre-wrap",
           wordBreak: "break-word",
-          boxShadow: "none"
+          overflowWrap: "anywhere",
+          hyphens: "auto",
+          boxShadow: isDark ? "0 0 0 1px rgba(255,255,255,0.18)" : "0 0 0 1px rgba(0,0,0,0.10)"
         });
-        const fontSize = this.calculateFontSize(box.width, box.height, item.translatedText.length);
+        const fontSize = this.calculateFontSize(adjW, adjH, item.translatedText.length);
         bubble.style.fontSize = `${fontSize}px`;
         bubble.textContent = item.translatedText;
         bubble.addEventListener("mouseenter", () => {
@@ -1719,8 +1741,8 @@
      */
     static calculateFontSize(boxW, boxH, textLength) {
       const area = boxW * boxH;
-      let base = Math.sqrt(area / Math.max(1, textLength)) * 0.9;
-      base = Math.max(11, Math.min(22, Math.round(base)));
+      let base = Math.sqrt(area / Math.max(1, textLength)) * 0.92;
+      base = Math.max(11, Math.min(20, Math.round(base)));
       return base;
     }
     /**
@@ -2011,22 +2033,21 @@
         top: "12px",
         left: "12px",
         zIndex: "60",
-        background: "rgba(15, 15, 26, 0.85)",
-        backdropFilter: "blur(10px) saturate(180%)",
-        border: "1px solid rgba(168, 85, 247, 0.35)",
-        borderRadius: "20px",
-        padding: "4px 10px",
-        color: "#ffffff",
-        fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-        fontWeight: "700",
+        background: "#111111",
+        border: "1px solid rgba(255, 255, 255, 0.16)",
+        borderRadius: "9999px",
+        padding: "3px 10px",
+        color: "#F5F5F4",
+        fontFamily: "'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+        fontWeight: "600",
         fontSize: "11px",
-        letterSpacing: "0.2px",
-        boxShadow: "0 4px 16px rgba(0, 0, 0, 0.6)",
+        letterSpacing: "-0.01em",
+        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.35)",
         pointerEvents: "none",
         display: "inline-flex",
         alignItems: "center",
         gap: "6px",
-        transition: "all 0.25s ease-in-out",
+        transition: "all 0.2s ease",
         userSelect: "none"
       });
       this.renderBadgeContent(badge, pageIndex, "idle");
@@ -2041,34 +2062,34 @@
       this.renderBadgeContent(badge, pageIndex, status, count);
     }
     static renderBadgeContent(badge, pageIndex, status, count) {
-      let dotColor = "#64748b";
+      let dotColor = "#555555";
       let statusText = "";
       let isPulsing = false;
       switch (status) {
         case "idle":
-          dotColor = "#64748b";
+          dotColor = "#555555";
           statusText = "";
           break;
         case "ocr_running":
-          dotColor = "#a855f7";
+          dotColor = "#A855F7";
           statusText = "Qu\xE9t OCR...";
           isPulsing = true;
           break;
         case "ocr_done":
-          dotColor = "#3b82f6";
+          dotColor = "#A855F7";
           statusText = count !== void 0 ? `${count} c\xE2u` : "\u0110\xE3 qu\xE9t";
           break;
         case "translating":
-          dotColor = "#ec4899";
+          dotColor = "#A855F7";
           statusText = "\u0110ang d\u1ECBch...";
           isPulsing = true;
           break;
         case "translated":
-          dotColor = "#10b981";
+          dotColor = "#A855F7";
           statusText = count !== void 0 ? `${count} c\xE2u` : "\u0110\xE3 d\u1ECBch";
           break;
         case "no_text":
-          dotColor = "#475569";
+          dotColor = "#444444";
           statusText = "Kh\xF4ng ch\u1EEF";
           break;
         case "error":
@@ -2081,22 +2102,164 @@
       <style>
         @keyframes speedyslatePulse {
           0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.4; transform: scale(0.85); }
+          50% { opacity: 0.35; transform: scale(0.85); }
         }
       </style>
-      <span style="width: 7px; height: 7px; border-radius: 50%; background: ${dotColor}; box-shadow: 0 0 6px ${dotColor}; display: inline-block; ${pulseAnim}"></span>
-      <span style="color: #f1f5f9; font-weight: 800;">#${pageIndex + 1}</span>
-      ${statusText ? `<span style="color: #cbd5e1; font-weight: 500; font-size: 10px;">${statusText}</span>` : ""}
+      <span style="width: 6px; height: 6px; border-radius: 50%; background: ${dotColor}; box-shadow: 0 0 5px ${dotColor}; display: inline-block; ${pulseAnim}"></span>
+      <span style="color: #F5F5F4; font-weight: 700;">#${pageIndex + 1}</span>
+      ${statusText ? `<span style="color: #999999; font-weight: 500; font-size: 10px;">${statusText}</span>` : ""}
     `;
-      if (status === "translated") {
-        badge.style.border = "1px solid rgba(16, 185, 129, 0.4)";
-      } else if (status === "translating") {
-        badge.style.border = "1px solid rgba(236, 72, 153, 0.4)";
-      } else if (status === "ocr_running") {
+      if (status === "translated" || status === "translating" || status === "ocr_running") {
         badge.style.border = "1px solid rgba(168, 85, 247, 0.4)";
+      } else if (status === "error") {
+        badge.style.border = "1px solid rgba(239, 68, 68, 0.4)";
       } else {
         badge.style.border = "1px solid rgba(255, 255, 255, 0.12)";
       }
+    }
+  };
+
+  // src/shared/debug-logger.ts
+  var import_webextension_polyfill2 = __toESM(require_browser_polyfill(), 1);
+  var STORAGE_KEY = "speedyslate_debug_logs";
+  var MAX_LOGS = 120;
+  var DebugLogger = class {
+    static memoryLogs = [];
+    static formatTime() {
+      const d = /* @__PURE__ */ new Date();
+      return d.toTimeString().split(" ")[0] + "." + String(d.getMilliseconds()).padStart(3, "0");
+    }
+    static extractErrorInfo(error) {
+      if (!error) return {};
+      if (error instanceof Error) {
+        return { message: error.message, stack: error.stack };
+      }
+      if (typeof error === "string") {
+        return { message: error };
+      }
+      if (typeof error === "object") {
+        try {
+          const msg = error.message || error.reason || error.error || JSON.stringify(error);
+          const stack = error.stack || error.reason && error.reason.stack;
+          return { message: String(msg), stack: stack ? String(stack) : void 0 };
+        } catch {
+          return { message: String(error) };
+        }
+      }
+      return { message: String(error) };
+    }
+    static async log(level, tag, message, error) {
+      const errInfo = this.extractErrorInfo(error);
+      const fullMsg = errInfo.message && errInfo.message !== message ? `${message} (${errInfo.message})` : String(message);
+      const entry = {
+        time: this.formatTime(),
+        level,
+        tag,
+        message: fullMsg,
+        stack: errInfo.stack
+      };
+      this.memoryLogs.push(entry);
+      if (this.memoryLogs.length > MAX_LOGS) {
+        this.memoryLogs.shift();
+      }
+      const prefix = `[${entry.time}] [${tag}]`;
+      if (level === "error") {
+        console.error(prefix, message, error || "");
+      } else if (level === "warn") {
+        console.warn(prefix, message);
+      } else {
+        console.log(prefix, message);
+      }
+      try {
+        const data = await import_webextension_polyfill2.default.storage.local.get(STORAGE_KEY);
+        const stored = Array.isArray(data[STORAGE_KEY]) ? data[STORAGE_KEY] : [];
+        const updated = [...stored, entry];
+        if (updated.length > MAX_LOGS) {
+          updated.splice(0, updated.length - MAX_LOGS);
+        }
+        await import_webextension_polyfill2.default.storage.local.set({ [STORAGE_KEY]: updated });
+      } catch {
+      }
+    }
+    static async error(tag, message, error) {
+      return this.log("error", tag, message, error);
+    }
+    static async warn(tag, message) {
+      return this.log("warn", tag, message);
+    }
+    static async info(tag, message) {
+      return this.log("info", tag, message);
+    }
+    static async getLogs() {
+      try {
+        const res = await import_webextension_polyfill2.default.storage.local.get(STORAGE_KEY);
+        return res[STORAGE_KEY] || this.memoryLogs;
+      } catch {
+        return this.memoryLogs;
+      }
+    }
+    static async clearLogs() {
+      this.memoryLogs = [];
+      try {
+        await import_webextension_polyfill2.default.storage.local.remove(STORAGE_KEY);
+      } catch {
+      }
+    }
+    static formatForClipboard(logs, extraContext) {
+      const timeStr = (/* @__PURE__ */ new Date()).toISOString();
+      let header = `=== SpeedySlate Debug Logs (${timeStr}) ===
+`;
+      header += `UserAgent: ${typeof navigator !== "undefined" ? navigator.userAgent : "N/A"}
+`;
+      header += `Platform: ${typeof navigator !== "undefined" ? navigator.platform : "N/A"}
+`;
+      if (extraContext) {
+        header += `Context: ${JSON.stringify(extraContext, null, 2)}
+`;
+      }
+      header += `--------------------------------------------------------
+
+`;
+      if (!logs || logs.length === 0) {
+        return header + "Ch\u01B0a c\xF3 nh\u1EADt k\xFD n\xE0o \u0111\u01B0\u1EE3c ghi nh\u1EADn.";
+      }
+      const body = logs.map((l) => {
+        let str = `[${l.time}] [${l.level.toUpperCase()}] [${l.tag}]: ${l.message}`;
+        if (l.stack) {
+          str += `
+  Stack trace:
+  ${l.stack.split("\n").join("\n  ")}`;
+        }
+        return str;
+      }).join("\n\n");
+      return header + body;
+    }
+    static async copyToClipboard(text) {
+      try {
+        if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+      } catch {
+      }
+      if (typeof document !== "undefined") {
+        try {
+          const textarea = document.createElement("textarea");
+          textarea.value = text;
+          textarea.style.position = "fixed";
+          textarea.style.left = "-9999px";
+          textarea.style.top = "-9999px";
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          const success = document.execCommand("copy");
+          document.body.removeChild(textarea);
+          return success;
+        } catch {
+          return false;
+        }
+      }
+      return false;
     }
   };
 
@@ -2124,7 +2287,7 @@
         },
         onToggleVisibility: (visible) => OverlayRenderer.setAllVisibility(visible),
         onClearChapterCache: async () => {
-          const resp = await import_webextension_polyfill2.default.runtime.sendMessage({
+          const resp = await import_webextension_polyfill3.default.runtime.sendMessage({
             action: "CLEAR_CHAPTER_CACHE",
             chapterUrl: window.location.href
           });
@@ -2154,7 +2317,7 @@
       }
       this.ocrQueue = new OrderedTaskQueue(
         async (task) => this.processOcrTask(task),
-        2,
+        1,
         (t) => t.img
       );
       this.ocrQueue.pause();
@@ -2189,7 +2352,7 @@
     }
     async checkModelStatusFromBackground(showBannerIfMissing) {
       try {
-        const resp = await import_webextension_polyfill2.default.runtime.sendMessage({ action: "CHECK_MODEL_STATUS" });
+        const resp = await import_webextension_polyfill3.default.runtime.sendMessage({ action: "CHECK_MODEL_STATUS" });
         if (resp?.success && resp.status?.status === "ready") {
           this.isModelReady = true;
           this.hud.log("Model OCR da san sang");
@@ -2232,7 +2395,7 @@
       if (this.images.length === 0) return;
       const urls = this.images.map((img) => img.dataset.src || img.getAttribute("data-src") || img.src).filter(Boolean);
       try {
-        const resp = await import_webextension_polyfill2.default.runtime.sendMessage({
+        const resp = await import_webextension_polyfill3.default.runtime.sendMessage({
           action: "GET_CHAPTER_TRANSLATIONS",
           imageUrls: urls
         });
@@ -2253,7 +2416,7 @@
                     cached.dialogues,
                     cached.naturalWidth || img.naturalWidth || 800,
                     cached.naturalHeight || img.naturalHeight || 1200,
-                    this.settings?.bubbleTheme || "light"
+                    this.settings?.bubbleTheme || "auto"
                   );
                   img.dataset.slateStatus = "translated";
                   PageBadgeManager.updateBadge(wrapper, i, "translated", cached.dialogues.length);
@@ -2346,7 +2509,7 @@
         }
       } catch {
       }
-      const resp = await import_webextension_polyfill2.default.runtime.sendMessage({
+      const resp = await import_webextension_polyfill3.default.runtime.sendMessage({
         action: "OCR_IMAGE",
         imageUrl,
         chapterUrl: window.location.href,
@@ -2360,7 +2523,7 @@
               resp.dialogues,
               resp.naturalWidth || img.naturalWidth || 800,
               resp.naturalHeight || img.naturalHeight || 1200,
-              this.settings?.bubbleTheme || "light"
+              this.settings?.bubbleTheme || "auto"
             );
             img.dataset.slateStatus = "translated";
             PageBadgeManager.updateBadge(wrapper, task.index, "translated", resp.dialogues.length);
@@ -2390,7 +2553,9 @@
       } else {
         img.dataset.slateStatus = "error";
         PageBadgeManager.updateBadge(wrapper, task.index, "error");
-        this.hud.log(`Loi OCR trang #${task.index + 1}: ${resp?.error || "Loi khong xac dinh"}`, true);
+        const errMsg = resp?.error || (resp === void 0 ? "Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c ph\u1EA3n h\u1ED3i t\u1EEB n\u1EC1n (k\xEAnh \u0111\xF3ng s\u1EDBm ho\u1EB7c Worker \u0111ang b\u1EADn)" : `Ph\u1EA3n h\u1ED3i l\u1ED7i: ${JSON.stringify(resp)}`);
+        this.hud.log(`L\u1ED7i OCR trang #${task.index + 1}: ${errMsg}`, true);
+        DebugLogger.error("Content:OCR", `Trang #${task.index + 1}: ${errMsg}`);
       }
     }
     /**
@@ -2404,7 +2569,7 @@
       img.dataset.slateStatus = "translating";
       PageBadgeManager.updateBadge(wrapper, task.index, "translating", task.dialogues.length);
       this.hud.log(`Trang #${task.index + 1}: Dang dich ${task.dialogues.length} cau thoai...`);
-      const resp = await import_webextension_polyfill2.default.runtime.sendMessage({
+      const resp = await import_webextension_polyfill3.default.runtime.sendMessage({
         action: "TRANSLATE_DIALOGUES",
         imageUrl: img.src,
         chapterUrl: window.location.href,
@@ -2418,7 +2583,7 @@
           resp.dialogues,
           task.naturalWidth,
           task.naturalHeight,
-          this.settings?.bubbleTheme || "light"
+          this.settings?.bubbleTheme || "auto"
         );
         img.dataset.slateStatus = "translated";
         PageBadgeManager.updateBadge(wrapper, task.index, "translated", resp.dialogues.length);
@@ -2427,7 +2592,9 @@
       } else {
         img.dataset.slateStatus = "error";
         PageBadgeManager.updateBadge(wrapper, task.index, "error");
-        this.hud.log(`Loi dich trang #${task.index + 1}: ${resp?.error || "Loi API"}`, true);
+        const errMsg = resp?.error || (resp === void 0 ? "Kh\xF4ng nh\u1EADn \u0111\u01B0\u1EE3c ph\u1EA3n h\u1ED3i d\u1ECBch t\u1EEB n\u1EC1n" : `L\u1ED7i API d\u1ECBch: ${JSON.stringify(resp)}`);
+        this.hud.log(`Loi dich trang #${task.index + 1}: ${errMsg}`, true);
+        DebugLogger.error("Content:Translate", `Trang #${task.index + 1}: ${errMsg}`);
       }
     }
     markImageCompleted(img, checkAllDone = true) {
@@ -2443,20 +2610,34 @@
       const banner = document.createElement("div");
       banner.id = "speedyslate-missing-banner";
       banner.style.cssText = `
-      position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
-      background: rgba(18, 18, 28, 0.95); backdrop-filter: blur(16px); color: #ffffff; padding: 12px 20px;
-      border-radius: 14px; z-index: 2147483647; box-shadow: 0 12px 35px rgba(0,0,0,0.6);
-      font-family: system-ui, -apple-system, sans-serif; font-size: 13px; display: flex; align-items: center; gap: 14px;
-      border: 1px solid rgba(168, 85, 247, 0.4);
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      background: #111111; color: #F5F5F4; padding: 10px 18px;
+      border-radius: 9999px; z-index: 2147483647; box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+      font-family: 'DM Sans', system-ui, -apple-system, sans-serif; font-size: 12px; display: flex; align-items: center; gap: 12px;
+      border: 1px solid rgba(168, 85, 247, 0.4); user-select: none;
     `;
       banner.innerHTML = `
-      <span><b>SpeedySlate</b>: Ban chua tai model OCR (~10MB). Mo popup cai dat tien ich de tai model.</span>
-      <button style="background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; color: #fff; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 12px;">Dong</button>
+      <span><b style="color: #A855F7;">SpeedySlate</b>: Ch\u01B0a t\u1EA3i model OCR (~10MB). M\u1EDF popup c\xE0i \u0111\u1EB7t \u0111\u1EC3 t\u1EA3i model.</span>
+      <button style="background: #A855F7; border: none; color: #ffffff; padding: 4px 12px; border-radius: 9999px; cursor: pointer; font-weight: 600; font-size: 11px;">\u0110\xF3ng</button>
     `;
       banner.querySelector("button")?.addEventListener("click", () => banner.remove());
       document.body?.appendChild(banner);
     }
   };
+  window.addEventListener("error", (e) => {
+    if (e.message?.includes("SpeedySlate") || e.message?.includes("OCR") || e.filename?.includes("content")) {
+      DebugLogger.error("Content:GlobalError", e.message, e.error);
+    }
+  });
+  window.addEventListener("unhandledrejection", (e) => {
+    const reason = e.reason?.message || String(e.reason);
+    if (reason.includes("SpeedySlate") || reason.includes("OCR")) {
+      DebugLogger.error("Content:UnhandledRejection", reason, e.reason);
+    }
+  });
   var app = new SpeedySlateContentApp();
-  app.start().catch((err) => console.error("[SpeedySlate] Loi khoi dong:", err));
+  app.start().catch((err) => {
+    console.error("[SpeedySlate] Loi khoi dong:", err);
+    DebugLogger.error("Content:Init", err.message, err);
+  });
 })();

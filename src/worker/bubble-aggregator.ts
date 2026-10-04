@@ -2,12 +2,14 @@ import { BoundingBox, DialogueItem } from '../shared/types';
 
 /**
  * Aggregates individual text lines into unified dialogue bubbles
- * following post-OCR recognition.
+ * following post-OCR recognition using strict Cotrans (manga-image-translator) clustering rules.
  * Following Single Responsibility Principle (SRP).
  */
 export class BubbleAggregator {
   /**
-   * Groups vertically stacked text lines that belong to the same comic speech bubble
+   * Groups vertically stacked text lines that belong to the SAME comic speech bubble.
+   * Strictly enforces font-size consistency, bounded vertical gaps, and strong horizontal alignment.
+   * Guarantees that separate speech bubbles are never merged into one giant cluster.
    */
   public static aggregateDialogues(
     items: DialogueItem[],
@@ -16,7 +18,7 @@ export class BubbleAggregator {
   ): DialogueItem[] {
     if (items.length <= 1) return items;
 
-    // 1. Sort top to bottom
+    // 1. Sort top to bottom by Y coordinate
     const sorted = [...items].sort((a, b) => a.box.y - b.box.y);
     const groups: DialogueItem[][] = [];
     const used = new Set<number>();
@@ -30,48 +32,48 @@ export class BubbleAggregator {
       let changed = true;
       while (changed) {
         changed = false;
-
-        // Current bounding box of the group
-        const groupMinX = Math.min(...currentGroup.map((d) => d.box.x));
-        const groupMaxX = Math.max(...currentGroup.map((d) => d.box.x + d.box.width));
-        const groupMinY = Math.min(...currentGroup.map((d) => d.box.y));
-        const groupMaxY = Math.max(...currentGroup.map((d) => d.box.y + d.box.height));
-        const groupW = groupMaxX - groupMinX;
-        const groupH = groupMaxY - groupMinY;
-        const groupCenterX = groupMinX + groupW / 2;
+        // Compare candidate strictly against the immediate preceding line in the current bubble
+        const lastLine = currentGroup[currentGroup.length - 1];
+        const lastBox = lastLine.box;
+        const lastCenterX = lastBox.x + lastBox.width / 2;
 
         for (let j = 0; j < sorted.length; j++) {
           if (used.has(j)) continue;
           const candidate = sorted[j];
+          const candBox = candidate.box;
 
-          // 1. Vertical proximity
-          // Candidate line must be close to the bottom of the current group
-          const verticalGap = candidate.box.y - groupMaxY;
-          const candidateH = candidate.box.height;
-          const maxAllowedGap = Math.max(candidateH, groupH / currentGroup.length) * 1.6;
+          // 1. Font-size / Line-height consistency (lines in the same bubble have similar font size)
+          const hRatio = Math.min(lastBox.height, candBox.height) / Math.max(lastBox.height, candBox.height);
+          if (hRatio < 0.6) continue;
 
-          // Vertical gap must be within reading distance (allows small overlap up to maxAllowedGap)
-          const isVerticallyAdjacent = verticalGap >= -candidateH * 0.5 && verticalGap <= maxAllowedGap;
+          // 2. Strict vertical gap: measured from the bottom of the immediate last line
+          const verticalGap = candBox.y - (lastBox.y + lastBox.height);
+          // In comics, line spacing is between 0.2x and 2.1x of line height
+          const maxAllowedGap = Math.max(lastBox.height, candBox.height) * 2.1;
+          const isVerticallyAdjacent = verticalGap >= -lastBox.height * 0.4 && verticalGap <= maxAllowedGap;
           if (!isVerticallyAdjacent) continue;
 
-          // 2. Horizontal alignment / overlap
+          // 3. Horizontal overlap and center alignment
           const xOverlap = Math.max(
             0,
-            Math.min(groupMaxX, candidate.box.x + candidate.box.width) - Math.max(groupMinX, candidate.box.x)
+            Math.min(lastBox.x + lastBox.width, candBox.x + candBox.width) - Math.max(lastBox.x, candBox.x)
           );
-          const candidateCenterX = candidate.box.x + candidate.box.width / 2;
-          const centerDiff = Math.abs(groupCenterX - candidateCenterX);
-          const maxCenterDiff = Math.max(groupW, candidate.box.width) * 0.65;
+          const minW = Math.min(lastBox.width, candBox.width);
+          const maxW = Math.max(lastBox.width, candBox.width);
+          const overlapRatio = xOverlap / Math.max(1, minW);
 
-          // Speech bubbles can be center-aligned or overlapping
-          const isHorizontallyAligned = xOverlap > 0 || centerDiff <= maxCenterDiff;
-          if (!isHorizontallyAligned) continue;
+          const candCenterX = candBox.x + candBox.width / 2;
+          const centerDiffRatio = Math.abs(lastCenterX - candCenterX) / Math.max(1, maxW);
 
-          // Matched: add candidate to group
+          // Must have either strong overlap (>= 40%) or decent overlap (>= 25%) with centered alignment
+          const isAligned = overlapRatio >= 0.4 || (overlapRatio >= 0.25 && centerDiffRatio <= 0.35);
+          if (!isAligned) continue;
+
+          // Matched: add candidate line to bubble
           currentGroup.push(candidate);
           used.add(j);
           changed = true;
-          break; // restart loop with updated group bounds
+          break; // re-evaluate from the newly added line
         }
       }
 

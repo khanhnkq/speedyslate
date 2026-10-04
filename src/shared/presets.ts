@@ -101,25 +101,91 @@ export const API_PRESETS: Record<ProviderType, {
  */
 export const OCR_MODEL_PRESETS: OcrModelPreset[] = [
   {
+    id: 'pp-ocrv4-server-heavy',
+    name: 'PP-OCRv4 Server ResNet-50 Heavy (~121MB - Khuyên dùng Toonhey)',
+    description: 'Bản Server ResNet-50 113MB chuyên sâu. Bắt trọn từng ô chữ, phông thoại uốn lượn, in hoa, in nghiêng, không bị sót hay nhầm ô.',
+    totalSizeMb: 120.9,
+    files: {
+      detUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/det/ch_PP-OCRv4_server_det/model.onnx',
+      recUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/en_PP-OCRv4_rec/model.onnx',
+      keysUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/en_PP-OCRv4_rec/dict.txt'
+    }
+  },
+  {
+    id: 'pp-ocrv4-server-cjk',
+    name: 'PP-OCRv4 Server CJK Full Heavy (~204MB - Đỉnh cao Đa ngữ)',
+    description: 'Bản Full Server ResNet-50 204MB với 6,600+ ký tự Hán tự, Latin, số và ký tự thoại cho các truyện tranh bản scan độ phân giải cao.',
+    totalSizeMb: 203.8,
+    files: {
+      detUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/det/ch_PP-OCRv4_server_det/model.onnx',
+      recUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/ch_PP-OCRv4_server_rec/model.onnx',
+      keysUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/ch_PP-OCRv4_server_rec/dict.txt'
+    }
+  },
+  {
+    id: 'pp-ocrv4-english',
+    name: 'PP-OCRv4 English Mobile (~12MB - Tốc độ cao)',
+    description: 'Thế hệ PP-OCRv4 nhẹ cho máy cấu hình tiết kiệm. Tốc độ nhận diện 15-25ms.',
+    totalSizeMb: 12.4,
+    files: {
+      detUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/det/ch_PP-OCRv4_det/model.onnx',
+      recUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/en_PP-OCRv4_rec/model.onnx',
+      keysUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/en_PP-OCRv4_rec/dict.txt'
+    }
+  },
+  {
+    id: 'pp-ocrv4-japanese',
+    name: 'PP-OCR Japanese Manga (RAW Nhật Bản)',
+    description: 'Chuyên biệt cho Manga Nhật Bản. Nhận diện Hiragana, Katakana, Kanji và số thoại truyện tranh.',
+    totalSizeMb: 14.7,
+    files: {
+      detUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/det/ch_PP-OCRv4_det/model.onnx',
+      recUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/japan_PP-OCRv3_rec/model.onnx',
+      keysUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/japan_PP-OCRv3_rec/dict.txt'
+    }
+  },
+  {
+    id: 'pp-ocrv4-korean',
+    name: 'PP-OCR Korean Manhwa (RAW Hàn Quốc)',
+    description: 'Chuyên biệt cho Manhwa Hàn Quốc. Nhận diện chuẩn xác toàn bộ bảng ký tự Hangul thoại.',
+    totalSizeMb: 14.6,
+    files: {
+      detUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/det/ch_PP-OCRv4_det/model.onnx',
+      recUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/korean_PP-OCRv3_rec/model.onnx',
+      keysUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/korean_PP-OCRv3_rec/dict.txt'
+    }
+  },
+  {
+    id: 'pp-ocrv4-chinese',
+    name: 'PP-OCRv4 Chinese Manhua (RAW Trung Quốc)',
+    description: 'PP-OCRv4 nhận diện 6,600+ Hán tự giản thể và phồn thể cho Manhua Trung Quốc.',
+    totalSizeMb: 15.5,
+    files: {
+      detUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/det/ch_PP-OCRv4_det/model.onnx',
+      recUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/ch_PP-OCRv4_rec/model.onnx',
+      keysUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/ch_PP-OCRv4_rec/dict.txt'
+    }
+  },
+  {
+    id: 'pp-ocrv4-latin',
+    name: 'PP-OCR Latin Multilingual (Đa ngữ Châu Âu & Latin)',
+    description: 'Bản đa ngữ cho chữ Latin mở rộng: Tiếng Việt, Pháp, Đức, Tây Ban Nha, Bồ Đào Nha, v.v.',
+    totalSizeMb: 13.6,
+    files: {
+      detUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/det/ch_PP-OCRv4_det/model.onnx',
+      recUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/latin_PP-OCRv3_rec/model.onnx',
+      keysUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/latin_PP-OCRv3_rec/dict.txt'
+    }
+  },
+  {
     id: 'paddle-en-slim',
-    name: 'PaddleOCR English Slim (Khuyên dùng Toonhey)',
-    description: 'Chuyên biệt cho thoại tiếng Anh trên Toonhey.com. Cực nhẹ (~10MB), nhận diện nhanh và chuẩn xác.',
+    name: 'PaddleOCR English Slim v3 (Bản tiết kiệm ~10MB)',
+    description: 'Bản siêu nhẹ thế hệ v3. Tải nhanh nhất, tiết kiệm dữ liệu.',
     totalSizeMb: 10.2,
     files: {
       detUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/detection/v3/det.onnx',
       recUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/languages/english/rec.onnx',
       keysUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/languages/english/dict.txt'
-    }
-  },
-  {
-    id: 'paddle-multilingual',
-    name: 'PaddleOCR Korean / Raw Manhwa',
-    description: 'Dành cho độc giả đọc bản RAW tiếng Hàn (Manhwa). Dung lượng ~15MB.',
-    totalSizeMb: 15.4,
-    files: {
-      detUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/detection/v3/det.onnx',
-      recUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/languages/korean/rec.onnx',
-      keysUrl: 'https://huggingface.co/monkt/paddleocr-onnx/resolve/main/languages/korean/dict.txt'
     }
   }
 ];
@@ -178,9 +244,10 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
     }
   },
   targetLanguage: 'Tiếng Việt',
-  bubbleTheme: 'light',
+  bubbleTheme: 'auto',
   autoScrollSpeed: 3,
   autoPrefetch: true,
-  activeOcrModelId: 'paddle-en-slim',
-  rateLimitDelayMs: 1200
+  activeOcrModelId: 'pp-ocrv4-server-heavy',
+  rateLimitDelayMs: 1200,
+  useWebGpu: true
 };

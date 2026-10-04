@@ -7,7 +7,8 @@ import { BoundingBox } from '../shared/types';
 export class ImageUtils {
   /**
    * Resizes dimensions to be divisible by 32 (required by DBNet)
-   * Preserves optimal width (768-960px) for tall webtoon comic strips
+   * Preserves high-definition reading width (960-1120px) so small text in comic bubbles
+   * remains crisp and easily readable by DBNet detection models.
    */
   public static calculateDetResize(
     width: number,
@@ -15,16 +16,16 @@ export class ImageUtils {
   ): { targetW: number; targetH: number; ratioW: number; ratioH: number } {
     let ratio = 1.0;
 
-    // For webtoons, keep width in optimal reading range 768-960px
-    if (width > 960) {
-      ratio = 960 / width;
-    } else if (width < 640 && height < 1200) {
-      ratio = Math.min(1.5, 768 / width);
+    // Maintain optimal width for comic text detection (960px - 1120px)
+    if (width > 1120) {
+      ratio = 1120 / width;
+    } else if (width < 800) {
+      ratio = Math.min(1.5, 960 / width);
     }
 
-    // Safety limit on height to prevent excessive memory on ultra-long strips
-    if (height * ratio > 2048) {
-      ratio = 2048 / height;
+    // Modern WebGPU/WASM supports height up to 3840px safely
+    if (height * ratio > 3840) {
+      ratio = 3840 / height;
     }
 
     let targetW = Math.round(width * ratio);

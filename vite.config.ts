@@ -7,17 +7,23 @@ export default defineConfig(({ mode }) => {
   const target = mode === 'firefox' ? 'firefox' : 'chrome';
   const outDir = resolve(__dirname, `dist/${target}`);
 
+  const input: Record<string, string> = {
+    popup: resolve(__dirname, 'src/popup/popup.html'),
+    background: resolve(__dirname, 'src/background/index.ts'),
+    worker: resolve(__dirname, 'src/worker/ocr.worker.ts')
+  };
+
+  if (target === 'chrome') {
+    input.offscreen = resolve(__dirname, 'src/offscreen/offscreen.html');
+  }
+
   return {
     build: {
       outDir,
       emptyOutDir: true,
       target: 'es2022',
       rollupOptions: {
-        input: {
-          popup: resolve(__dirname, 'src/popup/popup.html'),
-          background: resolve(__dirname, 'src/background/index.ts'),
-          worker: resolve(__dirname, 'src/worker/ocr.worker.ts')
-        },
+        input,
         output: {
           entryFileNames: (chunkInfo) => {
             if (['background', 'worker'].includes(chunkInfo.name)) {

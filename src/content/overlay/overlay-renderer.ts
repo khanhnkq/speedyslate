@@ -9,62 +9,79 @@ export class OverlayRenderer {
     dialogues: DialogueItem[],
     naturalWidth: number,
     naturalHeight: number,
-    theme: BubbleTheme = 'light'
+    theme: BubbleTheme = 'auto'
   ): void {
     // Remove previous bubbles if any
     const existing = wrapper.querySelectorAll('.speedyslate-bubble');
     existing.forEach((el) => el.remove());
 
     for (const item of dialogues) {
-      if (!item.translatedText) continue;
+      if (!item.translatedText || !item.translatedText.trim()) continue;
 
       const box = item.box;
+      // Controlled elastic breathing room to fit dialogue comfortably without exploding
+      const expandX = Math.min(box.width * 0.08, 12);
+      const expandY = Math.min(box.height * 0.06, 8);
+
+      const adjX = Math.max(0, box.x - expandX / 2);
+      const adjY = Math.max(0, box.y - expandY / 2);
+      const adjW = Math.min(naturalWidth - adjX, box.width + expandX);
+      const adjH = Math.min(naturalHeight - adjY, box.height + expandY);
+
       // Convert pixel box to percentage of original image dimensions
-      const topPct = (box.y / naturalHeight) * 100;
-      const leftPct = (box.x / naturalWidth) * 100;
-      const widthPct = (box.width / naturalWidth) * 100;
-      const heightPct = (box.height / naturalHeight) * 100;
+      const topPct = (adjY / naturalHeight) * 100;
+      const leftPct = (adjX / naturalWidth) * 100;
+      const widthPct = (adjW / naturalWidth) * 100;
+      const minHeightPct = (adjH / naturalHeight) * 100;
 
       const bubble = document.createElement('div');
       bubble.className = 'speedyslate-bubble';
       bubble.id = item.id;
       bubble.title = `Gốc: "${item.originalText}" (Rê chuột để soi chữ gốc)`;
 
-      // Determine style based on theme
+      // Determine style based on theme (defaults to auto: dark balloon -> dark background)
       const isDark = theme === 'dark' || (theme === 'auto' && item.isDarkBackground);
       const bg = isDark ? '#111111' : '#ffffff';
       const textColor = isDark ? '#ffffff' : '#000000';
 
-      // Inline styles: no borders or shadows so it blends seamlessly into the original comic balloon
+      // Inline styles: tight, clean comic dialogue overlay
       Object.assign(bubble.style, {
         position: 'absolute',
         top: `${topPct}%`,
         left: `${leftPct}%`,
         width: `${widthPct}%`,
-        minHeight: `${heightPct}%`,
+        maxWidth: `${Math.min(85, Math.max(25, widthPct + 4))}%`,
+        height: 'auto',
+        minHeight: `${minHeightPct}%`,
         backgroundColor: bg,
         color: textColor,
         border: 'none',
-        borderRadius: '2px',
+        borderRadius: isDark ? '6px' : '8px',
         boxSizing: 'border-box',
-        padding: '1px 2px',
+        padding: '2px 4px',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         textAlign: 'center',
         fontFamily: "'Comic Sans MS', 'Bangers', 'Segoe UI', system-ui, sans-serif",
         fontWeight: 'bold',
-        lineHeight: '1.2',
+        lineHeight: '1.22',
         zIndex: '50',
         cursor: 'pointer',
         transition: 'opacity 0.15s ease-in-out',
         userSelect: 'text',
+        whiteSpace: 'pre-wrap',
         wordBreak: 'break-word',
-        boxShadow: 'none'
+        overflowWrap: 'anywhere',
+        hyphens: 'auto',
+        boxShadow: isDark
+          ? '0 0 0 1px rgba(255,255,255,0.18)'
+          : '0 0 0 1px rgba(0,0,0,0.10)'
       });
 
       // Compute adaptive font size based on box dimensions and text length
-      const fontSize = this.calculateFontSize(box.width, box.height, item.translatedText.length);
+      const fontSize = this.calculateFontSize(adjW, adjH, item.translatedText.length);
       bubble.style.fontSize = `${fontSize}px`;
 
       bubble.textContent = item.translatedText;
@@ -86,9 +103,9 @@ export class OverlayRenderer {
    */
   private static calculateFontSize(boxW: number, boxH: number, textLength: number): number {
     const area = boxW * boxH;
-    let base = Math.sqrt(area / Math.max(1, textLength)) * 0.9;
-    // Bound font size between 11px and 22px
-    base = Math.max(11, Math.min(22, Math.round(base)));
+    let base = Math.sqrt(area / Math.max(1, textLength)) * 0.92;
+    // Bound font size between 11px and 20px for comic text readability
+    base = Math.max(11, Math.min(20, Math.round(base)));
     return base;
   }
 

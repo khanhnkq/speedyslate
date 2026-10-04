@@ -99,6 +99,14 @@ export class ChubbyIcons {
     `.trim();
   }
 
+  public static spinner(size = 14, color = '#A855F7'): string {
+    return `
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle; animation: speedyslateSpin 0.9s linear infinite;">
+        <circle cx="12" cy="12" r="9" stroke="${color}" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="36 18" />
+      </svg>
+    `.trim();
+  }
+
   public static pulseDot(color = '#10b981'): string {
     return `
       <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background-color:${color}; box-shadow:0 0 8px ${color}; margin-right:6px; flex-shrink:0;"></span>

@@ -6,6 +6,7 @@ import { OverlayRenderer } from './overlay/overlay-renderer';
 import { OrderedTaskQueue, OcrTask, TranslationTask } from './priority-queue';
 import { ToonheyAdapter } from './toonhey-adapter';
 import { PageBadgeManager } from './page-badge';
+import { DebugLogger } from '../shared/debug-logger';
 
 class SpeedySlateContentApp {
   private settings!: ExtensionSettings;
@@ -67,7 +68,7 @@ class SpeedySlateContentApp {
     // 2. Khoi tao 2 hang doi tach biet: OCR Producer (cuc bo) & Translation Consumer (API)
     this.ocrQueue = new OrderedTaskQueue<OcrTask>(
       async (task) => this.processOcrTask(task),
-      2,
+      1,
       (t) => t.img
     );
     this.ocrQueue.pause();
@@ -195,7 +196,7 @@ class SpeedySlateContentApp {
                   cached.dialogues,
                   cached.naturalWidth || img.naturalWidth || 800,
                   cached.naturalHeight || img.naturalHeight || 1200,
-                  (this.settings?.bubbleTheme || 'light') as BubbleTheme
+                  (this.settings?.bubbleTheme || 'auto') as BubbleTheme
                 );
                 img.dataset.slateStatus = 'translated';
                 PageBadgeManager.updateBadge(wrapper, i, 'translated', cached.dialogues.length);
@@ -316,7 +317,7 @@ class SpeedySlateContentApp {
             resp.dialogues,
             resp.naturalWidth || img.naturalWidth || 800,
             resp.naturalHeight || img.naturalHeight || 1200,
-            (this.settings?.bubbleTheme || 'light') as BubbleTheme
+            (this.settings?.bubbleTheme || 'auto') as BubbleTheme
           );
           img.dataset.slateStatus = 'translated';
           PageBadgeManager.updateBadge(wrapper, task.index, 'translated', resp.dialogues.length);
@@ -347,7 +348,13 @@ class SpeedySlateContentApp {
     } else {
       img.dataset.slateStatus = 'error';
       PageBadgeManager.updateBadge(wrapper, task.index, 'error');
-      this.hud.log(`Loi OCR trang #${task.index + 1}: ${resp?.error || 'Loi khong xac dinh'}`, true);
+      const errMsg =
+        resp?.error ||
+        (resp === undefined
+          ? 'Không nhận được phản hồi từ nền (kênh đóng sớm hoặc Worker đang bận)'
+          : `Phản hồi lỗi: ${JSON.stringify(resp)}`);
+      this.hud.log(`Lỗi OCR trang #${task.index + 1}: ${errMsg}`, true);
+      DebugLogger.error('Content:OCR', `Trang #${task.index + 1}: ${errMsg}`);
     }
   }
 
@@ -380,7 +387,7 @@ class SpeedySlateContentApp {
         resp.dialogues,
         task.naturalWidth,
         task.naturalHeight,
-        (this.settings?.bubbleTheme || 'light') as BubbleTheme
+        (this.settings?.bubbleTheme || 'auto') as BubbleTheme
       );
       img.dataset.slateStatus = 'translated';
       PageBadgeManager.updateBadge(wrapper, task.index, 'translated', resp.dialogues.length);
@@ -389,7 +396,13 @@ class SpeedySlateContentApp {
     } else {
       img.dataset.slateStatus = 'error';
       PageBadgeManager.updateBadge(wrapper, task.index, 'error');
-      this.hud.log(`Loi dich trang #${task.index + 1}: ${resp?.error || 'Loi API'}`, true);
+      const errMsg =
+        resp?.error ||
+        (resp === undefined
+          ? 'Không nhận được phản hồi dịch từ nền'
+          : `Lỗi API dịch: ${JSON.stringify(resp)}`);
+      this.hud.log(`Loi dich trang #${task.index + 1}: ${errMsg}`, true);
+      DebugLogger.error('Content:Translate', `Trang #${task.index + 1}: ${errMsg}`);
     }
   }
 
@@ -408,21 +421,37 @@ class SpeedySlateContentApp {
     const banner = document.createElement('div');
     banner.id = 'speedyslate-missing-banner';
     banner.style.cssText = `
-      position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
-      background: rgba(18, 18, 28, 0.95); backdrop-filter: blur(16px); color: #ffffff; padding: 12px 20px;
-      border-radius: 14px; z-index: 2147483647; box-shadow: 0 12px 35px rgba(0,0,0,0.6);
-      font-family: system-ui, -apple-system, sans-serif; font-size: 13px; display: flex; align-items: center; gap: 14px;
-      border: 1px solid rgba(168, 85, 247, 0.4);
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      background: #111111; color: #F5F5F4; padding: 10px 18px;
+      border-radius: 9999px; z-index: 2147483647; box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+      font-family: 'DM Sans', system-ui, -apple-system, sans-serif; font-size: 12px; display: flex; align-items: center; gap: 12px;
+      border: 1px solid rgba(168, 85, 247, 0.4); user-select: none;
     `;
     banner.innerHTML = `
-      <span><b>SpeedySlate</b>: Ban chua tai model OCR (~10MB). Mo popup cai dat tien ich de tai model.</span>
-      <button style="background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; color: #fff; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 12px;">Dong</button>
+      <span><b style="color: #A855F7;">SpeedySlate</b>: Chưa tải model OCR (~10MB). Mở popup cài đặt để tải model.</span>
+      <button style="background: #A855F7; border: none; color: #ffffff; padding: 4px 12px; border-radius: 9999px; cursor: pointer; font-weight: 600; font-size: 11px;">Đóng</button>
     `;
     banner.querySelector('button')?.addEventListener('click', () => banner.remove());
     document.body?.appendChild(banner);
   }
 }
 
+// Global error handlers
+window.addEventListener('error', (e) => {
+  if (e.message?.includes('SpeedySlate') || e.message?.includes('OCR') || e.filename?.includes('content')) {
+    DebugLogger.error('Content:GlobalError', e.message, e.error);
+  }
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const reason = e.reason?.message || String(e.reason);
+  if (reason.includes('SpeedySlate') || reason.includes('OCR')) {
+    DebugLogger.error('Content:UnhandledRejection', reason, e.reason);
+  }
+});
+
 // Khoi chay ngay lap tuc
 const app = new SpeedySlateContentApp();
-app.start().catch((err) => console.error('[SpeedySlate] Loi khoi dong:', err));
+app.start().catch((err) => {
+  console.error('[SpeedySlate] Loi khoi dong:', err);
+  DebugLogger.error('Content:Init', err.message, err);
+});

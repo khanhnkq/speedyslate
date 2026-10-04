@@ -15,10 +15,24 @@ export class OpenAIProvider implements ITranslationProvider {
     if (!texts.length) return [];
 
     const endpoint = `${this.baseUrl}/chat/completions`;
-    const systemPrompt = `You are a professional comic/manga/manhwa translator into ${targetLang}.
-Translate the provided JSON array of dialogue strings accurately and naturally.
-CRITICAL: You must return ONLY a JSON object with a single key "translations" containing an array of strings with the EXACT same length and order:
-{"translations": ["dịch 1", "dịch 2"]}`;
+    const systemPrompt = `You are an expert manga, manhwa, and comic translator into ${targetLang}.
+Translate the provided JSON array of dialogue strings into natural, expressive comic Vietnamese/target language.
+
+RULES FOR TRANSLATION:
+1. Translate speech bubbles, inner thoughts, and narrator boxes naturally, keeping character tone, emotion, and brevity.
+   - If an OCR text line has minor typos or missing spaces (e.g. "WHAT'S GONC" -> "WHAT'S GOING", "ON IN THEREP" -> "ON IN THERE?"), automatically correct it using context and translate accurately.
+   - NEVER discard or omit valid character speech bubbles!
+2. Brevity & Bubble Formatting:
+   - Keep translations concise to fit nicely inside speech bubbles.
+   - For longer sentences, you may insert a single newline character (\\n) at natural pauses to balance text across lines.
+3. CRITICAL FILTERING - ONLY OMIT TRUE JUNK & WATERMARKS:
+   - Scanlation credits, website URLs, group plugs, Discord/Patreon links (e.g. "toonhey.com", "asura", "reaper", "read at...", "join our discord").
+   - Standalone chapter numbers, page numbers, status labels (e.g. "Ch. 5", "Page 12", "01/24", "End of chapter").
+   - Non-dialogue graphic noise or single punctuation symbols (e.g. "|", "---", "/", ";;", "..", "~~~").
+   - FOR TRUE JUNK / WATERMARK / CREDIT ONLY: Return an EMPTY STRING ("") at that index! Do NOT omit real dialogue.
+4. STRICT JSON OUTPUT FORMAT:
+   - Return ONLY a JSON object with a single key "translations" containing an array of strings with the EXACT same length and order:
+   {"translations": ["CÓ CHUYỆN GÌ ĐANG XẢY RA TRONG ĐÓ THẾ?", "", "Hừ"]}`;
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'

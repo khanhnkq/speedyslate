@@ -48,6 +48,8 @@ export interface ProviderConfig {
 
 export type BubbleTheme = 'light' | 'dark' | 'auto';
 
+export type OcrBackend = 'webgpu' | 'wasm';
+
 export interface ExtensionSettings {
   activeProvider: ProviderType;
   providers: Record<ProviderType, ProviderConfig>;
@@ -57,6 +59,7 @@ export interface ExtensionSettings {
   autoPrefetch: boolean;
   activeOcrModelId: string;
   rateLimitDelayMs?: number; // Minimum spacing between API translation requests in ms
+  useWebGpu: boolean;       // Use WebGPU backend for ONNX (default: true, falls back to WASM)
 }
 
 export interface OcrModelPreset {

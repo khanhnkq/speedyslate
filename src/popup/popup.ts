@@ -1,21 +1,21 @@
 import browser from 'webextension-polyfill';
-import { ModelDbService } from '../shared/model-db';
+import { ModelHubController } from './model-hub-controller';
 import { API_PRESETS, OCR_MODEL_PRESETS } from '../shared/presets';
 import { StorageService } from '../shared/storage';
 import { TranslationCacheDb } from '../shared/translation-db';
 import { BubbleTheme, ExtensionSettings, ProviderType } from '../shared/types';
+import { DebugLogger } from '../shared/debug-logger';
 
 class PopupController {
   private settings!: ExtensionSettings;
 
-  // DOM Elements - OCR
-  private ocrSelect = document.getElementById('ocr-model-select') as HTMLSelectElement;
+  // DOM Elements - OCR Hub
   private statusBadge = document.getElementById('model-status-badge') as HTMLElement;
-  private progressContainer = document.getElementById('progress-container') as HTMLElement;
-  private progressBar = document.getElementById('progress-bar') as HTMLElement;
-  private progressText = document.getElementById('progress-text') as HTMLElement;
-  private downloadBtn = document.getElementById('btn-download-model') as HTMLButtonElement;
-  private deleteBtn = document.getElementById('btn-delete-model') as HTMLButtonElement;
+  private backendBadge = document.getElementById('ocr-backend-badge') as HTMLElement;
+  private webgpuToggle = document.getElementById('toggle-webgpu') as HTMLInputElement;
+  private modelHub!: ModelHubController;
+
+  private backendPollTimer: ReturnType<typeof setInterval> | null = null;
 
   // DOM Elements - API
   private providerSelect = document.getElementById('provider-select') as HTMLSelectElement;
@@ -37,29 +37,50 @@ class PopupController {
   private saveBtn = document.getElementById('btn-save-settings') as HTMLButtonElement;
   private saveStatus = document.getElementById('save-status') as HTMLElement;
 
+  // DOM Elements - Debug & Logs
+  private logCountBadge = document.getElementById('log-count-badge') as HTMLElement;
+  private logViewerBox = document.getElementById('log-viewer-box') as HTMLElement;
+  private logContentText = document.getElementById('log-content-text') as HTMLElement;
+  private copyLogsBtn = document.getElementById('btn-copy-logs') as HTMLButtonElement;
+  private refreshLogsBtn = document.getElementById('btn-refresh-logs') as HTMLButtonElement;
+  private clearLogsBtn = document.getElementById('btn-clear-logs') as HTMLButtonElement;
+  private copyLogStatus = document.getElementById('copy-log-status') as HTMLElement;
+  private cachedLogs: any[] = [];
+
   public async init(): Promise<void> {
     this.settings = await StorageService.getSettings();
 
-    this.renderOcrPresets();
+    // Initialize Interactive Model Cards Hub
+    const cardsContainer = document.getElementById('ocr-model-cards') as HTMLElement;
+    const storageLabel = document.getElementById('model-storage-used') as HTMLElement;
+
+    this.modelHub = new ModelHubController(
+      cardsContainer,
+      storageLabel,
+      this.statusBadge,
+      this.settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'pp-ocrv4-server-heavy',
+      async (newModelId) => {
+        this.settings.activeOcrModelId = newModelId;
+        await StorageService.saveSettings(this.settings);
+        browser.runtime.sendMessage({ action: 'WARMUP_OCR' })
+          .then((resp: any) => {
+            if (resp?.backend) this.renderBackendBadge(resp.backend);
+          })
+          .catch(() => {});
+      }
+    );
+
+    await this.modelHub.render();
     this.renderProviderPresets();
     this.loadDisplayPreferences();
 
-    this.attachEventListeners();
-    await this.updateOcrModelStatus();
-    await this.updateCacheStats();
-  }
+    // Restore WebGPU toggle state
+    this.webgpuToggle.checked = this.settings.useWebGpu ?? true;
 
-  private renderOcrPresets(): void {
-    this.ocrSelect.innerHTML = '';
-    for (const p of OCR_MODEL_PRESETS) {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = `${p.name} (~${p.totalSizeMb}MB)`;
-      if (p.id === this.settings.activeOcrModelId) {
-        opt.selected = true;
-      }
-      this.ocrSelect.appendChild(opt);
-    }
+    this.attachEventListeners();
+    await this.updateCacheStats();
+    await this.loadDebugLogs();
+    this.startBackendStatusPolling();
   }
 
   private renderProviderPresets(): void {
@@ -111,66 +132,81 @@ class PopupController {
     this.speedInput.value = String(this.settings.autoScrollSpeed);
   }
 
-  private async updateOcrModelStatus(): Promise<void> {
-    const modelId = this.ocrSelect.value;
-    const status = await ModelDbService.getModelStatus(modelId);
 
-    this.statusBadge.className = `status-badge ${status.status}`;
-    if (status.status === 'ready') {
-      const sizeMb = ((status.sizeBytes || 0) / (1024 * 1024)).toFixed(1);
-      this.statusBadge.textContent = `Đã sẵn sàng (${sizeMb} MB)`;
-      this.downloadBtn.style.display = 'none';
-      this.deleteBtn.style.display = 'inline-flex';
-    } else {
-      this.statusBadge.textContent = 'Chưa tải';
-      this.downloadBtn.style.display = 'inline-flex';
-      this.deleteBtn.style.display = 'none';
-    }
-    this.progressContainer.style.display = 'none';
+
+  /** Poll background every 3 s to show which ONNX backend is active and refresh logs. */
+  private startBackendStatusPolling(): void {
+    const refresh = async () => {
+      try {
+        const resp: any = await browser.runtime.sendMessage({ action: 'GET_OCR_STATUS' });
+        this.renderBackendBadge(resp?.backend ?? 'idle');
+        await this.loadDebugLogs(false);
+      } catch {
+        this.renderBackendBadge('idle');
+      }
+    };
+    refresh();
+    this.backendPollTimer = setInterval(refresh, 3000);
+    window.addEventListener('unload', () => {
+      if (this.backendPollTimer) {
+        clearInterval(this.backendPollTimer);
+        this.backendPollTimer = null;
+      }
+    });
+  }
+
+  private renderBackendBadge(backend: string): void {
+    const map: Record<string, { label: string; cls: string }> = {
+      webgpu: { label: 'WebGPU', cls: 'backend-webgpu' },
+      wasm:   { label: 'WASM (CPU)', cls: 'backend-wasm' },
+      idle:   { label: 'Chưa nạp', cls: 'backend-idle' }
+    };
+    const info = map[backend] ?? map['idle'];
+    this.backendBadge.className = `status-val ${info.cls}`;
+    this.backendBadge.textContent = info.label;
   }
 
   private async updateCacheStats(): Promise<void> {
     if (!this.cacheStatsText) return;
     const stats = await TranslationCacheDb.getCacheStats();
-    this.cacheStatsText.textContent = `${stats.count} ảnh trang truyện`;
+    this.cacheStatsText.textContent = `${stats.count} ảnh`;
+  }
+
+  private async loadDebugLogs(autoScroll = true): Promise<void> {
+    try {
+      const resp: any = await browser.runtime.sendMessage({ action: 'GET_DEBUG_LOGS' });
+      if (resp?.success && Array.isArray(resp.logs)) {
+        this.cachedLogs = resp.logs;
+        this.logCountBadge.textContent = `${resp.logs.length} log`;
+        if (resp.logs.length === 0) {
+          this.logContentText.textContent = 'Chưa có nhật ký lỗi nào.';
+        } else {
+          const recent = resp.logs.slice(-30).map((l: any) => {
+            const lvl = l.level === 'error' ? '✖' : l.level === 'warn' ? '⚠' : 'ℹ';
+            return `${lvl} [${l.time}] [${l.tag}]: ${l.message}`;
+          }).join('\n');
+          this.logContentText.textContent = recent;
+          if (autoScroll && this.logViewerBox) {
+            this.logViewerBox.scrollTop = this.logViewerBox.scrollHeight;
+          }
+        }
+      }
+    } catch {
+      this.logContentText.textContent = 'Không thể tải nhật ký.';
+    }
   }
 
   private attachEventListeners(): void {
-    // OCR selection change
-    this.ocrSelect.addEventListener('change', async () => {
-      this.settings.activeOcrModelId = this.ocrSelect.value;
-      await this.updateOcrModelStatus();
-    });
-
-    // Download model
-    this.downloadBtn.addEventListener('click', async () => {
-      const preset = OCR_MODEL_PRESETS.find((p) => p.id === this.ocrSelect.value);
-      if (!preset) return;
-
-      this.downloadBtn.disabled = true;
-      this.statusBadge.className = 'status-badge downloading';
-      this.statusBadge.textContent = 'Đang tải...';
-      this.progressContainer.style.display = 'block';
-
+    // WebGPU toggle
+    this.webgpuToggle.addEventListener('change', async () => {
+      this.settings.useWebGpu = this.webgpuToggle.checked;
+      await StorageService.saveSettings(this.settings);
       try {
-        await ModelDbService.downloadModel(preset, (pct, stepName) => {
-          this.progressBar.style.width = `${pct}%`;
-          this.progressText.textContent = `${pct}% - ${stepName}`;
-        });
-        await this.updateOcrModelStatus();
-      } catch (err: any) {
-        alert('Tải model thất bại: ' + err.message);
-        await this.updateOcrModelStatus();
-      } finally {
-        this.downloadBtn.disabled = false;
+        const resp: any = await browser.runtime.sendMessage({ action: 'SET_WEBGPU' });
+        this.renderBackendBadge(resp?.backend ?? 'idle');
+      } catch {
+        this.renderBackendBadge('idle');
       }
-    });
-
-    // Delete model
-    this.deleteBtn.addEventListener('click', async () => {
-      if (!confirm('Bạn có chắc chắn muốn xóa model này để giải phóng bộ nhớ?')) return;
-      await ModelDbService.deleteModel(this.ocrSelect.value);
-      await this.updateOcrModelStatus();
     });
 
     // Clear Cache DB
@@ -206,8 +242,8 @@ class PopupController {
     // Test API Connection
     this.testBtn.addEventListener('click', async () => {
       this.testBtn.disabled = true;
-      this.testResult.textContent = 'Đang kiểm tra...';
-      this.testResult.className = 'test-result-text';
+      this.testResult.textContent = 'Đang kiểm tra…';
+      this.testResult.className = 'inline-status';
 
       await this.saveCurrentFormToSettings();
 
@@ -218,15 +254,15 @@ class PopupController {
         });
 
         if (resp?.success) {
-          this.testResult.textContent = '✓ Kết nối thành công!';
-          this.testResult.className = 'test-result-text success';
+          this.testResult.textContent = 'Kết nối OK';
+          this.testResult.className = 'inline-status ok';
         } else {
-          this.testResult.textContent = `✗ Lỗi: ${resp?.error || 'Không thể kết nối'}`;
-          this.testResult.className = 'test-result-text error';
+          this.testResult.textContent = `Lỗi: ${resp?.error || 'Không thể kết nối'}`;
+          this.testResult.className = 'inline-status err';
         }
       } catch (err: any) {
-        this.testResult.textContent = `✗ Lỗi: ${err?.message}`;
-        this.testResult.className = 'test-result-text error';
+        this.testResult.textContent = `Lỗi: ${err?.message}`;
+        this.testResult.className = 'inline-status err';
       } finally {
         this.testBtn.disabled = false;
       }
@@ -235,17 +271,73 @@ class PopupController {
     // Save All Settings
     this.saveBtn.addEventListener('click', async () => {
       await this.saveCurrentFormToSettings();
-      this.saveStatus.textContent = '✓ Đã lưu cài đặt thành công!';
+      this.saveStatus.textContent = 'Đã lưu';
       setTimeout(() => {
         this.saveStatus.textContent = '';
-      }, 2500);
+      }, 2000);
+    });
+
+    // Copy debug logs to clipboard
+    this.copyLogsBtn.addEventListener('click', async () => {
+      try {
+        this.copyLogsBtn.disabled = true;
+        await this.loadDebugLogs(true);
+
+        const curProvider = this.settings?.activeProvider || 'unknown';
+        const context = {
+          activeOcrModel: this.settings?.activeOcrModelId || 'unknown',
+          activeBackend: this.backendBadge.textContent || 'idle',
+          useWebGpu: this.settings?.useWebGpu ?? true,
+          provider: curProvider,
+          providerModel: this.settings?.providers[curProvider]?.model,
+          hasApiKey: Boolean(this.settings?.providers[curProvider]?.apiKey),
+          autoScrollSpeed: this.settings?.autoScrollSpeed,
+          bubbleTheme: this.settings?.bubbleTheme
+        };
+
+        const text = DebugLogger.formatForClipboard(this.cachedLogs, context);
+        const copied = await DebugLogger.copyToClipboard(text);
+
+        if (copied) {
+          this.copyLogStatus.textContent = '✓ Đã sao chép nhật ký!';
+          this.copyLogStatus.className = 'inline-status ok';
+        } else {
+          this.copyLogStatus.textContent = 'Không thể copy tự động, vui lòng bôi đen nhật ký.';
+          this.copyLogStatus.className = 'inline-status err';
+        }
+        setTimeout(() => {
+          this.copyLogStatus.textContent = '';
+        }, 3000);
+      } catch (err: any) {
+        this.copyLogStatus.textContent = `Lỗi copy: ${err.message}`;
+        this.copyLogStatus.className = 'inline-status err';
+      } finally {
+        this.copyLogsBtn.disabled = false;
+      }
+    });
+
+    // Refresh debug logs
+    this.refreshLogsBtn.addEventListener('click', async () => {
+      await this.loadDebugLogs(true);
+      this.copyLogStatus.textContent = '✓ Đã làm mới!';
+      this.copyLogStatus.className = 'inline-status ok';
+      setTimeout(() => {
+        this.copyLogStatus.textContent = '';
+      }, 1500);
+    });
+
+    // Clear debug logs
+    this.clearLogsBtn.addEventListener('click', async () => {
+      await browser.runtime.sendMessage({ action: 'CLEAR_DEBUG_LOGS' });
+      this.cachedLogs = [];
+      this.logCountBadge.textContent = '0 log';
+      this.logContentText.textContent = 'Đã xóa toàn bộ nhật ký.';
     });
   }
 
   private async saveCurrentFormToSettings(): Promise<void> {
     const curType = this.providerSelect.value as ProviderType;
     this.settings.activeProvider = curType;
-    this.settings.activeOcrModelId = this.ocrSelect.value;
     this.settings.bubbleTheme = this.themeSelect.value as BubbleTheme;
     this.settings.autoScrollSpeed = Number(this.speedInput.value) || 3;
     this.settings.rateLimitDelayMs = Number(this.rateLimitInput.value) || 1200;
@@ -262,7 +354,18 @@ class PopupController {
   }
 }
 
+// Global error handlers for Popup
+window.addEventListener('error', (e) => {
+  DebugLogger.error('Popup:GlobalError', e.message, e.error);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  DebugLogger.error('Popup:UnhandledRejection', e.reason?.message || String(e.reason), e.reason);
+});
+
 document.addEventListener('DOMContentLoaded', () => {
   const popup = new PopupController();
-  popup.init().catch(console.error);
+  popup.init().catch((err) => {
+    console.error(err);
+    DebugLogger.error('Popup:Init', err?.message || String(err), err);
+  });
 });

@@ -4,9 +4,9 @@ import { ImageUtils } from './image-utils';
 
 export class PaddleDetEngine {
   private session: ort.InferenceSession;
-  private thresh: number = 0.3;
-  private boxThresh: number = 0.45;
-  private unclipRatio: number = 1.6;
+  private thresh: number = 0.25;
+  private boxThresh: number = 0.40;
+  private unclipRatio: number = 1.65;
 
   constructor(session: ort.InferenceSession) {
     this.session = session;
@@ -14,7 +14,7 @@ export class PaddleDetEngine {
 
   /**
    * Detects text regions in an image bitmap or canvas.
-   * Outputs individual text-line bounding boxes without pre-merging multi-line regions.
+   * Outputs unified text-line bounding boxes (words on the same line are merged).
    */
   public async detectText(
     canvas: OffscreenCanvas,
@@ -54,11 +54,15 @@ export class PaddleDetEngine {
     for (const b of rawBoxes) {
       if (b.confidence && b.confidence < this.boxThresh) continue;
 
-      // Unclip expansion
+      // True DBNet unclip expansion: dist = (Area * unclipRatio) / Perimeter
+      const area = b.width * b.height;
+      const perimeter = 2 * (b.width + b.height);
+      const unclipDist = Math.max(3, Math.min(18, (area * this.unclipRatio) / Math.max(1, perimeter)));
+
       const cx = b.x + b.width / 2;
       const cy = b.y + b.height / 2;
-      const expW = b.width * this.unclipRatio;
-      const expH = b.height * this.unclipRatio;
+      const expW = b.width + unclipDist * 2;
+      const expH = b.height + unclipDist * 2;
 
       const origX = Math.round((cx - expW / 2) / ratioW);
       const origY = Math.round((cy - expH / 2) / ratioH);
@@ -72,13 +76,98 @@ export class PaddleDetEngine {
       );
 
       // Filter tiny noise while preserving short words/dialogues
-      if (clamped.width >= 8 && clamped.height >= 8) {
+      // Strictly filter out giant image artifacts, panel borders, and background drawings
+      const isTooTiny = clamped.width < 8 || clamped.height < 8;
+      const isTooHuge = clamped.width > originalWidth * 0.85 || clamped.height > originalHeight * 0.38;
+      const isAreaExcessive = (clamped.width * clamped.height) / (originalWidth * originalHeight) > 0.16;
+
+      if (!isTooTiny && !isTooHuge && !isAreaExcessive) {
         scaledBoxes.push(clamped);
       }
     }
 
+    // Merge horizontally adjacent word boxes on the same line
+    const mergedLines = this.mergeHorizontalBoxes(scaledBoxes, originalWidth);
+
     // Sort detected lines top-to-bottom for natural reading order
-    return scaledBoxes.sort((a, b) => a.y - b.y);
+    return mergedLines.sort((a, b) => a.y - b.y);
+  }
+
+  /**
+   * Merges word-level boxes that belong to the same horizontal text line.
+   * DBNet often breaks words separated by spaces into isolated boxes.
+   * Merging horizontally creates complete line boxes, giving CTC models
+   * the full sequence context needed for accurate text recognition.
+   */
+  private mergeHorizontalBoxes(boxes: BoundingBox[], maxWidthLimit: number): BoundingBox[] {
+    if (boxes.length <= 1) return boxes;
+
+    let merged = [...boxes];
+    let changed = true;
+
+    while (changed) {
+      changed = false;
+      const nextList: BoundingBox[] = [];
+      const used = new Set<number>();
+
+      for (let i = 0; i < merged.length; i++) {
+        if (used.has(i)) continue;
+        let cur = { ...merged[i] };
+
+        for (let j = i + 1; j < merged.length; j++) {
+          if (used.has(j)) continue;
+          const other = merged[j];
+
+          // Check vertical alignment (same text line)
+          const topA = cur.y;
+          const botA = cur.y + cur.height;
+          const topB = other.y;
+          const botB = other.y + other.height;
+
+          const overlapY = Math.max(0, Math.min(botA, botB) - Math.max(topA, topB));
+          const minH = Math.min(cur.height, other.height);
+          const isSameLine = overlapY / Math.max(1, minH) >= 0.60;
+
+          if (isSameLine) {
+            // Check horizontal proximity (word spacing in comic fonts)
+            const leftA = cur.x;
+            const rightA = cur.x + cur.width;
+            const leftB = other.x;
+            const rightB = other.x + other.width;
+
+            const gapX = Math.max(0, Math.max(leftA, leftB) - Math.min(rightA, rightB));
+            const maxAllowedGap = Math.min(cur.height, other.height) * 1.35;
+
+            const newLeft = Math.min(leftA, leftB);
+            const newRight = Math.max(rightA, rightB);
+            const mergedW = newRight - newLeft;
+
+            // Only merge if gap is small and merged width stays within reading limits
+            if (gapX <= maxAllowedGap && mergedW <= maxWidthLimit * 0.85) {
+              const newTop = Math.min(topA, topB);
+              const newBot = Math.max(botA, botB);
+
+              cur = {
+                x: newLeft,
+                y: newTop,
+                width: mergedW,
+                height: newBot - newTop,
+                confidence: Math.max(cur.confidence || 0, other.confidence || 0)
+              };
+
+              used.add(j);
+              changed = true;
+            }
+          }
+        }
+
+        nextList.push(cur);
+      }
+
+      merged = nextList;
+    }
+
+    return merged;
   }
 
   /**

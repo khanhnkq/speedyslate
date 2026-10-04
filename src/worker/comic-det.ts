@@ -12,8 +12,8 @@ import { ITextDetector } from './detector-interface';
 export class ComicDetEngine implements ITextDetector {
   private session: ort.InferenceSession;
   private inputSize = 640;
-  private textBubbleThresh = 0.20;
-  private textFreeThresh = 0.25;
+  private textBubbleThresh = 0.15;
+  private textFreeThresh = 0.10;
 
   constructor(session: ort.InferenceSession) {
     this.session = session;
@@ -50,10 +50,10 @@ export class ComicDetEngine implements ITextDetector {
 
     const imagesTensor = new ort.Tensor('float32', rgbTensorData, [1, 3, this.inputSize, this.inputSize]);
 
-    // 3. Build orig_target_sizes tensor: [1, 2] int64 [origH, origW]
+    // 3. Build orig_target_sizes tensor: [1, 2] int64 [origW, origH]
     const origTargetSizes = new ort.Tensor('int64', new BigInt64Array([
-      BigInt(originalHeight),
-      BigInt(originalWidth)
+      BigInt(originalWidth),
+      BigInt(originalHeight)
     ]), [1, 2]);
 
     // 4. Run inference
@@ -69,23 +69,18 @@ export class ComicDetEngine implements ITextDetector {
 
     // 5. Extract bounding boxes
     const numQueries = scoresData.length;
-    const rawCandidates: BoundingBox[] = [];
+    const textCandidates: BoundingBox[] = [];
+    const bubbleCandidates: BoundingBox[] = [];
 
     for (let i = 0; i < numQueries; i++) {
       const score = scoresData[i];
       const label = Number(labelsData[i]);
 
-      // Label 1: text_bubble (text inside bubble), Label 2: text_free (SFX / loose text)
-      const isTextBubble = label === 1 && score >= this.textBubbleThresh;
-      const isTextFree = label === 2 && score >= this.textFreeThresh;
-
-      if (!isTextBubble && !isTextFree) continue;
-
-      // Format is [ymin, xmin, ymax, xmax] in absolute pixels
-      const ymin = Math.max(0, Math.round(boxesData[i * 4 + 0]));
-      const xmin = Math.max(0, Math.round(boxesData[i * 4 + 1]));
-      const ymax = Math.min(originalHeight, Math.round(boxesData[i * 4 + 2]));
-      const xmax = Math.min(originalWidth, Math.round(boxesData[i * 4 + 3]));
+      // RT-DETR v2 output format is [xmin, ymin, xmax, ymax] in absolute pixels
+      const xmin = Math.max(0, Math.round(boxesData[i * 4 + 0]));
+      const ymin = Math.max(0, Math.round(boxesData[i * 4 + 1]));
+      const xmax = Math.min(originalWidth, Math.round(boxesData[i * 4 + 2]));
+      const ymax = Math.min(originalHeight, Math.round(boxesData[i * 4 + 3]));
 
       const width = xmax - xmin;
       const height = ymax - ymin;
@@ -94,14 +89,47 @@ export class ComicDetEngine implements ITextDetector {
       if (width < 8 || height < 8) continue;
       if (width >= originalWidth * 0.98 && height >= originalHeight * 0.95) continue;
 
-      rawCandidates.push({
+      const box: BoundingBox = {
         x: xmin,
         y: ymin,
         width,
         height,
         confidence: score
-      });
+      };
+
+      // Label 1: text_bubble, Label 2: text_free (SFX)
+      if (label === 1 && score >= this.textBubbleThresh) {
+        textCandidates.push(box);
+      } else if (label === 2 && score >= this.textFreeThresh) {
+        textCandidates.push(box);
+      } else if (label === 0 && score >= 0.40) {
+        bubbleCandidates.push(box);
+      }
     }
+
+    // Include speech bubbles that don't already enclose a detected text_bubble
+    for (const b of bubbleCandidates) {
+      const hasTextInside = textCandidates.some(
+        (t) =>
+          t.x >= b.x - 12 &&
+          t.y >= b.y - 12 &&
+          t.x + t.width <= b.x + b.width + 12 &&
+          t.y + t.height <= b.y + b.height + 12
+      );
+      if (!hasTextInside) {
+        const padX = Math.round(b.width * 0.08);
+        const padY = Math.round(b.height * 0.08);
+        textCandidates.push({
+          x: b.x + padX,
+          y: b.y + padY,
+          width: Math.max(12, b.width - padX * 2),
+          height: Math.max(12, b.height - padY * 2),
+          confidence: b.confidence
+        });
+      }
+    }
+
+    const rawCandidates = textCandidates;
 
     // 6. Split multi-line paragraph bubbles into individual text lines
     const finalBoxes: BoundingBox[] = [];

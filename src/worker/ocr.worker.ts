@@ -1,5 +1,7 @@
 import * as ort from 'onnxruntime-web';
 import { DialogueItem, OcrBackend } from '../shared/types';
+import { ITextDetector } from './detector-interface';
+import { ComicDetEngine } from './comic-det';
 import { PaddleDetEngine } from './paddle-det';
 import { PaddleRecEngine } from './paddle-rec';
 
@@ -11,7 +13,7 @@ ort.env.wasm.numThreads = 2;
 ort.env.wasm.simd = true;
 ort.env.logLevel = 'error';
 
-let detEngine: PaddleDetEngine | null = null;
+let detEngine: ITextDetector | null = null;
 let recEngine: PaddleRecEngine | null = null;
 let currentModelId: string | null = null;
 let activeBackend: OcrBackend = 'wasm';
@@ -43,17 +45,50 @@ export interface WorkerMessageOut {
 
 type WorkerMessageInWithReqId = WorkerMessageIn & { _reqId?: string };
 
+function hasCeilMode(buffer: ArrayBuffer): boolean {
+  const bytes = new Uint8Array(buffer);
+  const target = [99, 101, 105, 108, 95, 109, 111, 100, 101]; // 'ceil_mode'
+  let match = 0;
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] === target[match]) {
+      match++;
+      if (match === target.length) return true;
+    } else {
+      match = bytes[i] === target[0] ? 1 : 0;
+    }
+  }
+  return false;
+}
+
 async function tryCreateWebGpuSession(
   buffer: ArrayBuffer,
-  opts: ort.InferenceSession.SessionOptions
+  opts: ort.InferenceSession.SessionOptions,
+  testDims?: number[]
 ): Promise<ort.InferenceSession | null> {
   try {
-    return await ort.InferenceSession.create(buffer, {
+    // ONNX Runtime Web WebGPU provider does not implement ceil_mode padding in MaxPool yet.
+    // Models with ceil_mode=1 must run on high-performance multi-threaded WASM SIMD.
+    if (hasCeilMode(buffer)) {
+      console.log('[OCR Worker] Model contains ceil_mode operator unsupported by WebGPU. Using WASM SIMD.');
+      return null;
+    }
+
+    const session = await ort.InferenceSession.create(buffer, {
       ...opts,
       executionProviders: ['webgpu']
     });
+
+    // Test kernel execution to detect any other unimplemented operators early
+    if (testDims && session.inputNames.length > 0) {
+      const inputName = session.inputNames[0];
+      const totalElements = testDims.reduce((acc, d) => acc * d, 1);
+      const testTensor = new ort.Tensor('float32', new Float32Array(totalElements), testDims);
+      await session.run({ [inputName]: testTensor });
+    }
+
+    return session;
   } catch (e: any) {
-    console.warn('[OCR Worker] WebGPU session creation failed, will fallback to WASM:', e?.message);
+    console.warn('[OCR Worker] WebGPU session creation/kernel validation failed, falling back to WASM:', e?.message);
     return null;
   }
 }
@@ -86,45 +121,46 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
 
           let detSession: ort.InferenceSession | null = null;
           let recSession: ort.InferenceSession | null = null;
+          let detIsGpu = false;
+          let recIsGpu = false;
 
-          // Attempt WebGPU first if requested
+          const isComicDetModel =
+            Boolean(msg.modelId && msg.modelId.includes('comic'));
+
+          const wasmOpts: ort.InferenceSession.SessionOptions = {
+            ...baseOpts,
+            executionProviders: ['wasm']
+          };
+
+          // 1. Text Detection Session
+          if (msg.useWebGpu !== false && !isComicDetModel) {
+            detSession = await tryCreateWebGpuSession(msg.detBuffer, baseOpts, [1, 3, 48, 48]);
+            if (detSession) detIsGpu = true;
+          }
+          if (!detSession) {
+            detSession = await ort.InferenceSession.create(msg.detBuffer, wasmOpts);
+          }
+
+          // 2. Text Recognition Session
           if (msg.useWebGpu !== false) {
-            try {
-              const [gpuDet, gpuRec] = await Promise.all([
-                tryCreateWebGpuSession(msg.detBuffer, baseOpts),
-                tryCreateWebGpuSession(msg.recBuffer, baseOpts)
-              ]);
-
-              if (gpuDet && gpuRec) {
-                detSession = gpuDet;
-                recSession = gpuRec;
-                activeBackend = 'webgpu';
-              } else {
-                gpuDet?.release?.();
-                gpuRec?.release?.();
-                activeBackend = 'wasm';
-              }
-            } catch {
-              activeBackend = 'wasm';
-            }
-          } else {
-            activeBackend = 'wasm';
+            recSession = await tryCreateWebGpuSession(msg.recBuffer, baseOpts, [1, 3, 48, 64]);
+            if (recSession) recIsGpu = true;
+          }
+          if (!recSession) {
+            recSession = await ort.InferenceSession.create(msg.recBuffer, wasmOpts);
           }
 
-          // Fallback to WASM
-          if (activeBackend === 'wasm' || !detSession || !recSession) {
-            const wasmOpts: ort.InferenceSession.SessionOptions = {
-              ...baseOpts,
-              executionProviders: ['wasm']
-            };
-            [detSession, recSession] = await Promise.all([
-              ort.InferenceSession.create(msg.detBuffer, wasmOpts),
-              ort.InferenceSession.create(msg.recBuffer, wasmOpts)
-            ]);
-            activeBackend = 'wasm';
-          }
+          activeBackend = (detIsGpu || recIsGpu) ? 'webgpu' : 'wasm';
 
-          detEngine = new PaddleDetEngine(detSession);
+          const isComicDet =
+            detSession.inputNames.includes('orig_target_sizes') ||
+            detSession.inputNames.includes('images') ||
+            Boolean(msg.modelId && msg.modelId.includes('comic'));
+
+          detEngine = isComicDet
+            ? new ComicDetEngine(detSession)
+            : new PaddleDetEngine(detSession);
+
           recEngine = new PaddleRecEngine(recSession, msg.keysText);
           currentModelId = msg.modelId || 'loaded';
 

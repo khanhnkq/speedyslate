@@ -209,27 +209,8 @@ class PopupController {
       }
     });
 
-    // Clear Cache DB (2-click tactile confirmation, no popup-closing window.confirm)
-    let isConfirmingClear = false;
-    let clearResetTimer: any = null;
-
+    // Clear Cache DB
     this.clearCacheBtn.addEventListener('click', async () => {
-      if (!isConfirmingClear) {
-        isConfirmingClear = true;
-        this.clearCacheBtn.textContent = 'Chắc chắn xóa? (Bấm lại)';
-        this.clearCacheBtn.style.color = '#ef4444';
-        this.clearCacheBtn.style.borderColor = '#ef4444';
-        clearResetTimer = setTimeout(() => {
-          isConfirmingClear = false;
-          this.clearCacheBtn.textContent = 'Dọn sạch cache';
-          this.clearCacheBtn.style.color = '';
-          this.clearCacheBtn.style.borderColor = '';
-        }, 3500);
-        return;
-      }
-
-      if (clearResetTimer) clearTimeout(clearResetTimer);
-      isConfirmingClear = false;
       this.clearCacheBtn.disabled = true;
       this.clearCacheBtn.textContent = 'Đang dọn...';
       try {
@@ -244,13 +225,13 @@ class PopupController {
           this.clearCacheBtn.style.color = '';
           this.clearCacheBtn.style.borderColor = '';
           this.clearCacheBtn.disabled = false;
-        }, 2000);
+        }, 1800);
       } catch (err: any) {
         this.clearCacheBtn.textContent = 'Lỗi dọn cache';
         setTimeout(() => {
           this.clearCacheBtn.textContent = 'Dọn sạch cache';
           this.clearCacheBtn.disabled = false;
-        }, 2000);
+        }, 1800);
       }
     });
 

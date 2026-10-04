@@ -222,6 +222,8 @@ export class OcrWorkerClient {
         const resp: any = await browser.runtime.sendMessage({
           target: 'OFFSCREEN_OCR',
           action: 'OFFSCREEN_PROCESS_IMAGE',
+          modelId: this.currentModelId,
+          useWebGpu: this.activeBackend !== 'wasm',
           dataUrl: params.dataUrl,
           imageUrl: params.imageUrl,
           width: params.width,

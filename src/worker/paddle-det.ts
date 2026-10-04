@@ -2,7 +2,9 @@ import * as ort from 'onnxruntime-web';
 import { BoundingBox } from '../shared/types';
 import { ImageUtils } from './image-utils';
 
-export class PaddleDetEngine {
+import { ITextDetector } from './detector-interface';
+
+export class PaddleDetEngine implements ITextDetector {
   private session: ort.InferenceSession;
   private thresh: number = 0.10;
   private boxThresh: number = 0.15;

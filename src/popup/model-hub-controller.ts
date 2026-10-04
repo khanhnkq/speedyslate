@@ -171,22 +171,6 @@ export class ModelHubController {
   }
 
   private async handleDelete(preset: OcrModelPreset, btn: HTMLButtonElement): Promise<void> {
-    if (btn.dataset.confirming !== 'true') {
-      btn.dataset.confirming = 'true';
-      btn.textContent = 'Chắc chắn xóa?';
-      btn.style.color = '#ef4444';
-      btn.style.borderColor = '#ef4444';
-      setTimeout(() => {
-        if (btn.dataset.confirming === 'true') {
-          btn.dataset.confirming = 'false';
-          btn.textContent = '🗑 Xóa';
-          btn.style.color = '';
-          btn.style.borderColor = '';
-        }
-      }, 3500);
-      return;
-    }
-
     btn.disabled = true;
     btn.textContent = 'Đang xóa...';
 

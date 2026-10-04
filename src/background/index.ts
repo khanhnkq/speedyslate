@@ -110,16 +110,16 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
       }
 
       case 'OCR_IMAGE': {
-        const { imageUrl, dataUrl, chapterUrl } = msg;
+        const { imageUrl, dataUrl } = msg;
 
-        // 1. Check IndexedDB cache first
+        // 1. Check IndexedDB cache first (only return if non-empty valid dialogues exist)
         if (imageUrl) {
           const cached = await TranslationCacheDb.getTranslation(imageUrl);
-          if (cached) {
+          if (cached && Array.isArray(cached.dialogues) && cached.dialogues.length > 0) {
             return {
               success: true,
               cached: true,
-              dialogues: cached.dialogues || [],
+              dialogues: cached.dialogues,
               naturalWidth: cached.naturalWidth,
               naturalHeight: cached.naturalHeight
             };
@@ -136,13 +136,12 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
         }
 
         // 3. Run PaddleOCR
-        const { dialogues, width, height } = await ocrWorkerClient.runOcr({ dataUrl, imageUrl });
-
-        if (dialogues.length === 0 && imageUrl) {
-          await TranslationCacheDb.saveTranslation(imageUrl, chapterUrl || '', [], width, height);
+        try {
+          const { dialogues, width, height } = await ocrWorkerClient.runOcr({ dataUrl, imageUrl });
+          return { success: true, cached: false, dialogues, naturalWidth: width, naturalHeight: height };
+        } catch (err: any) {
+          return { success: false, error: err.message || 'Lỗi nhận diện OCR' };
         }
-
-        return { success: true, cached: false, dialogues, naturalWidth: width, naturalHeight: height };
       }
 
       case 'TRANSLATE_DIALOGUES': {
@@ -222,12 +221,19 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
         }
 
         // 3. Run OCR
-        const { dialogues, width, height } = await ocrWorkerClient.runOcr({ dataUrl, imageUrl });
+        let dialogues: DialogueItem[];
+        let width: number;
+        let height: number;
+        try {
+          const res = await ocrWorkerClient.runOcr({ dataUrl, imageUrl });
+          dialogues = res.dialogues;
+          width = res.width;
+          height = res.height;
+        } catch (err: any) {
+          return { success: false, error: err.message || 'Lỗi nhận diện OCR' };
+        }
 
         if (dialogues.length === 0) {
-          if (imageUrl) {
-            await TranslationCacheDb.saveTranslation(imageUrl, chapterUrl || '', [], width, height);
-          }
           return { success: true, cached: false, dialogues: [], naturalWidth: width, naturalHeight: height };
         }
 

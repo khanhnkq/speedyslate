@@ -5,6 +5,9 @@ import { BubbleAggregator } from '../worker/bubble-aggregator';
 import { DebugLogger } from '../shared/debug-logger';
 import type { WorkerMessageIn, WorkerMessageOut } from '../worker/ocr.worker';
 
+import { StorageService } from '../shared/storage';
+import { OCR_MODEL_PRESETS } from '../shared/presets';
+
 let worker: Worker | null = null;
 let currentModelId: string | null = null;
 let activeBackend: OcrBackend | null = null;
@@ -73,8 +76,18 @@ function sendToWorker(msg: WorkerMessageIn & { _reqId: string }, transfer?: Tran
   });
 }
 
-async function ensureModel(modelId: string, useWebGpu = true): Promise<OcrBackend> {
-  if (currentModelId === modelId && activeBackend) {
+async function ensureModel(modelId?: string, useWebGpu = true): Promise<OcrBackend> {
+  let targetId = modelId || currentModelId;
+  if (!targetId) {
+    try {
+      const settings = await StorageService.getSettings();
+      targetId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'comic-manga-manhwa';
+    } catch {
+      targetId = OCR_MODEL_PRESETS[0]?.id || 'comic-manga-manhwa';
+    }
+  }
+
+  if (currentModelId === targetId && activeBackend) {
     return activeBackend;
   }
 
@@ -82,21 +95,21 @@ async function ensureModel(modelId: string, useWebGpu = true): Promise<OcrBacken
     while (isInitializing) {
       await new Promise((r) => setTimeout(r, 60));
     }
-    if (currentModelId === modelId && activeBackend) return activeBackend;
+    if (currentModelId === targetId && activeBackend) return activeBackend;
   }
 
   isInitializing = true;
   try {
-    const status = await ModelDbService.getModelStatus(modelId);
+    const status = await ModelDbService.getModelStatus(targetId);
     if (status.status !== 'ready') {
-      throw new Error(`Model OCR "${modelId}" chưa tải. Vui lòng mở popup tiện ích để tải model.`);
+      throw new Error(`Model OCR "${targetId}" chưa tải. Vui lòng mở popup tiện ích để tải model.`);
     }
 
-    const { detBuffer, recBuffer, keysText } = await ModelDbService.getModelBuffers(modelId);
+    const { detBuffer, recBuffer, keysText } = await ModelDbService.getModelBuffers(targetId);
     const res = await sendToWorker({
       _reqId: nextReqId(),
       type: 'INIT_MODEL',
-      modelId,
+      modelId: targetId,
       detBuffer,
       recBuffer,
       keysText,
@@ -107,8 +120,8 @@ async function ensureModel(modelId: string, useWebGpu = true): Promise<OcrBacken
       throw new Error(res.error || 'Khởi tạo worker thất bại');
     }
 
-    currentModelId = modelId;
-    activeBackend = (res.backend as OcrBackend) || (useWebGpu ? 'webgpu' : 'wasm');
+    currentModelId = targetId;
+    activeBackend = (res.backend as OcrBackend) || 'wasm';
     return activeBackend;
   } catch (err: any) {
     DebugLogger.log('error', 'Offscreen:ensureModel', err.message, err);
@@ -171,7 +184,10 @@ async function handleOffscreenMessage(msg: any): Promise<any> {
           }
 
           case 'OFFSCREEN_PROCESS_IMAGE': {
-            await ensureModel(msg.modelId, msg.useWebGpu ?? true);
+            const targetModelId = msg.modelId || currentModelId;
+            if (!currentModelId || !activeBackend || (targetModelId && currentModelId !== targetModelId)) {
+              await ensureModel(targetModelId, msg.useWebGpu ?? true);
+            }
             const res = await runOcrOnImage(msg.dataUrl, msg.imageUrl, msg.width, msg.height);
             resolve({ success: true, ...res });
             break;

@@ -50,6 +50,22 @@ class SpeedySlateContentApp {
         this.hud.updateStatus(0, this.images.length);
         this.hud.setState('idle');
         this.hud.log(`Da xoa ${resp?.deleted || 0} ban dich cache cua chuong nay`);
+      },
+      onClearAllCache: async () => {
+        await browser.runtime.sendMessage({ action: 'CLEAR_ALL_CACHE' });
+        document.querySelectorAll('.speedyslate-bubble').forEach((el) => el.remove());
+        this.images.forEach((img, idx) => {
+          delete img.dataset.slateStatus;
+          if (img.parentElement) {
+            PageBadgeManager.updateBadge(img.parentElement, idx, 'idle');
+          }
+        });
+        this.completedImages.clear();
+        this.ocrQueue?.clear();
+        this.translationQueue?.clear();
+        this.hud.updateStatus(0, this.images.length);
+        this.hud.setState('idle');
+        this.hud.log('Da don sach toan bo cache');
       }
     });
 
@@ -102,6 +118,14 @@ class SpeedySlateContentApp {
       if (!this.isModelReady) {
         this.hud.setState('idle');
         return;
+      }
+    }
+
+    // Reset failed images so retrying works
+    for (const img of this.images) {
+      if (img.dataset.slateStatus === 'error') {
+        delete img.dataset.slateStatus;
+        this.completedImages.delete(img);
       }
     }
 
@@ -187,25 +211,18 @@ class SpeedySlateContentApp {
 
           const url = img.dataset.src || img.getAttribute('data-src') || img.src;
           const cached = cache[url];
-          if (cached) {
+          if (cached && Array.isArray(cached.dialogues) && cached.dialogues.length > 0) {
             const wrapper = img.parentElement;
-            if (Array.isArray(cached.dialogues) && cached.dialogues.length > 0) {
-              if (wrapper) {
-                OverlayRenderer.renderDialogues(
-                  wrapper,
-                  cached.dialogues,
-                  cached.naturalWidth || img.naturalWidth || 800,
-                  cached.naturalHeight || img.naturalHeight || 1200,
-                  (this.settings?.bubbleTheme || 'auto') as BubbleTheme
-                );
-                img.dataset.slateStatus = 'translated';
-                PageBadgeManager.updateBadge(wrapper, i, 'translated', cached.dialogues.length);
-              }
-            } else {
-              img.dataset.slateStatus = 'no_text';
-              if (wrapper) {
-                PageBadgeManager.updateBadge(wrapper, i, 'no_text');
-              }
+            if (wrapper) {
+              OverlayRenderer.renderDialogues(
+                wrapper,
+                cached.dialogues,
+                cached.naturalWidth || img.naturalWidth || 800,
+                cached.naturalHeight || img.naturalHeight || 1200,
+                (this.settings?.bubbleTheme || 'auto') as BubbleTheme
+              );
+              img.dataset.slateStatus = 'translated';
+              PageBadgeManager.updateBadge(wrapper, i, 'translated', cached.dialogues.length);
             }
             this.markImageCompleted(img, false);
             newlyRestored++;

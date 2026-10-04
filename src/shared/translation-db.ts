@@ -47,10 +47,18 @@ export class TranslationCacheDb {
     try {
       const db = await this.getDb();
       return new Promise((resolve) => {
-        const tx = db.transaction(STORE_NAME, 'readonly');
+        const tx = db.transaction(STORE_NAME, 'readwrite');
         const store = tx.objectStore(STORE_NAME);
         const req = store.get(imageUrl);
-        req.onsuccess = () => resolve(req.result || null);
+        req.onsuccess = () => {
+          const rec: CachedImageTranslation = req.result;
+          if (rec && Array.isArray(rec.dialogues) && rec.dialogues.length > 0) {
+            resolve(rec);
+          } else {
+            if (rec) store.delete(imageUrl); // purge empty record
+            resolve(null);
+          }
+        };
         req.onerror = () => resolve(null);
       });
     } catch {
@@ -68,6 +76,9 @@ export class TranslationCacheDb {
     naturalWidth: number,
     naturalHeight: number
   ): Promise<void> {
+    if (!dialogues || !Array.isArray(dialogues) || dialogues.length === 0) {
+      return; // Never store empty dialogue sets to cache
+    }
     try {
       const db = await this.getDb();
       const tx = db.transaction(STORE_NAME, 'readwrite');

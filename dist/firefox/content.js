@@ -1321,6 +1321,13 @@
       <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background-color:${color}; box-shadow:0 0 8px ${color}; margin-right:6px; flex-shrink:0;"></span>
     `.trim();
     }
+    static trash(size = 14, color = "currentColor") {
+      return `
+      <svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block; vertical-align:middle;">
+        <path d="M3 6H21M19 6V20C19 21.1 18.1 22 17 22H7C5.9 22 5 21.1 5 20V6M8 6V4C8 2.9 8.9 2 10 2H14C15.1 2 16 2.9 16 4V6" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    `.trim();
+    }
   };
 
   // src/content/hud/hud.ts
@@ -1538,7 +1545,7 @@
       itemClear.style.borderTop = "1px solid rgba(255, 255, 255, 0.08)";
       itemClear.innerHTML = `
       ${ChubbyIcons.broom(14, "#A855F7")}
-      <span>X\xF3a cache ch\u01B0\u01A1ng & d\u1ECBch l\u1EA1i</span>
+      <span>X\xF3a cache ch\u01B0\u01A1ng n\xE0y</span>
     `;
       itemClear.onclick = (e) => {
         e.stopPropagation();
@@ -1546,8 +1553,22 @@
         this.callbacks.onClearChapterCache();
         this.setState("idle");
       };
+      const itemClearAll = document.createElement("div");
+      itemClearAll.className = "speedyslate-menu-item";
+      itemClearAll.style.borderTop = "1px solid rgba(255, 255, 255, 0.08)";
+      itemClearAll.innerHTML = `
+      ${ChubbyIcons.trash(14, "#ef4444")}
+      <span>D\u1ECDn s\u1EA1ch to\xE0n b\u1ED9 cache</span>
+    `;
+      itemClearAll.onclick = (e) => {
+        e.stopPropagation();
+        this.closeMenu();
+        this.callbacks.onClearAllCache?.();
+        this.setState("idle");
+      };
       this.menu.appendChild(itemVis);
       this.menu.appendChild(itemClear);
+      this.menu.appendChild(itemClearAll);
       document.body.appendChild(this.menu);
     }
     closeMenu() {
@@ -2305,6 +2326,22 @@
           this.hud.updateStatus(0, this.images.length);
           this.hud.setState("idle");
           this.hud.log(`Da xoa ${resp?.deleted || 0} ban dich cache cua chuong nay`);
+        },
+        onClearAllCache: async () => {
+          await import_webextension_polyfill3.default.runtime.sendMessage({ action: "CLEAR_ALL_CACHE" });
+          document.querySelectorAll(".speedyslate-bubble").forEach((el) => el.remove());
+          this.images.forEach((img, idx) => {
+            delete img.dataset.slateStatus;
+            if (img.parentElement) {
+              PageBadgeManager.updateBadge(img.parentElement, idx, "idle");
+            }
+          });
+          this.completedImages.clear();
+          this.ocrQueue?.clear();
+          this.translationQueue?.clear();
+          this.hud.updateStatus(0, this.images.length);
+          this.hud.setState("idle");
+          this.hud.log("Da don sach toan bo cache");
         }
       });
       this.hud.log("SpeedySlate dang khoi tao...");
@@ -2343,6 +2380,12 @@
         if (!this.isModelReady) {
           this.hud.setState("idle");
           return;
+        }
+      }
+      for (const img of this.images) {
+        if (img.dataset.slateStatus === "error") {
+          delete img.dataset.slateStatus;
+          this.completedImages.delete(img);
         }
       }
       this.hud.log(`Bat dau dich chuong (${this.images.length} trang)...`);
@@ -2408,25 +2451,18 @@
             if (this.completedImages.has(img)) continue;
             const url = img.dataset.src || img.getAttribute("data-src") || img.src;
             const cached = cache[url];
-            if (cached) {
+            if (cached && Array.isArray(cached.dialogues) && cached.dialogues.length > 0) {
               const wrapper = img.parentElement;
-              if (Array.isArray(cached.dialogues) && cached.dialogues.length > 0) {
-                if (wrapper) {
-                  OverlayRenderer.renderDialogues(
-                    wrapper,
-                    cached.dialogues,
-                    cached.naturalWidth || img.naturalWidth || 800,
-                    cached.naturalHeight || img.naturalHeight || 1200,
-                    this.settings?.bubbleTheme || "auto"
-                  );
-                  img.dataset.slateStatus = "translated";
-                  PageBadgeManager.updateBadge(wrapper, i, "translated", cached.dialogues.length);
-                }
-              } else {
-                img.dataset.slateStatus = "no_text";
-                if (wrapper) {
-                  PageBadgeManager.updateBadge(wrapper, i, "no_text");
-                }
+              if (wrapper) {
+                OverlayRenderer.renderDialogues(
+                  wrapper,
+                  cached.dialogues,
+                  cached.naturalWidth || img.naturalWidth || 800,
+                  cached.naturalHeight || img.naturalHeight || 1200,
+                  this.settings?.bubbleTheme || "auto"
+                );
+                img.dataset.slateStatus = "translated";
+                PageBadgeManager.updateBadge(wrapper, i, "translated", cached.dialogues.length);
               }
               this.markImageCompleted(img, false);
               newlyRestored++;

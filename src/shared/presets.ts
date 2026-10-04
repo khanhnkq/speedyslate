@@ -101,6 +101,28 @@ export const API_PRESETS: Record<ProviderType, {
  */
 export const OCR_MODEL_PRESETS: OcrModelPreset[] = [
   {
+    id: 'comic-manga-manhwa',
+    name: 'Comic & Manga AI Detector (~16MB - Chuyên Manga/Manhwa)',
+    description: 'Model RT-DETR-v2 11MB chuyên sâu được huấn luyện trên 11.000+ trang Manga & Manhwa. Bắt trọn mọi bong bóng gai nhọn, thoại la hét, SFX phức tạp.',
+    totalSizeMb: 15.9,
+    files: {
+      detUrl: 'https://huggingface.co/ogkalu/comic-text-and-bubble-detector/resolve/main/detector-v4-s_int8.onnx',
+      recUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/en_PP-OCRv4_rec/model.onnx',
+      keysUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/en_PP-OCRv4_rec/dict.txt'
+    }
+  },
+  {
+    id: 'comic-manga-cjk',
+    name: 'Comic & Manga CJK Raw (~27MB - Nhật/Hàn/Trung)',
+    description: 'Detector RT-DETR-v2 chuyên Manga kết hợp bộ nhận diện CJK 6.600+ ký tự Hán tự, Hiragana, Katakana, Hangul cho bản RAW gốc.',
+    totalSizeMb: 26.6,
+    files: {
+      detUrl: 'https://huggingface.co/ogkalu/comic-text-and-bubble-detector/resolve/main/detector-v4-s_int8.onnx',
+      recUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/ch_PP-OCRv4_rec/model.onnx',
+      keysUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/ch_PP-OCRv4_rec/dict.txt'
+    }
+  },
+  {
     id: 'pp-ocrv4-server-heavy',
     name: 'PP-OCRv4 Server ResNet-50 Heavy (~121MB - Khuyên dùng Toonhey)',
     description: 'Bản Server ResNet-50 113MB chuyên sâu. Bắt trọn từng ô chữ, phông thoại uốn lượn, in hoa, in nghiêng, không bị sót hay nhầm ô.',

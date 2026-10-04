@@ -6,6 +6,7 @@ export interface HudCallbacks {
   onToggleTranslate: () => void;
   onToggleVisibility: (visible: boolean) => void;
   onClearChapterCache: () => void;
+  onClearAllCache?: () => void;
 }
 
 /**
@@ -250,13 +251,13 @@ export class FloatingHud {
       this.render();
     };
 
-    // Item 2: Clear cache & re-translate
+    // Item 2: Clear chapter cache & re-translate
     const itemClear = document.createElement('div');
     itemClear.className = 'speedyslate-menu-item';
     itemClear.style.borderTop = '1px solid rgba(255, 255, 255, 0.08)';
     itemClear.innerHTML = `
       ${ChubbyIcons.broom(14, '#A855F7')}
-      <span>Xóa cache chương & dịch lại</span>
+      <span>Xóa cache chương này</span>
     `;
     itemClear.onclick = (e) => {
       e.stopPropagation();
@@ -265,8 +266,24 @@ export class FloatingHud {
       this.setState('idle');
     };
 
+    // Item 3: Clear all cache
+    const itemClearAll = document.createElement('div');
+    itemClearAll.className = 'speedyslate-menu-item';
+    itemClearAll.style.borderTop = '1px solid rgba(255, 255, 255, 0.08)';
+    itemClearAll.innerHTML = `
+      ${ChubbyIcons.trash(14, '#ef4444')}
+      <span>Dọn sạch toàn bộ cache</span>
+    `;
+    itemClearAll.onclick = (e) => {
+      e.stopPropagation();
+      this.closeMenu();
+      this.callbacks.onClearAllCache?.();
+      this.setState('idle');
+    };
+
     this.menu.appendChild(itemVis);
     this.menu.appendChild(itemClear);
+    this.menu.appendChild(itemClearAll);
     document.body.appendChild(this.menu);
   }
 

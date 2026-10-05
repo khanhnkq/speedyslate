@@ -4,6 +4,7 @@ import { ApiKeyRotator } from './api-key-rotator';
 import { DebugLogger } from '../../shared/debug-logger';
 import { JsonExtractor } from './json-extractor';
 import { VisionBoxParser } from './vision-box-parser';
+import { AntigravityProvider } from './antigravity-provider';
 
 export class GeminiProvider implements ITranslationProvider {
   private keyRotator: ApiKeyRotator;
@@ -25,6 +26,10 @@ export class GeminiProvider implements ITranslationProvider {
     if (!texts.length) return [];
     if (!this.keyRotator.hasKeys()) {
       throw new Error('Chưa cấu hình Gemini API Key. Vui lòng mở cài đặt extension.');
+    }
+    if (this.model.includes('antigravity')) {
+      const antigravity = new AntigravityProvider(this.keyRotator.getRawKeys(), this.model, this.baseUrl);
+      return antigravity.translateDialogues(texts, targetLang);
     }
     const systemPrompt = `You are an expert manga, manhwa, and comic translator.
 Translate the provided JSON array of OCR-extracted dialogue lines into natural, contextual, expressive ${targetLang}.
@@ -236,6 +241,10 @@ RULES FOR COMIC TRANSLATION:
   ): Promise<DialogueItem[]> {
     if (!this.keyRotator.hasKeys()) {
       throw new Error('Chưa cấu hình Gemini API Key. Vui lòng mở cài đặt extension.');
+    }
+    if (this.model.includes('antigravity')) {
+      const antigravity = new AntigravityProvider(this.keyRotator.getRawKeys(), this.model, this.baseUrl);
+      return antigravity.translateImage(base64Data, mimeType, targetLang, naturalWidth, naturalHeight);
     }
     const systemPrompt = `You are an expert manga, manhwa, and comic visual localization specialist.
 Analyze the comic page image.

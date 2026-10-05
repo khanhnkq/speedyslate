@@ -1029,10 +1029,25 @@
         "gemini-3.5-flash-lite",
         "gemini-3.8-flash",
         "gemini-2.5-flash",
-        "gemini-2.0-flash"
+        "gemini-2.0-flash",
+        "antigravity-preview-09-2026"
       ],
       requiresApiKey: true,
       defaultDelayMs: 2600
+    },
+    antigravity: {
+      name: "Google Antigravity Agent",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      defaultModel: "antigravity-preview-09-2026",
+      suggestedModels: [
+        "antigravity-preview-09-2026",
+        "antigravity-preview-09-2026 (gemini-3.8-flash)",
+        "antigravity-preview-09-2026 (gemini-3.5-flash-lite)",
+        "antigravity-preview-09-2026 (gemini-3.7-flash)",
+        "antigravity-preview-09-2026 (gemini-3.5-flash)"
+      ],
+      requiresApiKey: true,
+      defaultDelayMs: 2500
     },
     groq: {
       name: "Groq (Ultra-Fast LPU)",
@@ -1114,6 +1129,13 @@
         apiKey: "",
         model: API_PRESETS.gemini.defaultModel
       },
+      antigravity: {
+        type: "antigravity",
+        name: API_PRESETS.antigravity.name,
+        baseUrl: API_PRESETS.antigravity.baseUrl,
+        apiKey: "",
+        model: API_PRESETS.antigravity.defaultModel
+      },
       groq: {
         type: "groq",
         name: API_PRESETS.groq.name,
@@ -1163,7 +1185,8 @@
     autoPrefetch: true,
     activeOcrModelId: "pp-ocrv4-server-heavy",
     rateLimitDelayMs: 1200,
-    useWebGpu: true
+    useWebGpu: true,
+    rotateProviders: true
   };
 
   // src/shared/storage.ts

@@ -1,6 +1,8 @@
 import { ExtensionSettings, ProviderType } from '../../shared/types';
+import { AntigravityProvider } from './antigravity-provider';
 import { GeminiProvider } from './gemini-provider';
 import { OpenAIProvider } from './openai-provider';
+import { MultiProviderRotator } from './multi-provider-rotator';
 import { ITranslationProvider } from './translation-provider.interface';
 
 /**
@@ -12,11 +14,31 @@ export class TranslationProviderFactory {
     settings: ExtensionSettings,
     targetProviderType?: ProviderType
   ): ITranslationProvider {
-    const type = targetProviderType || settings.activeProvider;
+    // If a specific provider is requested (e.g. testing connection), create it directly
+    if (targetProviderType) {
+      return this.createSingleProvider(targetProviderType, settings);
+    }
+
+    // If multi-provider rotation is enabled, wrap in MultiProviderRotator
+    if (settings.rotateProviders) {
+      return new MultiProviderRotator(settings);
+    }
+
+    return this.createSingleProvider(settings.activeProvider, settings);
+  }
+
+  public static createSingleProvider(
+    type: ProviderType,
+    settings: ExtensionSettings
+  ): ITranslationProvider {
     const config = settings.providers[type];
 
     if (!config) {
       throw new Error(`Cấu hình provider ${type} không tồn tại.`);
+    }
+
+    if (type === 'antigravity') {
+      return new AntigravityProvider(config.apiKey, config.model, config.baseUrl);
     }
 
     if (type === 'gemini') {

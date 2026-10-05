@@ -1,8 +1,8 @@
 import browser from 'webextension-polyfill';
 import { ModelHubController } from './model-hub-controller';
+import { DebugTabController } from './debug-tab-controller';
 import { API_PRESETS, OCR_MODEL_PRESETS } from '../shared/presets';
 import { StorageService } from '../shared/storage';
-import { TranslationCacheDb } from '../shared/translation-db';
 import { BubbleTheme, ExtensionSettings, ProviderType } from '../shared/types';
 import { ApiKeyRotator } from '../services/translation/api-key-rotator';
 import { DebugLogger } from '../shared/debug-logger';
@@ -32,28 +32,17 @@ class PopupController {
   private apiKeyInput = document.getElementById('input-api-key') as HTMLTextAreaElement;
   private apiKeyCountBadge = document.getElementById('api-key-count-badge') as HTMLElement;
   private rateLimitInput = document.getElementById('input-rate-limit') as HTMLInputElement;
+  private toggleRotateProviders = document.getElementById('toggle-rotate-providers') as HTMLInputElement;
   private testBtn = document.getElementById('btn-test-connection') as HTMLButtonElement;
   private testResult = document.getElementById('test-result') as HTMLElement;
-
-  // DOM Elements - Cache DB
-  private cacheStatsText = document.getElementById('cache-stats-text') as HTMLElement;
-  private clearCacheBtn = document.getElementById('btn-clear-cache') as HTMLButtonElement;
+  private currentEditingProvider: ProviderType = 'gemini';
 
   // DOM Elements - Preferences & Save
   private themeSelect = document.getElementById('select-theme') as HTMLSelectElement;
   private speedInput = document.getElementById('input-speed') as HTMLInputElement;
   private saveBtn = document.getElementById('btn-save-settings') as HTMLButtonElement;
   private saveStatus = document.getElementById('save-status') as HTMLElement;
-
-  // DOM Elements - Debug & Logs
-  private logCountBadge = document.getElementById('log-count-badge') as HTMLElement;
-  private logViewerBox = document.getElementById('log-viewer-box') as HTMLElement;
-  private logContentText = document.getElementById('log-content-text') as HTMLElement;
-  private copyLogsBtn = document.getElementById('btn-copy-logs') as HTMLButtonElement;
-  private refreshLogsBtn = document.getElementById('btn-refresh-logs') as HTMLButtonElement;
-  private clearLogsBtn = document.getElementById('btn-clear-logs') as HTMLButtonElement;
-  private copyLogStatus = document.getElementById('copy-log-status') as HTMLElement;
-  private cachedLogs: any[] = [];
+  private debugTab!: DebugTabController;
 
   public async init(): Promise<void> {
     this.settings = await StorageService.getSettings();
@@ -95,8 +84,11 @@ class PopupController {
     this.applyModeUI(currentMode);
 
     this.attachEventListeners();
-    await this.updateCacheStats();
-    await this.loadDebugLogs();
+    this.debugTab = new DebugTabController(
+      () => this.settings,
+      () => this.backendBadge.textContent || 'idle'
+    );
+    await this.debugTab.init();
     this.startBackendStatusPolling();
   }
 
@@ -115,24 +107,52 @@ class PopupController {
   }
 
   private renderProviderPresets(): void {
+    this.currentEditingProvider = this.settings.activeProvider || 'gemini';
+    this.refreshProviderSelectLabels();
+    this.updateProviderForm(this.currentEditingProvider);
+  }
+
+  private refreshProviderSelectLabels(): void {
+    const types: ProviderType[] = ['gemini', 'antigravity', 'groq', 'deepseek', 'openrouter', 'openai', 'ollama', 'custom'];
     this.providerSelect.innerHTML = '';
-    const types: ProviderType[] = ['gemini', 'groq', 'deepseek', 'openrouter', 'openai', 'ollama', 'custom'];
 
     for (const t of types) {
       const info = API_PRESETS[t];
+      const saved = this.settings.providers[t];
+      const keyCount = ApiKeyRotator.parseKeys(saved?.apiKey || '').length;
       const opt = document.createElement('option');
       opt.value = t;
-      opt.textContent = info.name;
-      if (t === this.settings.activeProvider) {
+
+      let suffix = '';
+      if (t === 'ollama') {
+        suffix = ' (Offline)';
+      } else if (keyCount > 0) {
+        suffix = ` (${keyCount} key${keyCount > 1 ? 's' : ''})`;
+      }
+
+      opt.textContent = `${info.name}${suffix}`;
+      if (t === this.currentEditingProvider) {
         opt.selected = true;
       }
       this.providerSelect.appendChild(opt);
     }
+  }
 
-    this.updateProviderForm(this.settings.activeProvider);
+  private saveCurrentProviderToMemory(): void {
+    const cur = this.currentEditingProvider;
+    if (!this.settings.providers[cur]) return;
+    const keys = ApiKeyRotator.parseKeys(this.apiKeyInput.value);
+    this.settings.providers[cur] = {
+      type: cur,
+      name: API_PRESETS[cur]?.name || cur,
+      baseUrl: this.baseUrlInput.value.trim(),
+      apiKey: keys.join('\n'),
+      model: this.customModelInput.value.trim()
+    };
   }
 
   private updateProviderForm(type: ProviderType): void {
+    this.currentEditingProvider = type;
     const preset = API_PRESETS[type];
     const savedConfig = this.settings.providers[type];
 
@@ -168,6 +188,9 @@ class PopupController {
   private loadDisplayPreferences(): void {
     this.themeSelect.value = this.settings.bubbleTheme;
     this.speedInput.value = String(this.settings.autoScrollSpeed);
+    if (this.toggleRotateProviders) {
+      this.toggleRotateProviders.checked = this.settings.rotateProviders ?? true;
+    }
   }
 
 
@@ -178,7 +201,7 @@ class PopupController {
       try {
         const resp: any = await browser.runtime.sendMessage({ action: 'GET_OCR_STATUS' });
         this.renderBackendBadge(resp?.backend ?? 'idle');
-        await this.loadDebugLogs(false);
+        await this.debugTab?.loadDebugLogs(false);
       } catch {
         this.renderBackendBadge('idle');
       }
@@ -202,36 +225,6 @@ class PopupController {
     const info = map[backend] ?? map['idle'];
     this.backendBadge.className = `status-val ${info.cls}`;
     this.backendBadge.textContent = info.label;
-  }
-
-  private async updateCacheStats(): Promise<void> {
-    if (!this.cacheStatsText) return;
-    const stats = await TranslationCacheDb.getCacheStats();
-    this.cacheStatsText.textContent = `${stats.count} ảnh`;
-  }
-
-  private async loadDebugLogs(autoScroll = true): Promise<void> {
-    try {
-      const resp: any = await browser.runtime.sendMessage({ action: 'GET_DEBUG_LOGS' });
-      if (resp?.success && Array.isArray(resp.logs)) {
-        this.cachedLogs = resp.logs;
-        this.logCountBadge.textContent = `${resp.logs.length} log`;
-        if (resp.logs.length === 0) {
-          this.logContentText.textContent = 'Chưa có nhật ký lỗi nào.';
-        } else {
-          const recent = resp.logs.slice(-30).map((l: any) => {
-            const lvl = l.level === 'error' ? '✖' : l.level === 'warn' ? '⚠' : 'ℹ';
-            return `${lvl} [${l.time}] [${l.tag}]: ${l.message}`;
-          }).join('\n');
-          this.logContentText.textContent = recent;
-          if (autoScroll && this.logViewerBox) {
-            this.logViewerBox.scrollTop = this.logViewerBox.scrollHeight;
-          }
-        }
-      }
-    } catch {
-      this.logContentText.textContent = 'Không thể tải nhật ký.';
-    }
   }
 
   private initTabs(): void {
@@ -288,45 +281,44 @@ class PopupController {
       }
     });
 
-    // Clear Cache DB
-    this.clearCacheBtn.addEventListener('click', async () => {
-      this.clearCacheBtn.disabled = true;
-      this.clearCacheBtn.textContent = 'Đang dọn...';
-      try {
-        await browser.runtime.sendMessage({ action: 'CLEAR_ALL_CACHE' });
-        await TranslationCacheDb.clearAllCache();
-        await this.updateCacheStats();
-        this.clearCacheBtn.textContent = '✓ Đã dọn sạch!';
-        this.clearCacheBtn.style.color = '#10b981';
-        this.clearCacheBtn.style.borderColor = '#10b981';
-        setTimeout(() => {
-          this.clearCacheBtn.textContent = 'Dọn sạch cache';
-          this.clearCacheBtn.style.color = '';
-          this.clearCacheBtn.style.borderColor = '';
-          this.clearCacheBtn.disabled = false;
-        }, 1800);
-      } catch (err: any) {
-        this.clearCacheBtn.textContent = 'Lỗi dọn cache';
-        setTimeout(() => {
-          this.clearCacheBtn.textContent = 'Dọn sạch cache';
-          this.clearCacheBtn.disabled = false;
-        }, 1800);
-      }
-    });
+    // Provider change: auto-saves previous provider before switching
+    this.providerSelect.addEventListener('change', async () => {
+      this.saveCurrentProviderToMemory();
+      await StorageService.saveSettings(this.settings);
 
-    // Provider change
-    this.providerSelect.addEventListener('change', () => {
       const type = this.providerSelect.value as ProviderType;
+      this.settings.activeProvider = type;
       this.updateProviderForm(type);
+      this.refreshProviderSelectLabels();
+
       const p = API_PRESETS[type];
       if (p) {
         this.rateLimitInput.value = String(p.defaultDelayMs);
       }
     });
 
+    // Realtime update memory & labels on entering keys
+    this.apiKeyInput.addEventListener('input', () => {
+      this.updateApiKeyCount();
+      this.saveCurrentProviderToMemory();
+      this.refreshProviderSelectLabels();
+    });
+
+    this.baseUrlInput.addEventListener('input', () => this.saveCurrentProviderToMemory());
+    this.customModelInput.addEventListener('input', () => this.saveCurrentProviderToMemory());
+
+    // Rotate providers toggle
+    if (this.toggleRotateProviders) {
+      this.toggleRotateProviders.addEventListener('change', async () => {
+        this.settings.rotateProviders = this.toggleRotateProviders.checked;
+        await StorageService.saveSettings(this.settings);
+      });
+    }
+
     // Model preset change
     this.modelPresetSelect.addEventListener('change', () => {
       this.customModelInput.value = this.modelPresetSelect.value;
+      this.saveCurrentProviderToMemory();
     });
 
     // Test API Connection
@@ -366,83 +358,21 @@ class PopupController {
         this.saveStatus.textContent = '';
       }, 2000);
     });
-
-    // Copy debug logs to clipboard
-    this.copyLogsBtn.addEventListener('click', async () => {
-      try {
-        this.copyLogsBtn.disabled = true;
-        await this.loadDebugLogs(true);
-
-        const curProvider = this.settings?.activeProvider || 'unknown';
-        const context = {
-          activeOcrModel: this.settings?.activeOcrModelId || 'unknown',
-          activeBackend: this.backendBadge.textContent || 'idle',
-          useWebGpu: this.settings?.useWebGpu ?? true,
-          provider: curProvider,
-          providerModel: this.settings?.providers[curProvider]?.model,
-          hasApiKey: Boolean(this.settings?.providers[curProvider]?.apiKey),
-          autoScrollSpeed: this.settings?.autoScrollSpeed,
-          bubbleTheme: this.settings?.bubbleTheme
-        };
-
-        const text = DebugLogger.formatForClipboard(this.cachedLogs, context);
-        const copied = await DebugLogger.copyToClipboard(text);
-
-        if (copied) {
-          this.copyLogStatus.textContent = '✓ Đã sao chép nhật ký!';
-          this.copyLogStatus.className = 'inline-status ok';
-        } else {
-          this.copyLogStatus.textContent = 'Không thể copy tự động, vui lòng bôi đen nhật ký.';
-          this.copyLogStatus.className = 'inline-status err';
-        }
-        setTimeout(() => {
-          this.copyLogStatus.textContent = '';
-        }, 3000);
-      } catch (err: any) {
-        this.copyLogStatus.textContent = `Lỗi copy: ${err.message}`;
-        this.copyLogStatus.className = 'inline-status err';
-      } finally {
-        this.copyLogsBtn.disabled = false;
-      }
-    });
-
-    // Refresh debug logs
-    this.refreshLogsBtn.addEventListener('click', async () => {
-      await this.loadDebugLogs(true);
-      this.copyLogStatus.textContent = '✓ Đã làm mới!';
-      this.copyLogStatus.className = 'inline-status ok';
-      setTimeout(() => {
-        this.copyLogStatus.textContent = '';
-      }, 1500);
-    });
-
-    // Clear debug logs
-    this.clearLogsBtn.addEventListener('click', async () => {
-      await browser.runtime.sendMessage({ action: 'CLEAR_DEBUG_LOGS' });
-      this.cachedLogs = [];
-      this.logCountBadge.textContent = '0 log';
-      this.logContentText.textContent = 'Đã xóa toàn bộ nhật ký.';
-    });
   }
 
   private async saveCurrentFormToSettings(): Promise<void> {
-    const curType = this.providerSelect.value as ProviderType;
+    this.saveCurrentProviderToMemory();
+    this.settings.activeProvider = this.currentEditingProvider;
     this.settings.translationMode = this.radioModeVision?.checked ? 'vision_ai' : 'hybrid_ocr';
-    this.settings.activeProvider = curType;
     this.settings.bubbleTheme = this.themeSelect.value as BubbleTheme;
     this.settings.autoScrollSpeed = Number(this.speedInput.value) || 3;
     this.settings.rateLimitDelayMs = Number(this.rateLimitInput.value) || 1200;
-
-    const keys = ApiKeyRotator.parseKeys(this.apiKeyInput.value);
-    this.settings.providers[curType] = {
-      type: curType,
-      name: API_PRESETS[curType].name,
-      baseUrl: this.baseUrlInput.value.trim(),
-      apiKey: keys.join('\n'),
-      model: this.customModelInput.value.trim()
-    };
+    if (this.toggleRotateProviders) {
+      this.settings.rotateProviders = this.toggleRotateProviders.checked;
+    }
 
     await StorageService.saveSettings(this.settings);
+    this.refreshProviderSelectLabels();
   }
 }
 

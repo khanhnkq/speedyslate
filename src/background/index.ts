@@ -6,11 +6,11 @@ import { DialogueItem } from '../shared/types';
 import { API_PRESETS, OCR_MODEL_PRESETS } from '../shared/presets';
 import { TranslationProviderFactory } from '../services/translation/provider-factory';
 import { ApiRateLimiter } from '../services/translation/rate-limiter';
-import { ApiKeyRotator } from '../services/translation/api-key-rotator';
 import { ocrWorkerClient } from './ocr-worker-client';
 import { ImageFetcher } from './image-fetcher';
 import { DnrManager } from './dnr-rules';
 import { VisionStripSlicer } from '../services/translation/vision-strip-slicer';
+import { MultiProviderRotator } from '../services/translation/multi-provider-rotator';
 import { DebugLogger } from '../shared/debug-logger';
 
 // Initialize DeclarativeNetRequest rules for anti-hotlinking & CORS
@@ -185,17 +185,8 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
             const width = msg.naturalWidth || msg.width || 800;
             const height = msg.naturalHeight || msg.height || 1200;
 
-            const rawKey = settings.providers[settings.activeProvider]?.apiKey || '';
-            const keyCount = ApiKeyRotator.parseKeys(rawKey).length;
-            const baseDelay =
-              settings.rateLimitDelayMs !== undefined
-                ? settings.rateLimitDelayMs
-                : (API_PRESETS[settings.activeProvider]?.defaultDelayMs ?? 1500);
-
-            // Multiple keys reduce required delay proportionally (min 200ms)
-            const minDelayMs = keyCount > 1
-              ? Math.max(200, Math.round(baseDelay / keyCount))
-              : baseDelay;
+            const totalKeys = MultiProviderRotator.countTotalKeys(settings);
+            const minDelayMs = MultiProviderRotator.computeEffectiveDelay(settings);
 
             // Automatically slice tall continuous webtoon strips (>2200px) in background
             const dialogues = await VisionStripSlicer.processStrip(
@@ -227,7 +218,7 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
               naturalWidth: width,
               naturalHeight: height,
               keyIndex: (provider as any).lastKeyIndex || 1,
-              totalKeys: keyCount
+              totalKeys: totalKeys
             };
           } catch (err: any) {
             DebugLogger.error('Background:VisionAI', err.message, err);
@@ -277,16 +268,8 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
         const provider = TranslationProviderFactory.createProvider(settings);
         const targetLang = settings.targetLanguage || 'Tiếng Việt';
 
-        const rawKey = settings.providers[settings.activeProvider]?.apiKey || '';
-        const keyCount = ApiKeyRotator.parseKeys(rawKey).length;
-        const baseDelay =
-          settings.rateLimitDelayMs !== undefined
-            ? settings.rateLimitDelayMs
-            : (API_PRESETS[settings.activeProvider]?.defaultDelayMs ?? 1200);
-
-        const minDelayMs = keyCount > 1
-          ? Math.max(200, Math.round(baseDelay / keyCount))
-          : baseDelay;
+        const totalKeys = MultiProviderRotator.countTotalKeys(settings);
+        const minDelayMs = MultiProviderRotator.computeEffectiveDelay(settings);
 
         const translations = await ApiRateLimiter.throttle(minDelayMs, () =>
           provider.translateDialogues(texts, targetLang)
@@ -323,7 +306,7 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
           success: true,
           dialogues: validDialogues,
           keyIndex: (provider as any).lastKeyIndex || 1,
-          totalKeys: keyCount
+          totalKeys: totalKeys
         };
       }
 

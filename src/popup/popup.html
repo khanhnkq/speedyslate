@@ -175,6 +175,21 @@
             <input type="number" id="input-rate-limit" class="form-input" min="0" max="10000" step="100" placeholder="1200" />
           </div>
 
+          <!-- Multi-Provider Auto-Rotation Switch -->
+          <div class="toggle-card" style="margin-top: 4px; margin-bottom: 10px;">
+            <div class="toggle-meta">
+              <i class="ti ti-rotate toggle-icon"></i>
+              <div class="toggle-text-block">
+                <span class="toggle-name">Xoay vòng đa Provider</span>
+                <span class="toggle-desc">Tự động luân phiên & dự phòng qua các provider đã lưu key khi gặp 429</span>
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-rotate-providers" checked />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+
           <div class="action-btn-row">
             <button id="btn-test-connection" class="btn btn-secondary" type="button">
               <i class="ti ti-plug-connected"></i> Kiểm tra kết nối

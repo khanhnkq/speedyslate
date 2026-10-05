@@ -37,6 +37,7 @@ export interface ImageSliceData {
 
 export type ProviderType = 
   | 'gemini' 
+  | 'antigravity'
   | 'groq' 
   | 'deepseek' 
   | 'openrouter' 
@@ -69,6 +70,7 @@ export interface ExtensionSettings {
   activeOcrModelId: string;
   rateLimitDelayMs?: number; // Minimum spacing between API translation requests in ms
   useWebGpu: boolean;       // Use WebGPU backend for ONNX (default: true, falls back to WASM)
+  rotateProviders: boolean; // Auto-rotate across configured providers with failover on 429
 }
 
 export interface OcrModelPreset {

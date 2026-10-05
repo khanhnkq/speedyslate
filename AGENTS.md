@@ -41,5 +41,4 @@ Tuân thủ nghiêm ngặt quy định duyệt extension của Mozilla Add-ons (
 ## 4. ⚡ Tối Ưu Hiệu Năng & Trải Nghiệm (Performance & UX)
 - **DOM Overlay Siêu Nhẹ**: Dùng thẻ `div` nền đen/trắng phủ đè lên Bounding Box từ OCR, không inpainting canvas.
 - **Web Worker Tách Biệt**: Toàn bộ ONNX Runtime và Canvas OCR chạy trong Web Worker ngầm, tuyệt đối không làm đơ main thread giao diện.
-- **IndexedDB Model Cache**: Tải model on-demand từ CDN, hỗ trợ xóa giải phóng bộ nhớ. Dung lượng cài đặt ban đầu của extension `< 500 KB`.
-- **Dropdown Presets Đầy Đủ**: Điền sẵn Base URL & Models cho Gemini 3.5 Flash-Lite, Gemini 3.8 Flash, Groq (GPT-OSS 20B/120B, Qwen 27B), DeepSeek, Ollama.
+- **Dropdown Presets & Xoay Vòng Đa Provider**: Điền sẵn Base URL & Models cho Gemini 3.5 Flash-Lite, Gemini 3.8 Flash, Google Antigravity Agent (`antigravity-preview-09-2026`), Groq (GPT-OSS 20B/120B, Qwen 27B), DeepSeek, Ollama. Hỗ trợ lưu cấu hình độc lập cho từng nhà cung cấp, xoay vòng nhiều key (round-robin) và tự động chuyển đổi luân phiên / dự phòng đa provider khi gặp 429 Rate Limit.

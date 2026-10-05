@@ -50,6 +50,10 @@ export class ApiKeyRotator {
     return this.keys.length > 1;
   }
 
+  public getRawKeys(): string[] {
+    return [...this.keys];
+  }
+
   /**
    * Returns 1-based index of key (e.g. 1, 2, 3...)
    */

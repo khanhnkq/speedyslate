@@ -8,7 +8,9 @@
     "build:chrome": "vite build --mode chrome",
     "build:firefox": "vite build --mode firefox",
     "build": "npm run build:chrome && npm run build:firefox",
-    "package:firefox": "npm run build:firefox && python3 scripts/package-firefox.py",
+    "package:chrome": "npm run build:chrome && python3 scripts/package.py chrome",
+    "package:firefox": "npm run build:firefox && python3 scripts/package.py firefox",
+    "package": "npm run build && python3 scripts/package.py all",
     "type-check": "tsc --noEmit"
   },
   "keywords": [

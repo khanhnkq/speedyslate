@@ -2658,6 +2658,8 @@
         if (this.ctx.ocrQueue.size() <= 1 && this.ctx.translationQueue.size() === 0) {
           this.ctx.hud.setState("error");
         }
+      } finally {
+        this.ctx.onTaskFinished?.();
       }
     }
     async processTranslationTask(task) {
@@ -2761,6 +2763,8 @@
         if (this.ctx.translationQueue.size() <= 1 && this.ctx.ocrQueue.size() === 0) {
           this.ctx.hud.setState("error");
         }
+      } finally {
+        this.ctx.onTaskFinished?.();
       }
     }
   };
@@ -2835,6 +2839,7 @@
         ocrQueue: this.ocrQueue,
         translationQueue: this.translationQueue,
         markImageCompleted: (img) => this.markImageCompleted(img),
+        onTaskFinished: () => this.checkAndHandleCompletion(),
         onContextInvalidated: () => this.handleContextInvalidated()
       });
       this.detectImages();
@@ -3023,7 +3028,7 @@
             if (entry.isIntersecting) {
               const img = entry.target;
               const index = this.images.indexOf(img);
-              if (index !== -1 && !this.completedImages.has(img) && (!img.dataset.slateStatus || img.dataset.slateStatus === "error") && this.hud.getState() === "translating") {
+              if (index !== -1 && !this.completedImages.has(img) && !img.dataset.slateStatus && this.hud.getState() === "translating") {
                 this.ocrQueue.enqueue({ index, img });
               }
             }
@@ -3046,9 +3051,51 @@
     markImageCompleted(img, checkAllDone = true) {
       this.completedImages.add(img);
       this.hud.updateStatus(this.completedImages.size, this.images.length);
-      if (checkAllDone && this.completedImages.size >= this.images.length && this.hud.getState() === "translating") {
+      if (checkAllDone) {
+        this.checkAndHandleCompletion();
+      }
+    }
+    /**
+     * Checks if all detected images have completed or all queues are empty,
+     * automatically stops the translation workflow to prevent infinite loops / rate limit errors.
+     */
+    checkAndHandleCompletion() {
+      if (this.hud.getState() !== "translating") return;
+      const total = this.images.length;
+      if (total === 0) return;
+      if (this.completedImages.size >= total) {
+        this.finishTranslating();
+        return;
+      }
+      const queuesEmpty = (this.ocrQueue?.size() ?? 0) === 0 && (this.translationQueue?.size() ?? 0) === 0;
+      if (queuesEmpty) {
+        const allProcessed = this.images.every(
+          (img) => this.completedImages.has(img) || img.dataset.slateStatus === "error" || img.dataset.slateStatus === "no_text" || img.dataset.slateStatus === "translated"
+        );
+        if (allProcessed) {
+          this.finishTranslating();
+        }
+      }
+    }
+    /**
+     * Gracefully stops translation, pauses queues, clears session flag, and updates HUD state
+     */
+    finishTranslating() {
+      this.ocrQueue?.pause();
+      this.translationQueue?.pause();
+      try {
+        sessionStorage.setItem("speedyslate_translating", "false");
+      } catch {
+      }
+      const completedCount = this.completedImages.size;
+      const totalCount = this.images.length;
+      this.hud.updateStatus(completedCount, totalCount);
+      if (completedCount > 0) {
         this.hud.setState("completed");
-        this.hud.log(`Da hoan tat dich toan bo chuong (${this.images.length} trang)`);
+        this.hud.log(`\u0110\xE3 ho\xE0n t\u1EA5t ti\u1EBFn tr\xECnh d\u1ECBch (${completedCount}/${totalCount} trang)`);
+      } else {
+        this.hud.setState("idle");
+        this.hud.log(`Ti\u1EBFn tr\xECnh d\u1ECBch \u0111\xE3 d\u1EEBng (${completedCount}/${totalCount} trang)`);
       }
     }
     showModelMissingBanner() {

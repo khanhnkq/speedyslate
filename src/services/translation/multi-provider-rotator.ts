@@ -163,6 +163,13 @@ export class MultiProviderRotator implements ITranslationProvider {
       }
     }
 
+    if (candidates.length > 1) {
+      const names = candidates.map((c) => this.settings.providers[c]?.name || c).join(' ➜ ');
+      throw new Error(
+        `Đã luân chuyển qua ${candidates.length} nhà cung cấp [${names}] nhưng đều thất bại. Lỗi gần nhất: ${lastError?.message || lastError}`
+      );
+    }
+
     throw lastError || new Error('Tất cả các nhà cung cấp dịch thuật đã cấu hình đều thất bại.');
   }
 
@@ -214,6 +221,13 @@ export class MultiProviderRotator implements ITranslationProvider {
           );
         }
       }
+    }
+
+    if (candidates.length > 1) {
+      const names = candidates.map((c) => this.settings.providers[c]?.name || c).join(' ➜ ');
+      throw new Error(
+        `Đã luân chuyển qua ${candidates.length} Vision AI [${names}] nhưng đều thất bại. Lỗi gần nhất: ${lastError?.message || lastError}`
+      );
     }
 
     throw (

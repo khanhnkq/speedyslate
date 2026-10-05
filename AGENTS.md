@@ -30,7 +30,8 @@ Tuân thủ nghiêm ngặt quy định duyệt extension của Mozilla Add-ons (
 2. **Không Che Giấu Mã Nguồn (No Obfuscation)**:
    - Giữ mã nguồn sau build sáng sủa, dễ đọc, biến rõ nghĩa để kiểm duyệt viên AMO có thể đọc hiểu.
 3. **Khai Báo Chuẩn `browser_specific_settings`**:
-   - `manifest.json` cho Firefox bắt buộc phải có `gecko.id` (ví dụ: `speedyslate@khanhnkq.dev`) và `gecko.strict_min_version: "109.0"`.
+   - `manifest.json` cho Firefox bắt buộc phải có `gecko.id` (ví dụ: `speedyslate@khanhnkq.dev`) và `gecko.strict_min_version: "140.0"` (kèm `gecko_android.strict_min_version: "142.0"`).
+   - Bắt buộc khai báo `data_collection_permissions` (quy định từ 11/2025 cho mọi add-on mới trên AMO), ví dụ: `"data_collection_permissions": { "required": ["websiteContent"] }` khi dịch nội dung văn bản từ trang web.
 4. **Tương Thích MV3 Nền Tảng Kép**:
    - **Chrome**: Sử dụng `background.service_worker`.
    - **Firefox**: Sử dụng `background.scripts` (do Firefox MV3 hỗ trợ event pages nền ổn định).

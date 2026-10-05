@@ -87,6 +87,7 @@ class SpeedySlateContentApp {
       ocrQueue: this.ocrQueue,
       translationQueue: this.translationQueue,
       markImageCompleted: (img) => this.markImageCompleted(img),
+      onTaskFinished: () => this.checkAndHandleCompletion(),
       onContextInvalidated: () => this.handleContextInvalidated()
     });
 
@@ -317,7 +318,7 @@ class SpeedySlateContentApp {
             if (
               index !== -1 &&
               !this.completedImages.has(img) &&
-              (!img.dataset.slateStatus || img.dataset.slateStatus === 'error') &&
+              !img.dataset.slateStatus &&
               this.hud.getState() === 'translating'
             ) {
               this.ocrQueue.enqueue({ index, img });
@@ -348,9 +349,63 @@ class SpeedySlateContentApp {
   private markImageCompleted(img: HTMLImageElement, checkAllDone: boolean = true): void {
     this.completedImages.add(img);
     this.hud.updateStatus(this.completedImages.size, this.images.length);
-    if (checkAllDone && this.completedImages.size >= this.images.length && this.hud.getState() === 'translating') {
+    if (checkAllDone) {
+      this.checkAndHandleCompletion();
+    }
+  }
+
+  /**
+   * Checks if all detected images have completed or all queues are empty,
+   * automatically stops the translation workflow to prevent infinite loops / rate limit errors.
+   */
+  private checkAndHandleCompletion(): void {
+    if (this.hud.getState() !== 'translating') return;
+    const total = this.images.length;
+    if (total === 0) return;
+
+    // Condition 1: All images successfully finished
+    if (this.completedImages.size >= total) {
+      this.finishTranslating();
+      return;
+    }
+
+    // Condition 2: Both OCR and Translation queues are empty and all images have finished their attempt
+    const queuesEmpty = (this.ocrQueue?.size() ?? 0) === 0 && (this.translationQueue?.size() ?? 0) === 0;
+    if (queuesEmpty) {
+      const allProcessed = this.images.every(
+        (img) =>
+          this.completedImages.has(img) ||
+          img.dataset.slateStatus === 'error' ||
+          img.dataset.slateStatus === 'no_text' ||
+          img.dataset.slateStatus === 'translated'
+      );
+      if (allProcessed) {
+        this.finishTranslating();
+      }
+    }
+  }
+
+  /**
+   * Gracefully stops translation, pauses queues, clears session flag, and updates HUD state
+   */
+  private finishTranslating(): void {
+    this.ocrQueue?.pause();
+    this.translationQueue?.pause();
+
+    try {
+      sessionStorage.setItem('speedyslate_translating', 'false');
+    } catch {}
+
+    const completedCount = this.completedImages.size;
+    const totalCount = this.images.length;
+    this.hud.updateStatus(completedCount, totalCount);
+
+    if (completedCount > 0) {
       this.hud.setState('completed');
-      this.hud.log(`Da hoan tat dich toan bo chuong (${this.images.length} trang)`);
+      this.hud.log(`Đã hoàn tất tiến trình dịch (${completedCount}/${totalCount} trang)`);
+    } else {
+      this.hud.setState('idle');
+      this.hud.log(`Tiến trình dịch đã dừng (${completedCount}/${totalCount} trang)`);
     }
   }
 

@@ -15,6 +15,7 @@ export interface TaskProcessorContext {
   ocrQueue: OrderedTaskQueue<OcrTask>;
   translationQueue: OrderedTaskQueue<TranslationTask>;
   markImageCompleted: (img: HTMLImageElement) => void;
+  onTaskFinished?: () => void;
   onContextInvalidated: () => void;
 }
 
@@ -185,6 +186,8 @@ export class TaskProcessor {
       if (this.ctx.ocrQueue.size() <= 1 && this.ctx.translationQueue.size() === 0) {
         this.ctx.hud.setState('error');
       }
+    } finally {
+      this.ctx.onTaskFinished?.();
     }
   }
 
@@ -297,6 +300,8 @@ export class TaskProcessor {
       if (this.ctx.translationQueue.size() <= 1 && this.ctx.ocrQueue.size() === 0) {
         this.ctx.hud.setState('error');
       }
+    } finally {
+      this.ctx.onTaskFinished?.();
     }
   }
 }

@@ -4,6 +4,7 @@ import { ApiKeyRotator } from './api-key-rotator';
 import { DebugLogger } from '../../shared/debug-logger';
 import { JsonExtractor } from './json-extractor';
 import { VisionBoxParser } from './vision-box-parser';
+import { InteractionsParser } from './interactions-parser';
 
 /**
  * AntigravityProvider: Implements translation via Google Gemini Interactions API
@@ -50,35 +51,6 @@ export class AntigravityProvider implements ITranslationProvider {
   }
 
   /**
-   * Robust text extractor from Interactions API response
-   */
-  private extractResponseText(data: any): string {
-    if (!data) return '';
-    if (typeof data.output_text === 'string' && data.output_text.trim()) {
-      return data.output_text.trim();
-    }
-    if (typeof data.interaction?.output_text === 'string' && data.interaction.output_text.trim()) {
-      return data.interaction.output_text.trim();
-    }
-    if (Array.isArray(data.steps)) {
-      for (let i = data.steps.length - 1; i >= 0; i--) {
-        const step = data.steps[i];
-        if (typeof step?.output_text === 'string' && step.output_text.trim()) {
-          return step.output_text.trim();
-        }
-        if (Array.isArray(step?.content?.parts)) {
-          for (const part of step.content.parts) {
-            if (typeof part?.text === 'string' && part.text.trim()) {
-              return part.text.trim();
-            }
-          }
-        }
-      }
-    }
-    return '';
-  }
-
-  /**
    * Hybrid OCR Mode: Translates OCR-extracted dialogue lines
    */
   public async translateDialogues(texts: string[], targetLang: string): Promise<string[]> {
@@ -108,7 +80,8 @@ ${JSON.stringify(texts)}`;
     const requestBody: any = {
       agent,
       input: prompt,
-      environment: 'remote'
+      environment: 'remote',
+      background: false
     };
 
     if (subModel) {
@@ -198,7 +171,8 @@ Return ONLY a valid JSON array of objects with keys:
           data: base64Data
         }
       ],
-      environment: 'remote'
+      environment: 'remote',
+      background: false
     };
 
     if (subModel) {
@@ -221,6 +195,39 @@ Return ONLY a valid JSON array of objects with keys:
   }
 
   /**
+   * Polls asynchronous interaction until completion
+   */
+  private async pollInteraction(nameOrId: string, apiKey: string, label: string): Promise<any> {
+    const resourcePath = nameOrId.startsWith('interactions/') ? nameOrId : `interactions/${nameOrId}`;
+    const pollUrl = `${this.baseUrl}/${resourcePath}?key=${encodeURIComponent(apiKey)}`;
+    const maxPollAttempts = 15;
+    const pollDelayMs = 1500;
+
+    for (let i = 0; i < maxPollAttempts; i++) {
+      await new Promise((r) => setTimeout(r, pollDelayMs));
+      try {
+        const resp = await fetch(pollUrl, {
+          method: 'GET',
+          headers: { 'x-goog-api-key': apiKey }
+        });
+        if (!resp.ok) continue;
+        const result = await resp.json();
+        const state = result.status || result.state;
+        if (state === 'completed') {
+          return result;
+        }
+        if (state === 'failed') {
+          const errMsg = result.error?.message || result.failure_reason || 'Tác vụ Antigravity thất bại';
+          throw new Error(`${label} lỗi khi xử lý: ${errMsg}`);
+        }
+      } catch (err: any) {
+        if (err.message?.includes(label)) throw err;
+      }
+    }
+    throw new Error(`${label}: Quá thời gian chờ phản hồi từ Google Interactions.`);
+  }
+
+  /**
    * Helper executing POST request with key rotation, error detection, and timeouts
    */
   private async executeWithRetry(endpointPath: string, requestBody: any, label: string): Promise<string> {
@@ -233,9 +240,10 @@ Return ONLY a valid JSON array of objects with keys:
     const maxRetries = Math.min(this.keyRotator.count, 3);
     let lastErrorMsg = '';
     let resp: Response | null = null;
+    let activeKey = '';
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      const activeKey = this.keyRotator.getNextKey();
+      activeKey = this.keyRotator.getNextKey();
       const maskedKey = ApiKeyRotator.maskKey(activeKey);
       const url = `${endpointPath}?key=${encodeURIComponent(activeKey)}`;
 
@@ -351,10 +359,25 @@ Return ONLY a valid JSON array of objects with keys:
       throw new Error(lastErrorMsg || `${label} lỗi (${resp?.status || 0})`);
     }
 
-    const data = await resp.json();
-    const candidateText = this.extractResponseText(data);
+    let data = await resp.json();
+
+    // Check if interaction reported failure inside payload
+    const failureCheck = InteractionsParser.checkFailure(data);
+    if (failureCheck.failed) {
+      throw new Error(`${label} lỗi máy chủ: ${failureCheck.message}`);
+    }
+
+    // Check if interaction returned asynchronous in_progress state
+    const progressCheck = InteractionsParser.checkInProgress(data);
+    if (progressCheck.inProgress && progressCheck.resourceId) {
+      data = await this.pollInteraction(progressCheck.resourceId, activeKey, label);
+    }
+
+    const candidateText = InteractionsParser.extractText(data);
     if (!candidateText) {
-      throw new Error(`${label} không trả về nội dung văn bản hợp lệ.`);
+      const preview = JSON.stringify(data).substring(0, 400);
+      DebugLogger.error(label, `Không trích xuất được text. Keys: [${Object.keys(data || {}).join(', ')}]. Dữ liệu: ${preview}`);
+      throw new Error(`${label} không trả về nội dung văn bản hợp lệ. Phản hồi nhận được: ${preview}`);
     }
 
     return candidateText;

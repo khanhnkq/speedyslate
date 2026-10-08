@@ -82,8 +82,14 @@ export class TaskProcessor {
         isVision && totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : undefined
       );
 
+      if (isVision) {
+        this.ctx.hud.log(
+          `Trang #${task.index + 1}${totalKeys > 1 ? ` (Key #${estimatedKey}/${totalKeys})` : ''}: Vision AI đang nhận diện và dịch...`
+        );
+      }
+
       // Downscale and compress image (max 1280px) to reduce latency and token usage
-      const compressed = ImageCompressor.compressForVision(img, 1280, 0.85);
+      const compressed = ImageCompressor.compressForVision(img, 1280, 0.78);
 
       const resp: any = await SafeMessenger.send({
         action: 'OCR_IMAGE',

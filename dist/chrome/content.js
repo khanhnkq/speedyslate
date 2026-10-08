@@ -2561,7 +2561,12 @@
           void 0,
           isVision && totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : void 0
         );
-        const compressed = ImageCompressor.compressForVision(img, 1280, 0.85);
+        if (isVision) {
+          this.ctx.hud.log(
+            `Trang #${task.index + 1}${totalKeys > 1 ? ` (Key #${estimatedKey}/${totalKeys})` : ""}: Vision AI \u0111ang nh\u1EADn di\u1EC7n v\xE0 d\u1ECBch...`
+          );
+        }
+        const compressed = ImageCompressor.compressForVision(img, 1280, 0.78);
         const resp = await SafeMessenger.send({
           action: "OCR_IMAGE",
           imageUrl,

@@ -25,7 +25,7 @@ export class ImageFetcher {
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
 
       let res: Response;
       try {
@@ -38,7 +38,7 @@ export class ImageFetcher {
       } catch (err: any) {
         clearTimeout(timeoutId);
         if (err.name === 'AbortError') {
-          throw new Error(`Quá thời gian tải ảnh từ URL (timeout 15s): ${imageUrl}`);
+          throw new Error(`Quá thời gian tải ảnh từ URL (timeout 20s): ${imageUrl}`);
         }
         throw err;
       }

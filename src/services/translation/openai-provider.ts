@@ -75,7 +75,7 @@ RULES FOR TRANSLATION:
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 18000);
+      const timeoutId = setTimeout(() => controller.abort(), 14000);
 
       try {
         resp = await fetch(endpoint, {
@@ -87,7 +87,7 @@ RULES FOR TRANSLATION:
       } catch (netErr: any) {
         clearTimeout(timeoutId);
         if (netErr.name === 'AbortError') {
-          lastErrorMsg = `Quá thời gian phản hồi từ API (timeout 18s). Key ${maskedKey}`;
+          lastErrorMsg = `Quá thời gian phản hồi từ API (timeout 14s). Key ${maskedKey}`;
         } else {
           lastErrorMsg = `Lỗi mạng: ${netErr?.message || netErr}`;
         }
@@ -301,7 +301,7 @@ If no character dialogues or narrator boxes are found, return {"dialogues": []}.
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 18000);
+      const timeoutId = setTimeout(() => controller.abort(), 24000);
 
       try {
         resp = await fetch(endpoint, {
@@ -313,7 +313,7 @@ If no character dialogues or narrator boxes are found, return {"dialogues": []}.
       } catch (netErr: any) {
         clearTimeout(timeoutId);
         if (netErr.name === 'AbortError') {
-          lastErrorMsg = `Quá thời gian phản hồi từ API (timeout 18s). Key ${maskedKey}`;
+          lastErrorMsg = `Quá thời gian phản hồi từ API (timeout 24s). Key ${maskedKey}`;
         } else {
           lastErrorMsg = `Lỗi mạng: ${netErr?.message || netErr}`;
         }

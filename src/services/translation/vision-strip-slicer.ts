@@ -22,8 +22,8 @@ export class VisionStripSlicer {
     provider: ITranslationProvider,
     targetLang: string,
     minDelayMs: number,
-    maxSliceHeight = 2200,
-    overlap = 150
+    maxSliceHeight = 2800,
+    overlap = 160
   ): Promise<DialogueItem[]> {
     if (!provider.translateImage) return [];
 
@@ -45,7 +45,7 @@ export class VisionStripSlicer {
       const height = bitmap.height || naturalHeight;
 
       const step = maxSliceHeight - overlap;
-      const allDialogues: DialogueItem[] = [];
+      const sliceTasks: { startY: number; currentH: number; sliceBase64: string }[] = [];
 
       for (let startY = 0; startY < height; startY += step) {
         const currentH = Math.min(maxSliceHeight, height - startY);
@@ -56,12 +56,41 @@ export class VisionStripSlicer {
 
         ctx.drawImage(bitmap, 0, startY, width, currentH, 0, 0, width, currentH);
 
-        const sliceBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
+        const sliceBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.78 });
         const sliceBase64 = await this.blobToBase64(sliceBlob);
+        sliceTasks.push({ startY, currentH, sliceBase64 });
+      }
 
-        const sliceDialogues = await ApiRateLimiter.throttle(minDelayMs, () =>
-          provider.translateImage!(sliceBase64, 'image/jpeg', targetLang, width, currentH)
-        );
+      bitmap.close();
+
+      if (sliceTasks.length === 0) return [];
+
+      // 3. Process all slices concurrently (with 250ms staggering to utilize key rotation without bursting)
+      const sliceResults = await Promise.all(
+        sliceTasks.map(async (task, idx) => {
+          if (idx > 0) {
+            await new Promise((r) => setTimeout(r, idx * 250));
+          }
+          try {
+            return await provider.translateImage!(
+              task.sliceBase64,
+              'image/jpeg',
+              targetLang,
+              width,
+              task.currentH
+            );
+          } catch (err: any) {
+            DebugLogger.warn('VisionStripSlicer', `Slice #${idx + 1} translation failed: ${err.message}`);
+            return [];
+          }
+        })
+      );
+
+      const allDialogues: DialogueItem[] = [];
+
+      for (let i = 0; i < sliceTasks.length; i++) {
+        const { startY, currentH } = sliceTasks[i];
+        const sliceDialogues = sliceResults[i];
 
         if (Array.isArray(sliceDialogues)) {
           for (const d of sliceDialogues) {

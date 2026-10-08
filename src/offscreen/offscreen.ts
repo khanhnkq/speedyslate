@@ -237,7 +237,10 @@ function withMessageTimeout<T>(
 ): Promise<T> {
   let timer: any;
   const timeoutPromise = new Promise<T>((resolve) => {
-    timer = setTimeout(() => resolve(timeoutResult), ms);
+    timer = setTimeout(() => {
+      DebugLogger.error('Offscreen:Timeout', `Tác vụ Offscreen OCR quá thời gian chờ (${Math.round(ms / 1000)}s)`);
+      resolve(timeoutResult);
+    }, ms);
   });
   return Promise.race([
     promise.then((res) => {
@@ -256,8 +259,8 @@ browser.runtime.onMessage.addListener((msg: any) => {
   }
   return withMessageTimeout(
     handleOffscreenMessage(msg),
-    25000,
-    { success: false, error: 'Offscreen OCR timeout sau 25s' }
+    50000,
+    { success: false, error: 'Offscreen OCR timeout sau 50s' }
   );
 });
 

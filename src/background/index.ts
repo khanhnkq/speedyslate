@@ -477,8 +477,8 @@ browser.runtime.onMessage.addListener((rawMsg: any) => {
   }
   return withMessageTimeout(
     handleBackgroundMessage(rawMsg),
-    27000,
-    { success: false, error: 'Tác vụ nền quá thời gian chờ (timeout 27s). Vui lòng thử lại.' }
+    60000,
+    { success: false, error: 'Tác vụ nền quá thời gian chờ (timeout 60s). Vui lòng thử lại.' }
   );
 });
 

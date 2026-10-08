@@ -86,7 +86,7 @@ RULES FOR COMIC TRANSLATION:
       const endpoint = `${this.baseUrl}/models/${this.model}:generateContent?key=${activeKey}`;
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 18000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
 
       try {
         resp = await fetch(endpoint, {
@@ -100,7 +100,7 @@ RULES FOR COMIC TRANSLATION:
       } catch (netErr: any) {
         clearTimeout(timeoutId);
         if (netErr.name === 'AbortError') {
-          lastErrorMsg = `Quá thời gian phản hồi từ Gemini API (timeout 18s). Key ${maskedKey}`;
+          lastErrorMsg = `Quá thời gian phản hồi từ Gemini API (timeout 12s). Key ${maskedKey}`;
         } else {
           lastErrorMsg = `Lỗi mạng: ${netErr?.message || netErr}`;
         }
@@ -332,7 +332,7 @@ CRITICAL NEGATIVE CONSTRAINTS:
       const endpoint = `${this.baseUrl}/models/${this.model}:generateContent?key=${activeKey}`;
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 18000);
+      const timeoutId = setTimeout(() => controller.abort(), 24000);
 
       try {
         resp = await fetch(endpoint, {
@@ -344,7 +344,7 @@ CRITICAL NEGATIVE CONSTRAINTS:
       } catch (netErr: any) {
         clearTimeout(timeoutId);
         if (netErr.name === 'AbortError') {
-          lastErrorMsg = `Quá thời gian phản hồi từ Gemini API (timeout 18s). Key ${maskedKey}`;
+          lastErrorMsg = `Quá thời gian phản hồi từ Gemini API (timeout 24s). Key ${maskedKey}`;
         } else {
           lastErrorMsg = `Lỗi mạng: ${netErr?.message || netErr}`;
         }

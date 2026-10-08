@@ -114,10 +114,14 @@ export class TranslationCacheDb {
     const targetNorm = (chapterUrl || '').split('#')[0].split('?')[0].replace(/\/+$/, '');
 
     return new Promise((resolve, reject) => {
+      let deleted = 0;
+      tx.oncomplete = () => resolve(deleted);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
+
       const req = store.getAll();
       req.onsuccess = () => {
         const records: CachedImageTranslation[] = req.result || [];
-        let deleted = 0;
         for (const r of records) {
           const recNorm = (r.chapterUrl || '').split('#')[0].split('?')[0].replace(/\/+$/, '');
           if (!targetNorm || recNorm === targetNorm || r.chapterUrl === chapterUrl) {
@@ -125,10 +129,8 @@ export class TranslationCacheDb {
             deleted++;
           }
         }
-        tx.oncomplete = () => resolve(deleted);
       };
       req.onerror = () => reject(req.error);
-      tx.onerror = () => reject(tx.error);
     });
   }
 
@@ -143,6 +145,7 @@ export class TranslationCacheDb {
     return new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
     });
   }
 

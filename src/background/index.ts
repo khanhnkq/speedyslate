@@ -127,6 +127,14 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
 
       case 'CLEAR_ALL_CACHE': {
         await TranslationCacheDb.clearAllCache();
+        try {
+          const tabs = await browser.tabs.query({});
+          for (const tab of tabs) {
+            if (tab.id) {
+              browser.tabs.sendMessage(tab.id, { action: 'CACHE_CLEARED' }).catch(() => {});
+            }
+          }
+        } catch {}
         return { success: true };
       }
 
@@ -405,14 +413,22 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
         return { success: ok };
       }
 
-      case 'GET_DEBUG_LOGS': {
-        const logs = await DebugLogger.getLogs();
-        return { success: true, logs };
-      }
+      case 'GET_DEBUG_LOGS':
+        return { success: true, logs: await DebugLogger.getLogs() };
 
-      case 'CLEAR_DEBUG_LOGS': {
+      case 'CLEAR_DEBUG_LOGS':
         await DebugLogger.clearLogs();
         return { success: true };
+
+      case 'FETCH_IMAGE_BASE64': {
+        const { imageUrl, chapterUrl } = msg;
+        if (!imageUrl) return { success: false, error: 'No imageUrl provided' };
+        try {
+          const { base64Data, mimeType } = await ImageFetcher.getBase64Data(undefined, imageUrl, chapterUrl);
+          return { success: true, base64Data, mimeType };
+        } catch (err: any) {
+          return { success: false, error: err?.message || 'Failed to fetch image' };
+        }
       }
 
       default:

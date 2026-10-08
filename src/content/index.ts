@@ -1,3 +1,4 @@
+import browser from 'webextension-polyfill';
 import { StorageService } from '../shared/storage';
 import { BubbleTheme, ExtensionSettings } from '../shared/types';
 import { FloatingHud } from './hud/hud';
@@ -9,6 +10,7 @@ import { ModelMissingBanner } from './missing-banner';
 import { DebugLogger } from '../shared/debug-logger';
 import { SafeMessenger } from './safe-messenger';
 import { TaskProcessor } from './task-processor';
+import { CompanionController } from './companion/companion-controller';
 
 class SpeedySlateContentApp {
   private settings!: ExtensionSettings;
@@ -16,6 +18,7 @@ class SpeedySlateContentApp {
   private ocrQueue!: OrderedTaskQueue<OcrTask>;
   private translationQueue!: OrderedTaskQueue<TranslationTask>;
   private taskProcessor!: TaskProcessor;
+  private companionController: CompanionController | null = null;
   private images: HTMLImageElement[] = [];
   private completedImages = new Set<HTMLImageElement>();
   private isModelReady: boolean = false;
@@ -54,6 +57,14 @@ class SpeedySlateContentApp {
     });
 
     this.hud.log('SpeedySlate dang khoi tao...');
+
+    // Lang nghe thong bao tu Background/Popup (vi du: da xoa sach cache)
+    browser.runtime.onMessage.addListener((msg: any) => {
+      if (msg?.action === 'CACHE_CLEARED') {
+        this.resetPageTranslations();
+        this.hud.log('Cache đã được làm mới từ tiện ích');
+      }
+    });
   }
 
   public async start(): Promise<void> {
@@ -113,6 +124,32 @@ class SpeedySlateContentApp {
         }
       } catch {}
     }
+
+    // 6. Khoi tao Story Companion (Gemini 3.8 Live API)
+    const geminiKey = this.settings?.providers?.gemini?.apiKey || this.settings?.providers?.antigravity?.apiKey || '';
+    this.companionController = new CompanionController({
+      enabled: true,
+      apiKey: geminiKey,
+      model: 'gemini-3.8-live',
+      voiceName: 'Aoede',
+      visionEnabled: true,
+      autoVisionOnScroll: true
+    });
+
+    browser.storage.onChanged.addListener((changes: any, area: string) => {
+      if (area === 'local' && changes['speedyslate_settings']?.newValue) {
+        const newSettings = changes['speedyslate_settings'].newValue;
+        const key = newSettings?.providers?.gemini?.apiKey || newSettings?.providers?.antigravity?.apiKey || '';
+        this.companionController?.updateSettings({
+          enabled: true,
+          apiKey: key,
+          model: 'gemini-3.8-live',
+          voiceName: 'Aoede',
+          visionEnabled: true,
+          autoVisionOnScroll: true
+        });
+      }
+    });
   }
 
   private resetPageTranslations(): void {
@@ -359,7 +396,8 @@ class SpeedySlateContentApp {
    * automatically stops the translation workflow to prevent infinite loops / rate limit errors.
    */
   private checkAndHandleCompletion(): void {
-    if (this.hud.getState() !== 'translating') return;
+    const currentState = this.hud.getState();
+    if (currentState !== 'translating' && currentState !== 'completed') return;
     const total = this.images.length;
     if (total === 0) return;
 
@@ -398,13 +436,14 @@ class SpeedySlateContentApp {
 
     const completedCount = this.completedImages.size;
     const totalCount = this.images.length;
-    this.hud.updateStatus(completedCount, totalCount);
 
-    if (completedCount > 0) {
+    if (completedCount > 0 && completedCount >= totalCount) {
       this.hud.setState('completed');
+      this.hud.updateStatus(completedCount, totalCount);
       this.hud.log(`Đã hoàn tất tiến trình dịch (${completedCount}/${totalCount} trang)`);
     } else {
       this.hud.setState('idle');
+      this.hud.updateStatus(completedCount, totalCount);
       this.hud.log(`Tiến trình dịch đã dừng (${completedCount}/${totalCount} trang)`);
     }
   }

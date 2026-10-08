@@ -299,11 +299,7 @@ export class FloatingHud {
   public updateStatus(translatedCount: number, totalCount: number): void {
     this.translatedCount = translatedCount;
     this.totalCount = totalCount;
-    if (totalCount > 0 && translatedCount >= totalCount && this.state === 'translating') {
-      this.setState('completed');
-    } else {
-      this.render();
-    }
+    this.render();
   }
 
   public getState(): HudState {

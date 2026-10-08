@@ -22,6 +22,8 @@ export class DebugTabController {
   private cachedLogs: any[] = [];
   private getSettings: () => ExtensionSettings;
   private getBackendName: () => string;
+  private isConfirmingClearCache: boolean = false;
+  private confirmClearTimeout: any = null;
 
   constructor(getSettings: () => ExtensionSettings, getBackendName: () => string) {
     this.getSettings = getSettings;
@@ -70,18 +72,50 @@ export class DebugTabController {
     }
   }
 
+  private resetClearCacheBtnState(): void {
+    this.isConfirmingClearCache = false;
+    if (this.confirmClearTimeout) {
+      clearTimeout(this.confirmClearTimeout);
+      this.confirmClearTimeout = null;
+    }
+    if (this.clearCacheBtn) {
+      this.clearCacheBtn.innerHTML = '<i class="ti ti-trash"></i> Xóa Cache';
+      this.clearCacheBtn.classList.remove('btn-danger', 'btn-success');
+    }
+  }
+
   private attachEventListeners(): void {
-    // Clear Cache Button
+    // Clear Cache Button (Two-step confirmation without window.confirm to avoid MV3 popup dismissal)
     this.clearCacheBtn?.addEventListener('click', async () => {
-      if (confirm('Bạn có chắc muốn xóa toàn bộ bộ nhớ đệm bản dịch trang truyện?')) {
-        this.clearCacheBtn.disabled = true;
-        this.clearCacheBtn.textContent = 'Đang dọn…';
-        await TranslationCacheDb.clearAllCache();
+      if (!this.isConfirmingClearCache) {
+        this.isConfirmingClearCache = true;
+        this.clearCacheBtn.innerHTML = '<i class="ti ti-alert-triangle"></i> Xóa tất cả?';
+        this.clearCacheBtn.classList.add('btn-danger');
+
+        this.confirmClearTimeout = setTimeout(() => {
+          this.resetClearCacheBtnState();
+        }, 3500);
+        return;
+      }
+
+      this.resetClearCacheBtnState();
+      this.clearCacheBtn.disabled = true;
+      this.clearCacheBtn.innerHTML = '<i class="ti ti-loader ti-spin"></i> Đang dọn…';
+
+      try {
+        await browser.runtime.sendMessage({ action: 'CLEAR_ALL_CACHE' }).catch(() => {});
+        await TranslationCacheDb.clearAllCache().catch(() => {});
         await this.updateCacheStats();
+        this.clearCacheBtn.innerHTML = '<i class="ti ti-check"></i> Đã xóa!';
+        this.clearCacheBtn.classList.add('btn-success');
+      } catch (err: any) {
+        this.clearCacheBtn.innerHTML = '<i class="ti ti-x"></i> Lỗi dọn cache';
+        this.clearCacheBtn.classList.add('btn-danger');
+      } finally {
         setTimeout(() => {
-          this.clearCacheBtn.textContent = 'Dọn sạch cache';
+          this.resetClearCacheBtnState();
           this.clearCacheBtn.disabled = false;
-        }, 1800);
+        }, 1500);
       }
     });
 

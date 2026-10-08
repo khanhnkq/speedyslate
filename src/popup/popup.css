@@ -699,3 +699,30 @@ body {
   font-size: 10px;
   min-height: 14px;
 }
+
+.btn-danger {
+  background-color: #351014 !important;
+  border-color: #FF3B47 !important;
+  color: #FF6B75 !important;
+}
+
+.btn-danger:hover {
+  background-color: #4A1218 !important;
+  border-color: #FF5A65 !important;
+}
+
+.btn-success {
+  background-color: #0A2E1A !important;
+  border-color: #00E676 !important;
+  color: #00E676 !important;
+}
+
+@keyframes ti-spin-anim {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.ti-spin {
+  animation: ti-spin-anim 0.8s linear infinite;
+  display: inline-block;
+}

@@ -11,10 +11,12 @@ import { DebugLogger } from '../shared/debug-logger';
 import { SafeMessenger } from './safe-messenger';
 import { TaskProcessor } from './task-processor';
 import { CompanionController } from './companion/companion-controller';
+import { SiteMatcher } from '../shared/site-matcher';
+import { CacheRestorer } from './cache-restorer';
 
 class SpeedySlateContentApp {
   private settings!: ExtensionSettings;
-  private hud!: FloatingHud;
+  private hud: FloatingHud | null = null;
   private ocrQueue!: OrderedTaskQueue<OcrTask>;
   private translationQueue!: OrderedTaskQueue<TranslationTask>;
   private taskProcessor!: TaskProcessor;
@@ -23,12 +25,60 @@ class SpeedySlateContentApp {
   private completedImages = new Set<HTMLImageElement>();
   private isModelReady: boolean = false;
   private mutationObserver: MutationObserver | null = null;
+  private isStarted = false;
 
-  constructor() {
-    // 1. Khoi tao Modern Glassmorphism HUD o trang thai Cho (Idle)
+  public async init(): Promise<void> {
+    try {
+      this.settings = await StorageService.getSettings();
+    } catch {
+      // Dùng cấu hình mặc định
+    }
+
+    this.setupMessageListener();
+
+    if (!SiteMatcher.isSiteAllowed(window.location.hostname, this.settings)) {
+      return;
+    }
+
+    await this.start();
+  }
+
+  private setupMessageListener(): void {
+    browser.runtime.onMessage.addListener((msg: any, _sender: any, sendResponse?: any) => {
+      if (msg?.action === 'CHECK_SITE_STATUS') {
+        const isAllowed = SiteMatcher.isSiteAllowed(window.location.hostname, this.settings);
+        sendResponse?.({
+          active: this.isStarted,
+          hostname: window.location.hostname,
+          isAllowed
+        });
+        return true;
+      }
+      if (msg?.action === 'ACTIVATE_CURRENT_SITE') {
+        StorageService.getSettings().then(async (newSettings) => {
+          this.settings = newSettings;
+          await this.start();
+          sendResponse?.({ success: true });
+        });
+        return true;
+      }
+      if (msg?.action === 'DEACTIVATE_CURRENT_SITE') {
+        this.stop();
+        sendResponse?.({ success: true });
+        return true;
+      }
+      if (msg?.action === 'CACHE_CLEARED') {
+        this.resetPageTranslations();
+        this.hud?.log('Cache đã được làm mới từ tiện ích');
+      }
+    });
+  }
+
+  private initHud(): void {
+    if (this.hud) return;
     this.hud = new FloatingHud({
       onToggleTranslate: async () => {
-        const currentState = this.hud.getState();
+        const currentState = this.hud?.getState();
         if (currentState === 'translating') {
           await this.handleStartTranslating();
         } else {
@@ -37,7 +87,7 @@ class SpeedySlateContentApp {
           } catch {}
           this.ocrQueue?.pause();
           this.translationQueue?.pause();
-          this.hud.log('Da tam dung tien trinh dich truyen');
+          this.hud?.log('Đã tạm dừng tiến trình dịch truyện');
         }
       },
       onToggleVisibility: (visible) => OverlayRenderer.setAllVisibility(visible),
@@ -47,34 +97,29 @@ class SpeedySlateContentApp {
           chapterUrl: window.location.href
         });
         this.resetPageTranslations();
-        this.hud.log(`Da xoa ${resp?.deleted || 0} ban dich cache cua chuong nay`);
+        this.hud?.log(`Đã xóa ${resp?.deleted || 0} bản dịch cache của chương này`);
       },
       onClearAllCache: async () => {
         await SafeMessenger.send({ action: 'CLEAR_ALL_CACHE' });
         this.resetPageTranslations();
-        this.hud.log('Da don sach toan bo cache');
-      }
-    });
-
-    this.hud.log('SpeedySlate dang khoi tao...');
-
-    // Lang nghe thong bao tu Background/Popup (vi du: da xoa sach cache)
-    browser.runtime.onMessage.addListener((msg: any) => {
-      if (msg?.action === 'CACHE_CLEARED') {
-        this.resetPageTranslations();
-        this.hud.log('Cache đã được làm mới từ tiện ích');
+        this.hud?.log('Đã dọn sạch toàn bộ cache');
       }
     });
   }
 
   public async start(): Promise<void> {
+    if (this.isStarted) return;
+    this.isStarted = true;
     console.log('[SpeedySlate] Khoi chay tren trang:', window.location.href);
 
     try {
       this.settings = await StorageService.getSettings();
     } catch {
-      this.hud.log('Dang dung cau hinh mac dinh');
+      // Dung cau hinh mac dinh
     }
+
+    this.initHud();
+    this.hud?.log('SpeedySlate dang khoi tao...');
 
     // 2. Khoi tao 2 hang doi tach biet: OCR Producer (cuc bo) & Translation Consumer (API)
     this.ocrQueue = new OrderedTaskQueue<OcrTask>(
@@ -93,7 +138,7 @@ class SpeedySlateContentApp {
 
     this.taskProcessor = new TaskProcessor({
       getSettings: () => this.settings,
-      hud: this.hud,
+      hud: this.hud!,
       completedImages: this.completedImages,
       ocrQueue: this.ocrQueue,
       translationQueue: this.translationQueue,
@@ -114,12 +159,10 @@ class SpeedySlateContentApp {
     await this.checkModelStatusFromBackground(false);
 
     if (this.completedImages.size < this.images.length) {
-      this.hud.log(`San sang dich. Tim thay ${this.images.length} trang truyen`);
-
-      // Tu dong tiep tuc dich neu dang trong phien doc lien tuc (vi du lat trang nHentai hoac chuyen chuong)
+      this.hud?.log(`Sẵn sàng dịch. Tìm thấy ${this.images.length} trang truyện`);
       try {
         if (sessionStorage.getItem('speedyslate_translating') === 'true') {
-          this.hud.setState('translating');
+          this.hud?.setState('translating');
           await this.handleStartTranslating();
         }
       } catch {}
@@ -127,27 +170,14 @@ class SpeedySlateContentApp {
 
     // 6. Khoi tao Story Companion (Gemini 3.8 Live API)
     const geminiKey = this.settings?.providers?.gemini?.apiKey || this.settings?.providers?.antigravity?.apiKey || '';
-    this.companionController = new CompanionController({
-      enabled: true,
-      apiKey: geminiKey,
-      model: 'gemini-3.8-live',
-      voiceName: 'Aoede',
-      visionEnabled: true,
-      autoVisionOnScroll: true
-    });
+    const companionCfg = { enabled: true, apiKey: geminiKey, model: 'gemini-3.8-live', voiceName: 'Aoede' as const, visionEnabled: true, autoVisionOnScroll: true };
+    this.companionController = new CompanionController(companionCfg);
 
     browser.storage.onChanged.addListener((changes: any, area: string) => {
       if (area === 'local' && changes['speedyslate_settings']?.newValue) {
         const newSettings = changes['speedyslate_settings'].newValue;
         const key = newSettings?.providers?.gemini?.apiKey || newSettings?.providers?.antigravity?.apiKey || '';
-        this.companionController?.updateSettings({
-          enabled: true,
-          apiKey: key,
-          model: 'gemini-3.8-live',
-          voiceName: 'Aoede',
-          visionEnabled: true,
-          autoVisionOnScroll: true
-        });
+        this.companionController?.updateSettings({ ...companionCfg, apiKey: key });
       }
     });
   }
@@ -166,8 +196,8 @@ class SpeedySlateContentApp {
     try {
       sessionStorage.setItem('speedyslate_translating', 'false');
     } catch {}
-    this.hud.updateStatus(0, this.images.length);
-    this.hud.setState('idle');
+    this.hud?.updateStatus(0, this.images.length);
+    this.hud?.setState('idle');
   }
 
   private handleContextInvalidated(): void {
@@ -187,7 +217,7 @@ class SpeedySlateContentApp {
     if (!this.isModelReady) {
       await this.checkModelStatusFromBackground(true);
       if (!this.isModelReady) {
-        this.hud.setState('idle');
+        this.hud?.setState('idle');
         return;
       }
     }
@@ -204,7 +234,7 @@ class SpeedySlateContentApp {
       sessionStorage.setItem('speedyslate_translating', 'true');
     } catch {}
 
-    this.hud.log(`Bat dau dich chuong (${this.images.length} trang)...`);
+    this.hud?.log(`Bat dau dich chuong (${this.images.length} trang)...`);
 
     // Kich hoat nap toan bo anh ngay tai cho
     ToonheyAdapter.forceLoadAll(this.images);
@@ -222,16 +252,16 @@ class SpeedySlateContentApp {
       const resp: any = await SafeMessenger.send({ action: 'CHECK_MODEL_STATUS' });
       if (resp?.success && resp.status?.status === 'ready') {
         this.isModelReady = true;
-        this.hud.log('Model OCR da san sang');
+        this.hud?.log('Model OCR da san sang');
       } else {
         this.isModelReady = false;
-        this.hud.log('Chua tai model OCR. Mo popup tien ich de tai (~10MB)', true);
+        this.hud?.log('Chua tai model OCR. Mo popup tien ich de tai (~10MB)', true);
         if (showBannerIfMissing) {
           this.showModelMissingBanner();
         }
       }
     } catch (err: any) {
-      this.hud.log(`Loi kiem tra model: ${err.message}`, true);
+      this.hud?.log(`Loi kiem tra model: ${err.message}`, true);
     }
   }
 
@@ -263,10 +293,10 @@ class SpeedySlateContentApp {
             PageBadgeManager.ensureBadge(img.parentElement, idx);
           }
         });
-        this.hud.updateStatus(this.completedImages.size, this.images.length);
-        this.hud.log(`Da phat hien ${this.images.length} trang truyen`);
+        this.hud?.updateStatus(this.completedImages.size, this.images.length);
+        this.hud?.log(`Da phat hien ${this.images.length} trang truyen`);
 
-        if (this.hud.getState() === 'translating') {
+        if (this.hud?.getState() === 'translating') {
           this.enqueueAllImages();
         } else {
           this.restoreCachedTranslations();
@@ -278,57 +308,37 @@ class SpeedySlateContentApp {
   }
 
   private async restoreCachedTranslations(): Promise<void> {
-    if (this.images.length === 0) return;
-
-    const urls = this.images
-      .map((img) => img.dataset.src || img.getAttribute('data-src') || img.src)
-      .filter(Boolean);
-
-    try {
-      const resp: any = await SafeMessenger.send({
-        action: 'GET_CHAPTER_TRANSLATIONS',
-        imageUrls: urls
-      });
-
-      if (resp?.success && resp.translations) {
-        const cache = resp.translations;
-        let newlyRestored = 0;
-
-        for (let i = 0; i < this.images.length; i++) {
-          const img = this.images[i];
-          if (this.completedImages.has(img)) continue;
-
-          const url = img.dataset.src || img.getAttribute('data-src') || img.src;
-          const cached = cache[url];
-          if (cached && Array.isArray(cached.dialogues) && cached.dialogues.length > 0) {
-            const wrapper = img.parentElement;
-            if (wrapper) {
-              OverlayRenderer.renderDialogues(
-                wrapper,
-                cached.dialogues,
-                img.naturalWidth || cached.naturalWidth || 800,
-                img.naturalHeight || cached.naturalHeight || 1200,
-                (this.settings?.bubbleTheme || 'auto') as BubbleTheme
-              );
-              img.dataset.slateStatus = 'translated';
-              PageBadgeManager.updateBadge(wrapper, i, 'translated', cached.dialogues.length);
-            }
-            this.markImageCompleted(img, false);
-            newlyRestored++;
-          }
+    await CacheRestorer.restore(
+      this.images,
+      this.completedImages,
+      (this.settings?.bubbleTheme || 'auto') as BubbleTheme,
+      (count) => {
+        this.hud?.updateStatus(this.completedImages.size, this.images.length);
+        this.hud?.log(`Đã nạp tức thì ${count} trang từ Cache (0ms)`);
+        if (this.completedImages.size >= this.images.length) {
+          this.hud?.setState('completed');
         }
+      },
+      (img) => this.markImageCompleted(img, false)
+    );
+  }
 
-        if (newlyRestored > 0) {
-          this.hud.updateStatus(this.completedImages.size, this.images.length);
-          this.hud.log(`Da nap tuc thi ${newlyRestored} trang tu Cache (0ms)`);
-          if (this.completedImages.size >= this.images.length) {
-            this.hud.setState('completed');
-          }
-        }
-      }
-    } catch {
-      // Quiet fallback if cache check fails
+  public stop(): void {
+    if (!this.isStarted) return;
+    this.isStarted = false;
+    this.ocrQueue?.pause();
+    this.ocrQueue?.clear();
+    this.translationQueue?.pause();
+    this.translationQueue?.clear();
+    if (this.mutationObserver) {
+      this.mutationObserver.disconnect();
+      this.mutationObserver = null;
     }
+    this.companionController?.destroy?.();
+    this.companionController = null;
+    this.resetPageTranslations();
+    this.hud?.destroy();
+    this.hud = null;
   }
 
   private setupMutationObserver(): void {
@@ -356,7 +366,7 @@ class SpeedySlateContentApp {
               index !== -1 &&
               !this.completedImages.has(img) &&
               !img.dataset.slateStatus &&
-              this.hud.getState() === 'translating'
+              this.hud?.getState() === 'translating'
             ) {
               this.ocrQueue.enqueue({ index, img });
             }
@@ -385,7 +395,7 @@ class SpeedySlateContentApp {
 
   private markImageCompleted(img: HTMLImageElement, checkAllDone: boolean = true): void {
     this.completedImages.add(img);
-    this.hud.updateStatus(this.completedImages.size, this.images.length);
+    this.hud?.updateStatus(this.completedImages.size, this.images.length);
     if (checkAllDone) {
       this.checkAndHandleCompletion();
     }
@@ -396,7 +406,7 @@ class SpeedySlateContentApp {
    * automatically stops the translation workflow to prevent infinite loops / rate limit errors.
    */
   private checkAndHandleCompletion(): void {
-    const currentState = this.hud.getState();
+    const currentState = this.hud?.getState();
     if (currentState !== 'translating' && currentState !== 'completed') return;
     const total = this.images.length;
     if (total === 0) return;
@@ -437,15 +447,14 @@ class SpeedySlateContentApp {
     const completedCount = this.completedImages.size;
     const totalCount = this.images.length;
 
-    if (completedCount > 0 && completedCount >= totalCount) {
-      this.hud.setState('completed');
-      this.hud.updateStatus(completedCount, totalCount);
-      this.hud.log(`Đã hoàn tất tiến trình dịch (${completedCount}/${totalCount} trang)`);
-    } else {
-      this.hud.setState('idle');
-      this.hud.updateStatus(completedCount, totalCount);
-      this.hud.log(`Tiến trình dịch đã dừng (${completedCount}/${totalCount} trang)`);
-    }
+    const isDone = completedCount > 0 && completedCount >= totalCount;
+    this.hud?.setState(isDone ? 'completed' : 'idle');
+    this.hud?.updateStatus(completedCount, totalCount);
+    this.hud?.log(
+      isDone
+        ? `Đã hoàn tất tiến trình dịch (${completedCount}/${totalCount} trang)`
+        : `Tiến trình dịch đã dừng (${completedCount}/${totalCount} trang)`
+    );
   }
 
   private showModelMissingBanner(): void {
@@ -468,9 +477,9 @@ window.addEventListener('unhandledrejection', (e) => {
   }
 });
 
-// Khoi chay ngay lap tuc
+// Khởi chạy ngay lập tức
 const app = new SpeedySlateContentApp();
-app.start().catch((err) => {
-  console.error('[SpeedySlate] Loi khoi dong:', err);
+app.init().catch((err) => {
+  console.error('[SpeedySlate] Lỗi khởi động:', err);
   DebugLogger.error('Content:Init', err.message, err);
 });

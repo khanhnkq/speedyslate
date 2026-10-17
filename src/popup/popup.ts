@@ -1,7 +1,8 @@
 import browser from 'webextension-polyfill';
 import { ModelHubController } from './model-hub-controller';
 import { DebugTabController } from './debug-tab-controller';
-import { API_PRESETS, OCR_MODEL_PRESETS } from '../shared/presets';
+import { SitesTabController } from './sites-tab-controller';
+import { API_PRESETS, OCR_MODEL_PRESETS, SOURCE_LANGUAGE_PRESETS, TARGET_LANGUAGE_PRESETS } from '../shared/presets';
 import { StorageService } from '../shared/storage';
 import { BubbleTheme, ExtensionSettings, ProviderType } from '../shared/types';
 import { ApiKeyRotator } from '../services/translation/api-key-rotator';
@@ -16,11 +17,15 @@ class PopupController {
   private webgpuToggle = document.getElementById('toggle-webgpu') as HTMLInputElement;
   private modelHub!: ModelHubController;
 
-  // DOM Elements - Mode
+  // DOM Elements - Mode & Languages
   private radioModeHybrid = document.getElementById('radio-mode-hybrid') as HTMLInputElement;
   private radioModeVision = document.getElementById('radio-mode-vision') as HTMLInputElement;
   private sectionOcrModels = document.getElementById('section-ocr-models') as HTMLElement;
   private visionNotice = document.getElementById('vision-mode-notice') as HTMLElement;
+  private selectSourceLang = document.getElementById('select-source-lang') as HTMLSelectElement;
+  private inputCustomSourceLang = document.getElementById('input-custom-source-lang') as HTMLInputElement;
+  private selectTargetLang = document.getElementById('select-target-lang') as HTMLSelectElement;
+  private inputTargetLang = document.getElementById('input-target-lang') as HTMLInputElement;
 
   private backendPollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -43,6 +48,7 @@ class PopupController {
   private saveBtn = document.getElementById('btn-save-settings') as HTMLButtonElement;
   private saveStatus = document.getElementById('save-status') as HTMLElement;
   private debugTab!: DebugTabController;
+  private sitesTab!: SitesTabController;
 
   public async init(): Promise<void> {
     this.settings = await StorageService.getSettings();
@@ -69,6 +75,7 @@ class PopupController {
 
     await this.modelHub.render();
     this.renderProviderPresets();
+    this.initLanguageControls();
     this.loadDisplayPreferences();
 
     // Restore WebGPU toggle state
@@ -84,6 +91,13 @@ class PopupController {
     this.applyModeUI(currentMode);
 
     this.attachEventListeners();
+
+    this.sitesTab = new SitesTabController(
+      () => this.settings,
+      () => StorageService.saveSettings(this.settings)
+    );
+    await this.sitesTab.init();
+
     this.debugTab = new DebugTabController(
       () => this.settings,
       () => this.backendBadge.textContent || 'idle'
@@ -360,6 +374,75 @@ class PopupController {
     });
   }
 
+  private initLanguageControls(): void {
+    if (!this.selectSourceLang || !this.selectTargetLang) return;
+
+    // 1. Populate Source Languages
+    this.selectSourceLang.innerHTML = '';
+    for (const p of SOURCE_LANGUAGE_PRESETS) {
+      const opt = document.createElement('option');
+      opt.value = p.value;
+      opt.textContent = p.label;
+      this.selectSourceLang.appendChild(opt);
+    }
+
+    const currentSource = this.settings.sourceLanguage || 'auto';
+    const isPresetSource = SOURCE_LANGUAGE_PRESETS.some((p) => p.value === currentSource && p.value !== 'custom');
+    if (isPresetSource) {
+      this.selectSourceLang.value = currentSource;
+      if (this.inputCustomSourceLang) this.inputCustomSourceLang.style.display = 'none';
+    } else {
+      this.selectSourceLang.value = 'custom';
+      if (this.inputCustomSourceLang) {
+        this.inputCustomSourceLang.style.display = 'block';
+        this.inputCustomSourceLang.value = currentSource;
+      }
+    }
+
+    // 2. Populate Target Languages
+    this.selectTargetLang.innerHTML = '';
+    for (const p of TARGET_LANGUAGE_PRESETS) {
+      const opt = document.createElement('option');
+      opt.value = p.value;
+      opt.textContent = p.label;
+      this.selectTargetLang.appendChild(opt);
+    }
+
+    const currentTarget = this.settings.targetLanguage || 'Tiếng Việt';
+    if (this.inputTargetLang) this.inputTargetLang.value = currentTarget;
+    const isPresetTarget = TARGET_LANGUAGE_PRESETS.some((p) => p.value === currentTarget && p.value !== 'custom');
+    this.selectTargetLang.value = isPresetTarget ? currentTarget : 'custom';
+
+    // 3. Attach Events
+    this.selectSourceLang.addEventListener('change', () => {
+      const isCustom = this.selectSourceLang.value === 'custom';
+      if (this.inputCustomSourceLang) {
+        this.inputCustomSourceLang.style.display = isCustom ? 'block' : 'none';
+        if (isCustom) this.inputCustomSourceLang.focus();
+      }
+      this.saveCurrentFormToSettings();
+    });
+
+    this.inputCustomSourceLang?.addEventListener('input', () => this.saveCurrentFormToSettings());
+
+    this.selectTargetLang.addEventListener('change', () => {
+      const val = this.selectTargetLang.value;
+      if (val !== 'custom' && this.inputTargetLang) {
+        this.inputTargetLang.value = val;
+      } else if (this.inputTargetLang) {
+        this.inputTargetLang.focus();
+      }
+      this.saveCurrentFormToSettings();
+    });
+
+    this.inputTargetLang?.addEventListener('input', () => {
+      const val = this.inputTargetLang.value.trim();
+      const match = TARGET_LANGUAGE_PRESETS.find((p) => p.value.toLowerCase() === val.toLowerCase() && p.value !== 'custom');
+      this.selectTargetLang.value = match ? match.value : 'custom';
+      this.saveCurrentFormToSettings();
+    });
+  }
+
   private async saveCurrentFormToSettings(): Promise<void> {
     this.saveCurrentProviderToMemory();
     this.settings.activeProvider = this.currentEditingProvider;
@@ -369,6 +452,17 @@ class PopupController {
     this.settings.rateLimitDelayMs = Number(this.rateLimitInput.value) || 1200;
     if (this.toggleRotateProviders) {
       this.settings.rotateProviders = this.toggleRotateProviders.checked;
+    }
+
+    if (this.selectSourceLang) {
+      if (this.selectSourceLang.value === 'custom') {
+        this.settings.sourceLanguage = this.inputCustomSourceLang?.value.trim() || 'auto';
+      } else {
+        this.settings.sourceLanguage = this.selectSourceLang.value || 'auto';
+      }
+    }
+    if (this.inputTargetLang) {
+      this.settings.targetLanguage = this.inputTargetLang.value.trim() || 'Tiếng Việt';
     }
 
     await StorageService.saveSettings(this.settings);

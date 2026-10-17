@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SpeedySlate - Manga/Webtoon Auto-Translator",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Siêu nhẹ & tối ưu: Dịch truyện tranh tự động (Toonhey, Toonily, nHentai...) bằng PaddleOCR cục bộ và AI API (Gemini, Groq, DeepSeek).",
   "browser_specific_settings": {
     "gecko": {
@@ -42,16 +42,7 @@
   "content_scripts": [
     {
       "matches": [
-        "*://toonhey.com/*",
-        "*://*.toonhey.com/*",
-        "*://toonily.com/*",
-        "*://*.toonily.com/*",
-        "*://toonily.me/*",
-        "*://*.toonily.me/*",
-        "*://toonily.net/*",
-        "*://*.toonily.net/*",
-        "*://nhentai.net/*",
-        "*://*.nhentai.net/*"
+        "<all_urls>"
       ],
       "all_frames": true,
       "match_about_blank": true,
@@ -63,7 +54,8 @@
   ],
   "permissions": [
     "storage",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "activeTab"
   ],
   "host_permissions": [
     "https://*/*",
@@ -81,16 +73,7 @@
         "*.mjs"
       ],
       "matches": [
-        "*://toonhey.com/*",
-        "*://*.toonhey.com/*",
-        "*://toonily.com/*",
-        "*://*.toonily.com/*",
-        "*://toonily.me/*",
-        "*://*.toonily.me/*",
-        "*://toonily.net/*",
-        "*://*.toonily.net/*",
-        "*://nhentai.net/*",
-        "*://*.nhentai.net/*"
+        "<all_urls>"
       ]
     }
   ]

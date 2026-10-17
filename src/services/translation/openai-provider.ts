@@ -21,12 +21,13 @@ export class OpenAIProvider implements ITranslationProvider {
     return this.keyRotator.count;
   }
 
-  public async translateDialogues(texts: string[], targetLang: string): Promise<string[]> {
+  public async translateDialogues(texts: string[], targetLang: string, sourceLang?: string): Promise<string[]> {
     if (!texts.length) return [];
 
     const endpoint = `${this.baseUrl}/chat/completions`;
-    const systemPrompt = `You are an expert manga, manhwa, and comic translator into ${targetLang}.
-Translate the provided JSON array of dialogue strings into natural, expressive comic Vietnamese/target language.
+    const srcDesc = (!sourceLang || sourceLang === 'auto') ? 'the original comic language (auto-detect)' : sourceLang;
+    const systemPrompt = `You are an expert manga, manhwa, and comic translator from ${srcDesc} into ${targetLang}.
+Translate the provided JSON array of dialogue strings into natural, expressive comic speech in ${targetLang}.
 
 RULES FOR TRANSLATION:
 1. Translate speech bubbles, inner thoughts, and narrator boxes naturally, keeping character tone, emotion, and brevity.
@@ -222,11 +223,13 @@ RULES FOR TRANSLATION:
     mimeType: string,
     targetLang: string,
     naturalWidth: number,
-    naturalHeight: number
+    naturalHeight: number,
+    sourceLang?: string
   ): Promise<DialogueItem[]> {
     const endpoint = `${this.baseUrl}/chat/completions`;
+    const srcDesc = (!sourceLang || sourceLang === 'auto') ? 'original language (auto-detect)' : sourceLang;
     const systemPrompt = `You are an expert manga, manhwa, and comic visual localization specialist.
-Analyze the comic page image.
+Analyze the comic page image. Translate dialogues from ${srcDesc} into natural, expressive, emotionally fitting ${targetLang}.
 
 TASK:
 1. Detect all character speech bubbles, inner thought bubbles, and narrator text boxes.

@@ -53,14 +53,15 @@ export class AntigravityProvider implements ITranslationProvider {
   /**
    * Hybrid OCR Mode: Translates OCR-extracted dialogue lines
    */
-  public async translateDialogues(texts: string[], targetLang: string): Promise<string[]> {
+  public async translateDialogues(texts: string[], targetLang: string, sourceLang?: string): Promise<string[]> {
     if (!texts.length) return [];
     if (!this.keyRotator.hasKeys()) {
       throw new Error('Chưa cấu hình Gemini API Key cho Antigravity. Vui lòng mở cài đặt extension.');
     }
 
+    const srcDesc = (!sourceLang || sourceLang === 'auto') ? 'original comic language (auto-detect)' : sourceLang;
     const prompt = `You are an expert manga, manhwa, and comic translator.
-Translate the provided JSON array of OCR-extracted dialogue lines into natural, contextual, expressive ${targetLang}.
+Translate the provided JSON array of OCR-extracted dialogue lines from ${srcDesc} into natural, contextual, expressive ${targetLang}.
 
 RULES FOR COMIC TRANSLATION:
 1. Translate dialogue, speech bubbles, inner monologues, and story narrations naturally, matching character emotion and comic context.
@@ -122,14 +123,16 @@ ${JSON.stringify(texts)}`;
     mimeType: string,
     targetLang: string,
     naturalWidth: number,
-    naturalHeight: number
+    naturalHeight: number,
+    sourceLang?: string
   ): Promise<DialogueItem[]> {
     if (!this.keyRotator.hasKeys()) {
       throw new Error('Chưa cấu hình Gemini API Key cho Antigravity. Vui lòng mở cài đặt extension.');
     }
 
+    const srcDesc = (!sourceLang || sourceLang === 'auto') ? 'original language (auto-detect)' : sourceLang;
     const prompt = `You are an expert manga, manhwa, and comic visual localization specialist.
-Analyze this comic page image.
+Analyze this comic page image. Translate dialogues from ${srcDesc} into natural, expressive, emotionally fitting ${targetLang}.
 
 TASK:
 1. Detect all character speech dialogues, inner thoughts, and narrator text boxes.

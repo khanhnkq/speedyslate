@@ -9,7 +9,7 @@ export interface ITranslationProvider {
    * Translates an array of comic dialogue strings into the target language
    * Preserves exact ordering
    */
-  translateDialogues(texts: string[], targetLang: string): Promise<string[]>;
+  translateDialogues(texts: string[], targetLang: string, sourceLang?: string): Promise<string[]>;
 
   /**
    * Tests the connection with a lightweight probe
@@ -28,6 +28,7 @@ export interface ITranslationProvider {
     mimeType: string,
     targetLang: string,
     naturalWidth: number,
-    naturalHeight: number
+    naturalHeight: number,
+    sourceLang?: string
   ): Promise<DialogueItem[]>;
 }

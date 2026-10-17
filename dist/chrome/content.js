@@ -1182,7 +1182,10 @@
         model: API_PRESETS.custom.defaultModel
       }
     },
+    sourceLanguage: "auto",
     targetLanguage: "Ti\u1EBFng Vi\u1EC7t",
+    customSites: [],
+    allowAllSites: false,
     bubbleTheme: "auto",
     autoScrollSpeed: 3,
     autoPrefetch: true,
@@ -1703,6 +1706,13 @@
           break;
         }
       }
+    }
+    destroy() {
+      this.closeMenu();
+      this.btn?.remove();
+      this.toast?.remove();
+      const styleEl = document.getElementById("speedyslate-hud-styles");
+      if (styleEl) styleEl.remove();
     }
   };
 
@@ -4977,10 +4987,108 @@ ${visibleDialogue}]
     }
   };
 
+  // src/shared/site-matcher.ts
+  var DEFAULT_ALLOWED_SITES = [
+    "toonhey.com",
+    "toonily.com",
+    "toonily.net",
+    "toonily.me",
+    "nhentai.net"
+  ];
+  var SiteMatcher = class {
+    /**
+     * Normalizes arbitrary input string (URL, path, wildcard) into clean domain
+     * Examples:
+     * "https://asuracomic.net/chapter/1" -> "asuracomic.net"
+     * "*.mangadex.org/*" -> "mangadex.org"
+     * "  http://nettruyenmax.com/  " -> "nettruyenmax.com"
+     */
+    static normalizeDomain(input) {
+      if (!input) return "";
+      let clean = input.trim().toLowerCase();
+      clean = clean.replace(/^[a-z]+:\/\//, "");
+      const slashIdx = clean.indexOf("/");
+      if (slashIdx !== -1) {
+        clean = clean.substring(0, slashIdx);
+      }
+      const qIdx = clean.indexOf("?");
+      if (qIdx !== -1) {
+        clean = clean.substring(0, qIdx);
+      }
+      const colonIdx = clean.indexOf(":");
+      if (colonIdx !== -1) {
+        clean = clean.substring(0, colonIdx);
+      }
+      clean = clean.replace(/^\*\.?/, "");
+      return clean;
+    }
+    /**
+     * Checks if a given hostname is permitted based on current extension settings
+     */
+    static isSiteAllowed(hostname, settings) {
+      if (!hostname) return false;
+      const cleanHost = this.normalizeDomain(hostname);
+      if (!cleanHost) return false;
+      if (settings?.allowAllSites) {
+        return true;
+      }
+      const customList = (settings?.customSites || []).map((s) => this.normalizeDomain(s)).filter(Boolean);
+      const allAllowed = [...DEFAULT_ALLOWED_SITES, ...customList];
+      return allAllowed.some((site) => {
+        if (cleanHost === site) return true;
+        if (cleanHost.endsWith("." + site)) return true;
+        return false;
+      });
+    }
+  };
+
+  // src/content/cache-restorer.ts
+  var CacheRestorer = class {
+    static async restore(images, completedImages, bubbleTheme, onRestored, markCompleted) {
+      if (images.length === 0) return;
+      const urls = images.map((img) => img.dataset.src || img.getAttribute("data-src") || img.src).filter(Boolean);
+      try {
+        const resp = await SafeMessenger.send({
+          action: "GET_CHAPTER_TRANSLATIONS",
+          imageUrls: urls
+        });
+        if (!resp?.success || !resp.translations) return;
+        const cache = resp.translations;
+        let newlyRestored = 0;
+        for (let i = 0; i < images.length; i++) {
+          const img = images[i];
+          if (completedImages.has(img)) continue;
+          const url = img.dataset.src || img.getAttribute("data-src") || img.src;
+          const cached = cache[url];
+          if (cached && Array.isArray(cached.dialogues) && cached.dialogues.length > 0) {
+            const wrapper = img.parentElement;
+            if (wrapper) {
+              OverlayRenderer.renderDialogues(
+                wrapper,
+                cached.dialogues,
+                img.naturalWidth || cached.naturalWidth || 800,
+                img.naturalHeight || cached.naturalHeight || 1200,
+                bubbleTheme
+              );
+              img.dataset.slateStatus = "translated";
+              PageBadgeManager.updateBadge(wrapper, i, "translated", cached.dialogues.length);
+            }
+            markCompleted(img);
+            newlyRestored++;
+          }
+        }
+        if (newlyRestored > 0) {
+          onRestored(newlyRestored);
+        }
+      } catch {
+      }
+    }
+  };
+
   // src/content/index.ts
   var SpeedySlateContentApp = class {
     settings;
-    hud;
+    hud = null;
     ocrQueue;
     translationQueue;
     taskProcessor;
@@ -4989,10 +5097,53 @@ ${visibleDialogue}]
     completedImages = /* @__PURE__ */ new Set();
     isModelReady = false;
     mutationObserver = null;
-    constructor() {
+    isStarted = false;
+    async init() {
+      try {
+        this.settings = await StorageService.getSettings();
+      } catch {
+      }
+      this.setupMessageListener();
+      if (!SiteMatcher.isSiteAllowed(window.location.hostname, this.settings)) {
+        return;
+      }
+      await this.start();
+    }
+    setupMessageListener() {
+      import_webextension_polyfill4.default.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+        if (msg?.action === "CHECK_SITE_STATUS") {
+          const isAllowed = SiteMatcher.isSiteAllowed(window.location.hostname, this.settings);
+          sendResponse?.({
+            active: this.isStarted,
+            hostname: window.location.hostname,
+            isAllowed
+          });
+          return true;
+        }
+        if (msg?.action === "ACTIVATE_CURRENT_SITE") {
+          StorageService.getSettings().then(async (newSettings) => {
+            this.settings = newSettings;
+            await this.start();
+            sendResponse?.({ success: true });
+          });
+          return true;
+        }
+        if (msg?.action === "DEACTIVATE_CURRENT_SITE") {
+          this.stop();
+          sendResponse?.({ success: true });
+          return true;
+        }
+        if (msg?.action === "CACHE_CLEARED") {
+          this.resetPageTranslations();
+          this.hud?.log("Cache \u0111\xE3 \u0111\u01B0\u1EE3c l\xE0m m\u1EDBi t\u1EEB ti\u1EC7n \xEDch");
+        }
+      });
+    }
+    initHud() {
+      if (this.hud) return;
       this.hud = new FloatingHud({
         onToggleTranslate: async () => {
-          const currentState = this.hud.getState();
+          const currentState = this.hud?.getState();
           if (currentState === "translating") {
             await this.handleStartTranslating();
           } else {
@@ -5002,7 +5153,7 @@ ${visibleDialogue}]
             }
             this.ocrQueue?.pause();
             this.translationQueue?.pause();
-            this.hud.log("Da tam dung tien trinh dich truyen");
+            this.hud?.log("\u0110\xE3 t\u1EA1m d\u1EEBng ti\u1EBFn tr\xECnh d\u1ECBch truy\u1EC7n");
           }
         },
         onToggleVisibility: (visible) => OverlayRenderer.setAllVisibility(visible),
@@ -5012,29 +5163,25 @@ ${visibleDialogue}]
             chapterUrl: window.location.href
           });
           this.resetPageTranslations();
-          this.hud.log(`Da xoa ${resp?.deleted || 0} ban dich cache cua chuong nay`);
+          this.hud?.log(`\u0110\xE3 x\xF3a ${resp?.deleted || 0} b\u1EA3n d\u1ECBch cache c\u1EE7a ch\u01B0\u01A1ng n\xE0y`);
         },
         onClearAllCache: async () => {
           await SafeMessenger.send({ action: "CLEAR_ALL_CACHE" });
           this.resetPageTranslations();
-          this.hud.log("Da don sach toan bo cache");
-        }
-      });
-      this.hud.log("SpeedySlate dang khoi tao...");
-      import_webextension_polyfill4.default.runtime.onMessage.addListener((msg) => {
-        if (msg?.action === "CACHE_CLEARED") {
-          this.resetPageTranslations();
-          this.hud.log("Cache \u0111\xE3 \u0111\u01B0\u1EE3c l\xE0m m\u1EDBi t\u1EEB ti\u1EC7n \xEDch");
+          this.hud?.log("\u0110\xE3 d\u1ECDn s\u1EA1ch to\xE0n b\u1ED9 cache");
         }
       });
     }
     async start() {
+      if (this.isStarted) return;
+      this.isStarted = true;
       console.log("[SpeedySlate] Khoi chay tren trang:", window.location.href);
       try {
         this.settings = await StorageService.getSettings();
       } catch {
-        this.hud.log("Dang dung cau hinh mac dinh");
       }
+      this.initHud();
+      this.hud?.log("SpeedySlate dang khoi tao...");
       this.ocrQueue = new OrderedTaskQueue(
         async (task) => this.taskProcessor.processOcrTask(task),
         1,
@@ -5063,36 +5210,23 @@ ${visibleDialogue}]
       await this.restoreCachedTranslations();
       await this.checkModelStatusFromBackground(false);
       if (this.completedImages.size < this.images.length) {
-        this.hud.log(`San sang dich. Tim thay ${this.images.length} trang truyen`);
+        this.hud?.log(`S\u1EB5n s\xE0ng d\u1ECBch. T\xECm th\u1EA5y ${this.images.length} trang truy\u1EC7n`);
         try {
           if (sessionStorage.getItem("speedyslate_translating") === "true") {
-            this.hud.setState("translating");
+            this.hud?.setState("translating");
             await this.handleStartTranslating();
           }
         } catch {
         }
       }
       const geminiKey = this.settings?.providers?.gemini?.apiKey || this.settings?.providers?.antigravity?.apiKey || "";
-      this.companionController = new CompanionController({
-        enabled: true,
-        apiKey: geminiKey,
-        model: "gemini-3.8-live",
-        voiceName: "Aoede",
-        visionEnabled: true,
-        autoVisionOnScroll: true
-      });
+      const companionCfg = { enabled: true, apiKey: geminiKey, model: "gemini-3.8-live", voiceName: "Aoede", visionEnabled: true, autoVisionOnScroll: true };
+      this.companionController = new CompanionController(companionCfg);
       import_webextension_polyfill4.default.storage.onChanged.addListener((changes, area) => {
         if (area === "local" && changes["speedyslate_settings"]?.newValue) {
           const newSettings = changes["speedyslate_settings"].newValue;
           const key = newSettings?.providers?.gemini?.apiKey || newSettings?.providers?.antigravity?.apiKey || "";
-          this.companionController?.updateSettings({
-            enabled: true,
-            apiKey: key,
-            model: "gemini-3.8-live",
-            voiceName: "Aoede",
-            visionEnabled: true,
-            autoVisionOnScroll: true
-          });
+          this.companionController?.updateSettings({ ...companionCfg, apiKey: key });
         }
       });
     }
@@ -5111,8 +5245,8 @@ ${visibleDialogue}]
         sessionStorage.setItem("speedyslate_translating", "false");
       } catch {
       }
-      this.hud.updateStatus(0, this.images.length);
-      this.hud.setState("idle");
+      this.hud?.updateStatus(0, this.images.length);
+      this.hud?.setState("idle");
     }
     handleContextInvalidated() {
       this.ocrQueue?.clear();
@@ -5128,7 +5262,7 @@ ${visibleDialogue}]
       if (!this.isModelReady) {
         await this.checkModelStatusFromBackground(true);
         if (!this.isModelReady) {
-          this.hud.setState("idle");
+          this.hud?.setState("idle");
           return;
         }
       }
@@ -5142,7 +5276,7 @@ ${visibleDialogue}]
         sessionStorage.setItem("speedyslate_translating", "true");
       } catch {
       }
-      this.hud.log(`Bat dau dich chuong (${this.images.length} trang)...`);
+      this.hud?.log(`Bat dau dich chuong (${this.images.length} trang)...`);
       ToonheyAdapter.forceLoadAll(this.images);
       this.enqueueAllImages();
       this.ocrQueue.resume();
@@ -5153,16 +5287,16 @@ ${visibleDialogue}]
         const resp = await SafeMessenger.send({ action: "CHECK_MODEL_STATUS" });
         if (resp?.success && resp.status?.status === "ready") {
           this.isModelReady = true;
-          this.hud.log("Model OCR da san sang");
+          this.hud?.log("Model OCR da san sang");
         } else {
           this.isModelReady = false;
-          this.hud.log("Chua tai model OCR. Mo popup tien ich de tai (~10MB)", true);
+          this.hud?.log("Chua tai model OCR. Mo popup tien ich de tai (~10MB)", true);
           if (showBannerIfMissing) {
             this.showModelMissingBanner();
           }
         }
       } catch (err) {
-        this.hud.log(`Loi kiem tra model: ${err.message}`, true);
+        this.hud?.log(`Loi kiem tra model: ${err.message}`, true);
       }
     }
     isDetecting = false;
@@ -5190,9 +5324,9 @@ ${visibleDialogue}]
               PageBadgeManager.ensureBadge(img.parentElement, idx);
             }
           });
-          this.hud.updateStatus(this.completedImages.size, this.images.length);
-          this.hud.log(`Da phat hien ${this.images.length} trang truyen`);
-          if (this.hud.getState() === "translating") {
+          this.hud?.updateStatus(this.completedImages.size, this.images.length);
+          this.hud?.log(`Da phat hien ${this.images.length} trang truyen`);
+          if (this.hud?.getState() === "translating") {
             this.enqueueAllImages();
           } else {
             this.restoreCachedTranslations();
@@ -5203,48 +5337,36 @@ ${visibleDialogue}]
       }
     }
     async restoreCachedTranslations() {
-      if (this.images.length === 0) return;
-      const urls = this.images.map((img) => img.dataset.src || img.getAttribute("data-src") || img.src).filter(Boolean);
-      try {
-        const resp = await SafeMessenger.send({
-          action: "GET_CHAPTER_TRANSLATIONS",
-          imageUrls: urls
-        });
-        if (resp?.success && resp.translations) {
-          const cache = resp.translations;
-          let newlyRestored = 0;
-          for (let i = 0; i < this.images.length; i++) {
-            const img = this.images[i];
-            if (this.completedImages.has(img)) continue;
-            const url = img.dataset.src || img.getAttribute("data-src") || img.src;
-            const cached = cache[url];
-            if (cached && Array.isArray(cached.dialogues) && cached.dialogues.length > 0) {
-              const wrapper = img.parentElement;
-              if (wrapper) {
-                OverlayRenderer.renderDialogues(
-                  wrapper,
-                  cached.dialogues,
-                  img.naturalWidth || cached.naturalWidth || 800,
-                  img.naturalHeight || cached.naturalHeight || 1200,
-                  this.settings?.bubbleTheme || "auto"
-                );
-                img.dataset.slateStatus = "translated";
-                PageBadgeManager.updateBadge(wrapper, i, "translated", cached.dialogues.length);
-              }
-              this.markImageCompleted(img, false);
-              newlyRestored++;
-            }
+      await CacheRestorer.restore(
+        this.images,
+        this.completedImages,
+        this.settings?.bubbleTheme || "auto",
+        (count) => {
+          this.hud?.updateStatus(this.completedImages.size, this.images.length);
+          this.hud?.log(`\u0110\xE3 n\u1EA1p t\u1EE9c th\xEC ${count} trang t\u1EEB Cache (0ms)`);
+          if (this.completedImages.size >= this.images.length) {
+            this.hud?.setState("completed");
           }
-          if (newlyRestored > 0) {
-            this.hud.updateStatus(this.completedImages.size, this.images.length);
-            this.hud.log(`Da nap tuc thi ${newlyRestored} trang tu Cache (0ms)`);
-            if (this.completedImages.size >= this.images.length) {
-              this.hud.setState("completed");
-            }
-          }
-        }
-      } catch {
+        },
+        (img) => this.markImageCompleted(img, false)
+      );
+    }
+    stop() {
+      if (!this.isStarted) return;
+      this.isStarted = false;
+      this.ocrQueue?.pause();
+      this.ocrQueue?.clear();
+      this.translationQueue?.pause();
+      this.translationQueue?.clear();
+      if (this.mutationObserver) {
+        this.mutationObserver.disconnect();
+        this.mutationObserver = null;
       }
+      this.companionController?.destroy?.();
+      this.companionController = null;
+      this.resetPageTranslations();
+      this.hud?.destroy();
+      this.hud = null;
     }
     setupMutationObserver() {
       let debounceTimer = null;
@@ -5266,7 +5388,7 @@ ${visibleDialogue}]
             if (entry.isIntersecting) {
               const img = entry.target;
               const index = this.images.indexOf(img);
-              if (index !== -1 && !this.completedImages.has(img) && !img.dataset.slateStatus && this.hud.getState() === "translating") {
+              if (index !== -1 && !this.completedImages.has(img) && !img.dataset.slateStatus && this.hud?.getState() === "translating") {
                 this.ocrQueue.enqueue({ index, img });
               }
             }
@@ -5288,7 +5410,7 @@ ${visibleDialogue}]
     }
     markImageCompleted(img, checkAllDone = true) {
       this.completedImages.add(img);
-      this.hud.updateStatus(this.completedImages.size, this.images.length);
+      this.hud?.updateStatus(this.completedImages.size, this.images.length);
       if (checkAllDone) {
         this.checkAndHandleCompletion();
       }
@@ -5298,7 +5420,7 @@ ${visibleDialogue}]
      * automatically stops the translation workflow to prevent infinite loops / rate limit errors.
      */
     checkAndHandleCompletion() {
-      const currentState = this.hud.getState();
+      const currentState = this.hud?.getState();
       if (currentState !== "translating" && currentState !== "completed") return;
       const total = this.images.length;
       if (total === 0) return;
@@ -5328,15 +5450,12 @@ ${visibleDialogue}]
       }
       const completedCount = this.completedImages.size;
       const totalCount = this.images.length;
-      if (completedCount > 0 && completedCount >= totalCount) {
-        this.hud.setState("completed");
-        this.hud.updateStatus(completedCount, totalCount);
-        this.hud.log(`\u0110\xE3 ho\xE0n t\u1EA5t ti\u1EBFn tr\xECnh d\u1ECBch (${completedCount}/${totalCount} trang)`);
-      } else {
-        this.hud.setState("idle");
-        this.hud.updateStatus(completedCount, totalCount);
-        this.hud.log(`Ti\u1EBFn tr\xECnh d\u1ECBch \u0111\xE3 d\u1EEBng (${completedCount}/${totalCount} trang)`);
-      }
+      const isDone = completedCount > 0 && completedCount >= totalCount;
+      this.hud?.setState(isDone ? "completed" : "idle");
+      this.hud?.updateStatus(completedCount, totalCount);
+      this.hud?.log(
+        isDone ? `\u0110\xE3 ho\xE0n t\u1EA5t ti\u1EBFn tr\xECnh d\u1ECBch (${completedCount}/${totalCount} trang)` : `Ti\u1EBFn tr\xECnh d\u1ECBch \u0111\xE3 d\u1EEBng (${completedCount}/${totalCount} trang)`
+      );
     }
     showModelMissingBanner() {
       ModelMissingBanner.show();
@@ -5356,8 +5475,8 @@ ${visibleDialogue}]
     }
   });
   var app = new SpeedySlateContentApp();
-  app.start().catch((err) => {
-    console.error("[SpeedySlate] Loi khoi dong:", err);
+  app.init().catch((err) => {
+    console.error("[SpeedySlate] L\u1ED7i kh\u1EDFi \u0111\u1ED9ng:", err);
     DebugLogger.error("Content:Init", err.message, err);
   });
 })();

@@ -63,7 +63,10 @@ export interface ExtensionSettings {
   translationMode: TranslationMode;
   activeProvider: ProviderType;
   providers: Record<ProviderType, ProviderConfig>;
-  targetLanguage: string;
+  sourceLanguage: string;   // e.g. 'auto', 'English', 'Japanese', 'Korean', 'Chinese', etc.
+  targetLanguage: string;   // Any language name e.g. 'Tiếng Việt', 'English', etc.
+  customSites: string[];    // User-added custom domains e.g. ['asuracomic.net', 'mangadex.org']
+  allowAllSites: boolean;   // Allow translation on all websites
   bubbleTheme: BubbleTheme;
   autoScrollSpeed: number; // pixels per step (1 to 10)
   autoPrefetch: boolean;

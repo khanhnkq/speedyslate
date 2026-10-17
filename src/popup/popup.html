@@ -21,7 +21,7 @@
             <span class="logo-mark"><i class="ti ti-bolt"></i></span>
             <span class="brand-title">SPEEDYSLATE</span>
           </div>
-          <span class="brand-badge">PRO v1.3.0</span>
+          <span class="brand-badge">PRO v1.3.1</span>
         </div>
 
         <!-- TAB NAVIGATION (PANELS) -->
@@ -37,6 +37,10 @@
           <button class="tab-btn" data-tab="tab-api" type="button">
             <i class="ti ti-key"></i>
             <span>API</span>
+          </button>
+          <button class="tab-btn" data-tab="tab-sites" type="button">
+            <i class="ti ti-world"></i>
+            <span>SITES</span>
           </button>
           <button class="tab-btn" data-tab="tab-system" type="button">
             <i class="ti ti-adjustments"></i>
@@ -78,6 +82,29 @@
                 <p class="mode-summary">Gửi toàn bộ ảnh cho Vision AI dịch ngữ cảnh tranh. Không cần tải ONNX.</p>
               </div>
             </label>
+          </div>
+
+          <!-- NGÔN NGỮ | TRANSLATION LANGUAGES -->
+          <div class="panel-section-title" style="margin-top: 14px">NGÔN NGỮ | LANGUAGES</div>
+
+          <div class="form-group">
+            <label class="form-label" for="select-source-lang">
+              <i class="ti ti-language"></i> NGÔN NGỮ GỐC (TRUYỆN RAW)
+            </label>
+            <div class="input-stack">
+              <select id="select-source-lang" class="form-select"></select>
+              <input type="text" id="input-custom-source-lang" class="form-input" placeholder="Tự nhập ngôn ngữ gốc..." style="display: none;" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="input-target-lang">
+              <i class="ti ti-language-hiragana"></i> NGÔN NGỮ DỊCH (BẤT KÌ)
+            </label>
+            <div class="input-stack">
+              <select id="select-target-lang" class="form-select"></select>
+              <input type="text" id="input-target-lang" class="form-input" placeholder="Nhập ngôn ngữ đích bất kì (vd: Tiếng Việt, English, Polish...)" />
+            </div>
           </div>
         </div>
 
@@ -198,7 +225,59 @@
           </div>
         </div>
 
-        <!-- 4. TAB: SYSTEM (CACHE, DISPLAY & LOGS) -->
+        <!-- 4. TAB: SITES (WEBSITE MANAGEMENT) -->
+        <div class="tab-pane" id="tab-sites">
+          <div class="panel-section-title">TRANG WEB | MANAGED SITES</div>
+
+          <!-- Current Website Card -->
+          <div class="site-current-card">
+            <div class="site-current-meta">
+              <span class="site-current-label">Trang hiện tại:</span>
+              <span id="current-domain-text" class="site-current-domain">Đang kiểm tra…</span>
+            </div>
+            <button id="btn-toggle-current-site" class="btn btn-primary btn-sm" type="button">
+              <i class="ti ti-plus"></i> Bật trang này
+            </button>
+          </div>
+
+          <!-- Global Switch -->
+          <div class="toggle-card" style="margin-top: 8px; margin-bottom: 12px;">
+            <div class="toggle-meta">
+              <i class="ti ti-world-share toggle-icon"></i>
+              <div class="toggle-text-block">
+                <span class="toggle-name">Áp dụng cho mọi trang web</span>
+                <span class="toggle-desc">Tự động kích hoạt thanh dịch trên tất cả website</span>
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-allow-all-sites" />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+
+          <!-- Add Custom Domain Input -->
+          <div class="form-group">
+            <label class="form-label" for="input-new-site">
+              <i class="ti ti-plus"></i> THÊM TÊN MIỀN WEB
+            </label>
+            <div class="input-inline-action">
+              <input type="text" id="input-new-site" class="form-input" placeholder="vd: asuracomic.net, mangadex.org..." />
+              <button id="btn-add-site" class="btn btn-primary btn-sm" type="button">
+                <i class="ti ti-plus"></i> Thêm
+              </button>
+            </div>
+            <span id="add-site-feedback" class="inline-feedback"></span>
+          </div>
+
+          <!-- Managed Site List -->
+          <div class="panel-section-title" style="margin-top: 14px">
+            <span>DANH SÁCH ĐÃ BẬT</span>
+            <span id="site-count-badge" class="pill-badge">0 web</span>
+          </div>
+          <div id="site-list-container" class="site-list-box"></div>
+        </div>
+
+        <!-- 5. TAB: SYSTEM (CACHE, DISPLAY & LOGS) -->
         <div class="tab-pane" id="tab-system">
           <div class="panel-section-title">HỆ THỐNG | PREFERENCES</div>
 

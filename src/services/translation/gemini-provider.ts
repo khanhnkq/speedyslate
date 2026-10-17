@@ -22,17 +22,18 @@ export class GeminiProvider implements ITranslationProvider {
     return this.keyRotator.count;
   }
 
-  public async translateDialogues(texts: string[], targetLang: string): Promise<string[]> {
+  public async translateDialogues(texts: string[], targetLang: string, sourceLang?: string): Promise<string[]> {
     if (!texts.length) return [];
     if (!this.keyRotator.hasKeys()) {
       throw new Error('Chưa cấu hình Gemini API Key. Vui lòng mở cài đặt extension.');
     }
     if (this.model.includes('antigravity')) {
       const antigravity = new AntigravityProvider(this.keyRotator.getRawKeys(), this.model, this.baseUrl);
-      return antigravity.translateDialogues(texts, targetLang);
+      return antigravity.translateDialogues(texts, targetLang, sourceLang);
     }
+    const srcDesc = (!sourceLang || sourceLang === 'auto') ? 'original comic language (auto-detect)' : sourceLang;
     const systemPrompt = `You are an expert manga, manhwa, and comic translator.
-Translate the provided JSON array of OCR-extracted dialogue lines into natural, contextual, expressive ${targetLang}.
+Translate the provided JSON array of OCR-extracted dialogue lines from ${srcDesc} into natural, contextual, expressive ${targetLang}.
 
 RULES FOR COMIC TRANSLATION:
 1. Translate dialogue, speech bubbles, inner monologues, and story narrations naturally, matching character emotion and comic context.
@@ -237,14 +238,15 @@ RULES FOR COMIC TRANSLATION:
     mimeType: string,
     targetLang: string,
     naturalWidth: number,
-    naturalHeight: number
+    naturalHeight: number,
+    sourceLang?: string
   ): Promise<DialogueItem[]> {
     if (!this.keyRotator.hasKeys()) {
       throw new Error('Chưa cấu hình Gemini API Key. Vui lòng mở cài đặt extension.');
     }
     if (this.model.includes('antigravity')) {
       const antigravity = new AntigravityProvider(this.keyRotator.getRawKeys(), this.model, this.baseUrl);
-      return antigravity.translateImage(base64Data, mimeType, targetLang, naturalWidth, naturalHeight);
+      return antigravity.translateImage(base64Data, mimeType, targetLang, naturalWidth, naturalHeight, sourceLang);
     }
     const systemPrompt = `You are an expert manga, manhwa, and comic visual localization specialist.
 Analyze the comic page image.

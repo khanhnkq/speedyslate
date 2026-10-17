@@ -446,4 +446,12 @@ export class FloatingHud {
       }
     }
   }
+
+  public destroy(): void {
+    this.closeMenu();
+    this.btn?.remove();
+    this.toast?.remove();
+    const styleEl = document.getElementById('speedyslate-hud-styles');
+    if (styleEl) styleEl.remove();
+  }
 }

@@ -190,6 +190,7 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
 
             const { base64Data, mimeType } = await ImageFetcher.getBase64Data(dataUrl, imageUrl, msg.chapterUrl);
             const targetLang = settings.targetLanguage || 'Tiếng Việt';
+            const sourceLang = settings.sourceLanguage || 'auto';
             const width = msg.naturalWidth || msg.width || 800;
             const height = msg.naturalHeight || msg.height || 1200;
 
@@ -204,7 +205,8 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
               height,
               provider,
               targetLang,
-              minDelayMs
+              minDelayMs,
+              sourceLang
             );
 
             // Save to Cache DB
@@ -275,12 +277,13 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
         const texts = dialogues.map((d: DialogueItem) => d.originalText);
         const provider = TranslationProviderFactory.createProvider(settings);
         const targetLang = settings.targetLanguage || 'Tiếng Việt';
+        const sourceLang = settings.sourceLanguage || 'auto';
 
         const totalKeys = MultiProviderRotator.countTotalKeys(settings);
         const minDelayMs = MultiProviderRotator.computeEffectiveDelay(settings);
 
         const translations = await ApiRateLimiter.throttle(minDelayMs, () =>
-          provider.translateDialogues(texts, targetLang)
+          provider.translateDialogues(texts, targetLang, sourceLang)
         );
 
         const validDialogues: DialogueItem[] = [];
@@ -365,6 +368,7 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
         const texts = dialogues.map((d) => d.originalText);
         const provider = TranslationProviderFactory.createProvider(settings);
         const targetLang = settings.targetLanguage || 'Tiếng Việt';
+        const sourceLang = settings.sourceLanguage || 'auto';
 
         const minDelayMs =
           settings.rateLimitDelayMs !== undefined
@@ -372,7 +376,7 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
             : (API_PRESETS[settings.activeProvider]?.defaultDelayMs ?? 1200);
 
         const translations = await ApiRateLimiter.throttle(minDelayMs, () =>
-          provider.translateDialogues(texts, targetLang)
+          provider.translateDialogues(texts, targetLang, sourceLang)
         );
 
         const validDialogues: DialogueItem[] = [];

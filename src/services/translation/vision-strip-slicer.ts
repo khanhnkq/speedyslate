@@ -22,6 +22,7 @@ export class VisionStripSlicer {
     provider: ITranslationProvider,
     targetLang: string,
     minDelayMs: number,
+    sourceLang?: string,
     maxSliceHeight = 2800,
     overlap = 160
   ): Promise<DialogueItem[]> {
@@ -30,7 +31,7 @@ export class VisionStripSlicer {
     // 1. Fast path: standard comic page (Toonhey, manga, or single panel)
     if (naturalHeight <= maxSliceHeight + 200) {
       return ApiRateLimiter.throttle(minDelayMs, () =>
-        provider.translateImage!(base64Data, mimeType, targetLang, naturalWidth, naturalHeight)
+        provider.translateImage!(base64Data, mimeType, targetLang, naturalWidth, naturalHeight, sourceLang)
       );
     }
 
@@ -77,7 +78,8 @@ export class VisionStripSlicer {
               'image/jpeg',
               targetLang,
               width,
-              task.currentH
+              task.currentH,
+              sourceLang
             );
           } catch (err: any) {
             DebugLogger.warn('VisionStripSlicer', `Slice #${idx + 1} translation failed: ${err.message}`);

@@ -227,6 +227,35 @@ export const OCR_MODEL_PRESETS: OcrModelPreset[] = [
   }
 ];
 
+export const SOURCE_LANGUAGE_PRESETS = [
+  { value: 'auto', label: '✨ Tự động nhận diện (Auto Detect)' },
+  { value: 'English', label: 'Tiếng Anh (English)' },
+  { value: 'Japanese', label: 'Tiếng Nhật (Japanese - RAW)' },
+  { value: 'Korean', label: 'Tiếng Hàn (Korean - RAW)' },
+  { value: 'Chinese', label: 'Tiếng Trung (Chinese - RAW)' },
+  { value: 'French', label: 'Tiếng Pháp (French)' },
+  { value: 'Spanish', label: 'Tiếng Tây Ban Nha (Spanish)' },
+  { value: 'Russian', label: 'Tiếng Nga (Russian)' },
+  { value: 'custom', label: 'Khác (Tự nhập tay)...' }
+];
+
+export const TARGET_LANGUAGE_PRESETS = [
+  { value: 'Tiếng Việt', label: 'Tiếng Việt (Vietnamese)' },
+  { value: 'English', label: 'English (Tiếng Anh)' },
+  { value: 'Japanese', label: 'Tiếng Nhật (Japanese)' },
+  { value: 'Korean', label: 'Tiếng Hàn (Korean)' },
+  { value: 'Chinese Simplified', label: 'Tiếng Trung Giản thể' },
+  { value: 'Chinese Traditional', label: 'Tiếng Trung Phồn thể' },
+  { value: 'French', label: 'Tiếng Pháp (French)' },
+  { value: 'German', label: 'Tiếng Đức (German)' },
+  { value: 'Spanish', label: 'Tiếng Tây Ban Nha (Spanish)' },
+  { value: 'Portuguese', label: 'Tiếng Bồ Đào Nha (Portuguese)' },
+  { value: 'Russian', label: 'Tiếng Nga (Russian)' },
+  { value: 'Thai', label: 'Tiếng Thái (Thai)' },
+  { value: 'Indonesian', label: 'Tiếng Indonesia' },
+  { value: 'custom', label: 'Khác (Bất kì ngôn ngữ nào)...' }
+];
+
 export const DEFAULT_SETTINGS: ExtensionSettings = {
   translationMode: 'hybrid_ocr',
   activeProvider: 'gemini',
@@ -288,7 +317,10 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
       model: API_PRESETS.custom.defaultModel
     }
   },
+  sourceLanguage: 'auto',
   targetLanguage: 'Tiếng Việt',
+  customSites: [],
+  allowAllSites: false,
   bubbleTheme: 'auto',
   autoScrollSpeed: 3,
   autoPrefetch: true,

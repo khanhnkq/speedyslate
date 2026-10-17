@@ -125,7 +125,7 @@ export class MultiProviderRotator implements ITranslationProvider {
   /**
    * Translates dialogue lines with round-robin rotation and automatic failover
    */
-  public async translateDialogues(texts: string[], targetLang: string): Promise<string[]> {
+  public async translateDialogues(texts: string[], targetLang: string, sourceLang?: string): Promise<string[]> {
     if (!texts.length) return [];
 
     const candidates = this.getOrderedCandidates(false);
@@ -137,7 +137,7 @@ export class MultiProviderRotator implements ITranslationProvider {
 
       try {
         const provider = TranslationProviderFactory.createSingleProvider(providerType, this.settings);
-        const result = await provider.translateDialogues(texts, targetLang);
+        const result = await provider.translateDialogues(texts, targetLang, sourceLang);
 
         MultiProviderRotator.clearCooldown(providerType);
         this.lastActiveProviderType = providerType;
@@ -181,7 +181,8 @@ export class MultiProviderRotator implements ITranslationProvider {
     mimeType: string,
     targetLang: string,
     naturalWidth: number,
-    naturalHeight: number
+    naturalHeight: number,
+    sourceLang?: string
   ): Promise<DialogueItem[]> {
     const candidates = this.getOrderedCandidates(true);
     let lastError: any = null;
@@ -201,7 +202,8 @@ export class MultiProviderRotator implements ITranslationProvider {
           mimeType,
           targetLang,
           naturalWidth,
-          naturalHeight
+          naturalHeight,
+          sourceLang
         );
 
         MultiProviderRotator.clearCooldown(providerType);

@@ -1716,105 +1716,229 @@
     }
   };
 
+  // src/content/overlay/text-auto-fitter.ts
+  var TextAutoFitter = class {
+    /**
+     * Finds the length of the longest word in the sentence (used for word-wrap constraints).
+     */
+    static getLongestWordLength(text) {
+      if (!text) return 0;
+      const words = text.split(/\s+/);
+      let maxLen = 0;
+      for (const w of words) {
+        const clean = w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+        if (clean.length > maxLen) {
+          maxLen = clean.length;
+        }
+      }
+      return maxLen;
+    }
+    /**
+     * Dynamically calculates the optimal font size (in pixels) to fit inside the bubble bounds.
+     * Scales from 9px up to 28px based on bubble capacity and text length.
+     */
+    static computeOptimalFontSize(boxWidthPx, boxHeightPx, text) {
+      const trimmed = text.trim();
+      if (!trimmed) return 14;
+      const words = trimmed.split(/\s+/).filter((w) => w.length > 0);
+      const longestWordLen = this.getLongestWordLength(trimmed);
+      const availW = Math.max(16, boxWidthPx - 12);
+      const availH = Math.max(16, boxHeightPx - 8);
+      const lineHeightRatio = 1.28;
+      const charWidthRatio = 0.56;
+      const maxFs = Math.min(26, Math.max(14, Math.floor(availH / 1.9)));
+      const minFs = 9;
+      for (let fs = maxFs; fs >= minFs; fs -= 0.5) {
+        const longestWordWidth = longestWordLen * fs * 0.58;
+        if (longestWordWidth > availW && fs > minFs) {
+          continue;
+        }
+        const charsPerLine = Math.max(1, Math.floor(availW / (fs * charWidthRatio)));
+        const linesCount = this.simulateLineCount(words, charsPerLine);
+        const totalTextHeight = linesCount * (fs * lineHeightRatio);
+        if (totalTextHeight <= availH - 2) {
+          return Number(fs.toFixed(1));
+        }
+      }
+      return minFs;
+    }
+    /**
+     * Fast exact line-wrap simulation based on whitespace-separated words.
+     */
+    static simulateLineCount(words, charsPerLine) {
+      let lines = 1;
+      let currentLineChars = 0;
+      for (let i = 0; i < words.length; i++) {
+        const wLen = words[i].length;
+        if (currentLineChars === 0) {
+          currentLineChars = wLen;
+        } else if (currentLineChars + 1 + wLen <= charsPerLine) {
+          currentLineChars += 1 + wLen;
+        } else {
+          lines++;
+          currentLineChars = wLen;
+        }
+      }
+      return lines;
+    }
+  };
+
+  // src/content/overlay/bubble-geometry.ts
+  var BubbleGeometry = class {
+    /**
+     * Computes the calibrated position and dimensions to cover the dialogue text cleanly.
+     */
+    static computeCoordinates(item, naturalWidth, naturalHeight) {
+      let topPct;
+      let leftPct;
+      let widthPct;
+      let heightPct;
+      if (item.normBox) {
+        topPct = item.normBox.ymin / 10;
+        leftPct = item.normBox.xmin / 10;
+        widthPct = Math.max(1, (item.normBox.xmax - item.normBox.xmin) / 10);
+        heightPct = Math.max(1, (item.normBox.ymax - item.normBox.ymin) / 10);
+      } else {
+        topPct = item.box.y / Math.max(1, naturalHeight) * 100;
+        leftPct = item.box.x / Math.max(1, naturalWidth) * 100;
+        widthPct = item.box.width / Math.max(1, naturalWidth) * 100;
+        heightPct = item.box.height / Math.max(1, naturalHeight) * 100;
+      }
+      heightPct = Math.min(28, heightPct);
+      let pixelWidth = widthPct / 100 * naturalWidth;
+      let pixelHeight = heightPct / 100 * naturalHeight;
+      const aspectRatio = pixelHeight / Math.max(1, pixelWidth);
+      if (aspectRatio >= 1.8 || pixelWidth < 45) {
+        const longestWordLen = TextAutoFitter.getLongestWordLength(item.translatedText || "");
+        const minWordPx = longestWordLen * 8.5 + 16;
+        const targetWidthPx = Math.max(pixelWidth * 1.5, minWordPx, 60);
+        const targetWidthPct = targetWidthPx / Math.max(1, naturalWidth) * 100;
+        const centerX = leftPct + widthPct / 2;
+        leftPct = Math.max(0.5, centerX - targetWidthPct / 2);
+        widthPct = Math.min(99 - leftPct, targetWidthPct);
+        pixelWidth = widthPct / 100 * naturalWidth;
+      }
+      const padPixelX = item.normBox ? 3 : 5;
+      const padPixelY = item.normBox ? 3 : 4;
+      const expandX = padPixelX * 2 / Math.max(1, naturalWidth) * 100;
+      const expandY = padPixelY * 2 / Math.max(1, naturalHeight) * 100;
+      const finalLeft = Math.max(0.5, leftPct - expandX / 2);
+      const finalTop = Math.max(0.5, topPct - expandY / 2);
+      const finalWidth = Math.min(99 - finalLeft, widthPct + expandX);
+      const finalHeight = Math.min(28, heightPct + expandY);
+      return {
+        topPct: finalTop,
+        leftPct: finalLeft,
+        widthPct: finalWidth,
+        heightPct: finalHeight,
+        pixelWidth: finalWidth / 100 * naturalWidth,
+        pixelHeight: finalHeight / 100 * naturalHeight,
+        aspectRatio
+      };
+    }
+  };
+
+  // src/content/overlay/overlay-styler.ts
+  var OverlayStyler = class {
+    /**
+     * Applies complete overlay styles anchored to the comic speech bubble dimensions.
+     */
+    static applyStyles(bubble, coords, fontSize, isDark) {
+      const bg = isDark ? "#111111" : "#ffffff";
+      const textColor = isDark ? "#ffffff" : "#000000";
+      let borderRadius = "18px";
+      if (coords.aspectRatio >= 0.55 && coords.aspectRatio <= 1.7) {
+        borderRadius = coords.pixelWidth >= 80 ? "22px" : "16px";
+      } else if (coords.aspectRatio < 0.45) {
+        borderRadius = "8px";
+      }
+      Object.assign(bubble.style, {
+        position: "absolute",
+        // Anchored directly over the detected dialogue block inside the speech bubble
+        top: `${coords.topPct}%`,
+        left: `${coords.leftPct}%`,
+        transform: "none",
+        // Width covers the dialogue block cleanly so original text doesn't poke out
+        width: `${coords.widthPct}%`,
+        maxWidth: `${coords.widthPct}%`,
+        // Height covers the full dialogue box so original text cannot poke out above or below
+        minHeight: `${coords.heightPct}%`,
+        height: "auto",
+        maxHeight: "none",
+        // Solid clean background masks underlying original comic text
+        backgroundColor: bg,
+        color: textColor,
+        // Zero borders, zero shadows, zero filters
+        border: "none",
+        outline: "none",
+        boxShadow: "none",
+        filter: "none",
+        textShadow: "none",
+        borderRadius,
+        boxSizing: "border-box",
+        padding: "3px 6px",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        // High-readability comic font stack with full Vietnamese diacritic support
+        fontFamily: "'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
+        fontWeight: "bold",
+        lineHeight: "1.25",
+        letterSpacing: "-0.01em",
+        fontSize: `${fontSize}px`,
+        zIndex: "50",
+        cursor: "default",
+        transition: "opacity 0.15s ease-in-out",
+        userSelect: "text",
+        whiteSpace: "pre-wrap",
+        wordBreak: "normal",
+        overflowWrap: "break-word",
+        hyphens: "none",
+        // Allow Vietnamese diacritics and descenders to render without horizontal cutting
+        overflow: "visible"
+      });
+      bubble.style.setProperty("text-wrap", "balance");
+      bubble.style.setProperty("-webkit-text-wrap", "balance");
+    }
+  };
+
   // src/content/overlay/overlay-renderer.ts
   var OverlayRenderer = class {
     /**
-     * Renders translated speech bubbles over the wrapped image
+     * Renders translated speech bubbles over the wrapped image.
      */
     static renderDialogues(wrapper, dialogues, naturalWidth, naturalHeight, theme = "auto") {
-      const existing = wrapper.querySelectorAll(".speedyslate-bubble");
+      const existing = wrapper.querySelectorAll(".speedyslate-bubble, .speedyslate-clean-canvas");
       existing.forEach((el) => el.remove());
       for (const item of dialogues) {
         if (!item.translatedText || !item.translatedText.trim()) continue;
-        const box = item.box;
-        let topPct;
-        let leftPct;
-        let widthPct;
-        let minHeightPct;
-        if (item.normBox) {
-          topPct = item.normBox.ymin / 10;
-          leftPct = item.normBox.xmin / 10;
-          widthPct = Math.max(1, (item.normBox.xmax - item.normBox.xmin) / 10);
-          minHeightPct = Math.max(1, (item.normBox.ymax - item.normBox.ymin) / 10);
-        } else {
-          topPct = box.y / naturalHeight * 100;
-          leftPct = box.x / naturalWidth * 100;
-          widthPct = box.width / naturalWidth * 100;
-          minHeightPct = box.height / naturalHeight * 100;
-        }
-        const padPixelX = 4;
-        const padPixelY = 3;
-        const expandX = padPixelX * 2 / Math.max(1, naturalWidth) * 100;
-        const expandY = padPixelY * 2 / Math.max(1, naturalHeight) * 100;
-        const finalLeft = Math.max(0, leftPct - expandX / 2);
-        const finalTop = Math.max(0, topPct - expandY / 2);
-        const finalWidth = Math.min(100 - finalLeft, widthPct + expandX);
-        const finalMinHeight = Math.min(100 - finalTop, minHeightPct + expandY);
+        const coords = BubbleGeometry.computeCoordinates(item, naturalWidth, naturalHeight);
+        const fontSize = TextAutoFitter.computeOptimalFontSize(
+          coords.pixelWidth,
+          coords.pixelHeight,
+          item.translatedText
+        );
+        const isDark = theme === "dark" || theme === "auto" && item.isDarkBackground;
         const bubble = document.createElement("div");
         bubble.className = "speedyslate-bubble";
         bubble.id = item.id;
-        bubble.title = `G\u1ED1c: "${item.originalText}" (R\xEA chu\u1ED9t \u0111\u1EC3 soi ch\u1EEF g\u1ED1c)`;
-        const isDark = theme === "dark" || theme === "auto" && item.isDarkBackground;
-        const bg = isDark ? "#111111" : "#ffffff";
-        const textColor = isDark ? "#ffffff" : "#000000";
-        Object.assign(bubble.style, {
-          position: "absolute",
-          top: `${finalTop}%`,
-          left: `${finalLeft}%`,
-          width: `${finalWidth}%`,
-          minHeight: `${finalMinHeight}%`,
-          height: "auto",
-          backgroundColor: bg,
-          color: textColor,
-          border: "none",
-          outline: "none",
-          boxShadow: "none",
-          borderRadius: "3px",
-          boxSizing: "border-box",
-          padding: "2px 4px",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          textAlign: "center",
-          fontFamily: "'Comic Sans MS', 'Bangers', 'Segoe UI', system-ui, sans-serif",
-          fontWeight: "bold",
-          lineHeight: "1.22",
-          zIndex: "50",
-          cursor: "pointer",
-          transition: "opacity 0.15s ease-in-out",
-          userSelect: "text",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          overflowWrap: "anywhere",
-          hyphens: "auto"
-        });
-        const fontSize = this.calculateFontSize(
-          finalWidth / 100 * naturalWidth,
-          finalMinHeight / 100 * naturalHeight,
-          item.translatedText.length
-        );
-        bubble.style.fontSize = `${fontSize}px`;
+        if (item.originalText) {
+          bubble.title = item.originalText;
+        }
+        OverlayStyler.applyStyles(bubble, coords, fontSize, !!isDark);
         bubble.textContent = item.translatedText;
-        bubble.addEventListener("mouseenter", () => {
-          bubble.style.opacity = "0.08";
+        bubble.addEventListener("mouseenter", (e) => {
+          if (e.altKey) {
+            bubble.style.opacity = "0.12";
+          }
         });
         bubble.addEventListener("mouseleave", () => {
           bubble.style.opacity = "1";
         });
         wrapper.appendChild(bubble);
       }
-    }
-    /**
-     * Adaptive font sizing heuristic to fit Vietnamese text inside comic bounding box
-     */
-    static calculateFontSize(boxW, boxH, textLength) {
-      const area = boxW * boxH;
-      let base = Math.sqrt(area / Math.max(1, textLength)) * 1.25;
-      if (boxH >= 28) {
-        base = Math.max(14, base);
-      }
-      return Math.max(13, Math.min(24, Math.round(base)));
     }
     /**
      * Toggles visibility of all translated overlays on the page
@@ -5231,7 +5355,7 @@ ${visibleDialogue}]
       });
     }
     resetPageTranslations() {
-      document.querySelectorAll(".speedyslate-bubble").forEach((el) => el.remove());
+      document.querySelectorAll(".speedyslate-bubble, .speedyslate-clean-canvas").forEach((el) => el.remove());
       this.images.forEach((img, idx) => {
         delete img.dataset.slateStatus;
         if (img.parentElement) {

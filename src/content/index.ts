@@ -183,7 +183,7 @@ class SpeedySlateContentApp {
   }
 
   private resetPageTranslations(): void {
-    document.querySelectorAll('.speedyslate-bubble').forEach((el) => el.remove());
+    document.querySelectorAll('.speedyslate-bubble, .speedyslate-clean-canvas').forEach((el) => el.remove());
     this.images.forEach((img, idx) => {
       delete img.dataset.slateStatus;
       if (img.parentElement) {

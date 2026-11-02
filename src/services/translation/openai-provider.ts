@@ -234,9 +234,10 @@ Analyze the comic page image. Translate dialogues from ${srcDesc} into natural, 
 TASK:
 1. Detect all character speech bubbles, inner thought bubbles, and narrator text boxes.
 2. For each detected dialogue:
-   - Provide a tight 2D bounding box normalized to 0-1000 scale: [ymin, xmin, ymax, xmax].
+   - Provide a 2D bounding box normalized to 0-1000 scale: [ymin, xmin, ymax, xmax] covering the speech bubble interior area (excluding tails). For vertical Asian text manga, ensure the bounding box covers the natural horizontal width of the bubble so horizontal translated text fits.
    - Transcribe original text.
    - Translate into natural, expressive, emotionally fitting ${targetLang}. Understand character gender, relationship, tone, and comic atmosphere from the visual drawings to pick proper pronouns.
+     BREVITY: Keep translations concise and punchy to fit nicely inside speech bubbles.
    - Classify the bubble background color style:
      * "dark": speech bubble has black or dark background with white/light text (e.g. demonic, angry, horror, shock).
      * "light": speech bubble has white or light background with dark/black text (standard comic speech bubble).

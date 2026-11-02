@@ -136,11 +136,14 @@ Analyze this comic page image. Translate dialogues from ${srcDesc} into natural,
 
 TASK:
 1. Detect all character speech dialogues, inner thoughts, and narrator text boxes.
+   CRITICAL: Group all text sentences inside the SAME speech bubble into ONE single dialogue item. Never split a bubble into multiple items!
 2. For each detected dialogue:
-   - Provide a tight 2D bounding box normalized to 0-1000 scale: [ymin, xmin, ymax, xmax] tightly enclosing the printed TEXT itself inside the speech bubble.
-     CRITICAL: Bounding box must tightly wrap the printed text lines to be replaced. Do NOT include empty bubble margins or speech bubble tails.
+   - Provide a 2D bounding box normalized to 0-1000 scale: [ymin, xmin, ymax, xmax] encompassing all text lines of that dialogue inside the speech bubble (from top of first line to bottom of last line, spanning full width of all lines).
+     STRICT BOUNDARIES: Must stay strictly INSIDE the speech bubble's drawn outline. NEVER extend into surrounding panels, drawing art, or white gutters below!
+     For narrow vertical Asian text columns, you may widen horizontally to the bubble's inner borders so horizontal text fits, but NEVER cross the bubble border.
    - Transcribe original text.
    - Translate into natural, expressive, emotionally fitting ${targetLang}.
+     BREVITY: Keep translations concise and punchy to comfortably fit comic speech bubble spaces.
    - Classify bubble background color style:
      * "dark": speech bubble has black or dark background with white/light text.
      * "light": speech bubble has white or light background with dark/black text.

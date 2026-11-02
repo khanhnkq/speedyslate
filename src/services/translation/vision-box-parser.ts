@@ -77,6 +77,74 @@ export class VisionBoxParser {
       });
     }
 
-    return dialogues;
+    return this.mergeAdjacentBubbles(dialogues, naturalWidth, naturalHeight);
+  }
+
+  /**
+   * Merges dialogue items that belong to the SAME speech bubble
+   * (e.g. when Vision AI splits multiple sentences in one bubble into separate items).
+   */
+  private static mergeAdjacentBubbles(
+    items: DialogueItem[],
+    naturalWidth: number,
+    naturalHeight: number
+  ): DialogueItem[] {
+    if (items.length <= 1) return items;
+
+    const merged: DialogueItem[] = [];
+    const used = new Set<number>();
+
+    for (let i = 0; i < items.length; i++) {
+      if (used.has(i)) continue;
+      const current = { ...items[i] };
+      used.add(i);
+
+      for (let j = i + 1; j < items.length; j++) {
+        if (used.has(j)) continue;
+        const candidate = items[j];
+
+        if (current.isDarkBackground !== candidate.isDarkBackground) continue;
+
+        if (current.normBox && candidate.normBox) {
+          const a = current.normBox;
+          const b = candidate.normBox;
+
+          // Vertical proximity on 0-1000 scale: overlapping or vertical gap <= 40 (~4% image height)
+          const yGap = Math.max(0, Math.max(a.ymin, b.ymin) - Math.min(a.ymax, b.ymax));
+          const isVertAdjacent = yGap <= 40;
+
+          // Horizontal alignment: substantial overlap or close center
+          const xOverlap = Math.min(a.xmax, b.xmax) - Math.max(a.xmin, b.xmin);
+          const minW = Math.min(a.xmax - a.xmin, b.xmax - b.xmin);
+          const centerDiff = Math.abs((a.xmin + a.xmax) / 2 - (b.xmin + b.xmax) / 2);
+          const hasXOverlap = xOverlap >= minW * 0.2 || centerDiff <= 70;
+
+          if (isVertAdjacent && hasXOverlap) {
+            const unitedNormBox = {
+              ymin: Math.min(a.ymin, b.ymin),
+              xmin: Math.min(a.xmin, b.xmin),
+              ymax: Math.max(a.ymax, b.ymax),
+              xmax: Math.max(a.xmax, b.xmax)
+            };
+
+            current.normBox = unitedNormBox;
+            current.originalText = (current.originalText + ' ' + candidate.originalText).trim();
+            current.translatedText = (current.translatedText + '\n' + candidate.translatedText).trim();
+            current.box = {
+              x: Math.round((unitedNormBox.xmin / 1000) * naturalWidth),
+              y: Math.round((unitedNormBox.ymin / 1000) * naturalHeight),
+              width: Math.round(((unitedNormBox.xmax - unitedNormBox.xmin) / 1000) * naturalWidth),
+              height: Math.round(((unitedNormBox.ymax - unitedNormBox.ymin) / 1000) * naturalHeight),
+              confidence: 0.95
+            };
+            used.add(j);
+          }
+        }
+      }
+
+      merged.push(current);
+    }
+
+    return merged;
   }
 }

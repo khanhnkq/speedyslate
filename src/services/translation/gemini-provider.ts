@@ -253,11 +253,14 @@ Analyze the comic page image.
 
 TASK:
 1. Detect all character speech dialogues, inner thoughts, and narrator text boxes.
+   CRITICAL: Group all text sentences inside the SAME speech bubble into ONE single dialogue item. Never split a bubble into multiple items!
 2. For each detected dialogue:
-   - Provide a tight 2D bounding box normalized to 0-1000 scale: [ymin, xmin, ymax, xmax] tightly enclosing the printed TEXT itself inside the speech bubble.
-     CRITICAL: Bounding box must tightly wrap the printed text lines to be replaced. Do NOT include the empty bubble margins or the speech bubble tail pointing to the character.
+   - Provide a 2D bounding box normalized to 0-1000 scale: [ymin, xmin, ymax, xmax] encompassing all text lines of that dialogue inside the speech bubble (from top of first line to bottom of last line, spanning full width of all lines).
+     STRICT BOUNDARIES: Must stay strictly INSIDE the speech bubble's drawn outline. NEVER extend into surrounding panels, drawing art, or white gutters below!
+     For narrow vertical Asian text columns, you may widen horizontally to the bubble's inner borders so horizontal text fits, but NEVER cross the bubble border.
    - Transcribe original text.
    - Translate into natural, expressive, emotionally fitting ${targetLang}. Understand character gender, relationship, tone, and comic atmosphere from the visual drawings to pick proper pronouns.
+     BREVITY: Keep translations concise and punchy to fit naturally inside comic speech bubbles. Avoid runaway phrasing.
    - Classify the bubble background color style:
      * "dark": speech bubble has black or dark background with white/light text.
      * "light": speech bubble has white or light background with dark/black text.
@@ -280,7 +283,7 @@ CRITICAL NEGATIVE CONSTRAINTS:
               }
             },
             {
-              text: `Detect all character dialogue text in this comic image. Bounding box [ymin, xmin, ymax, xmax] must tightly wrap the TEXT itself (not the bubble tail). Translate to ${targetLang}. Never translate sound effects (SFX). Return JSON array.`
+              text: `Detect all character dialogue text in this comic image. Bounding box [ymin, xmin, ymax, xmax] must encompass all text lines of that bubble while staying strictly inside the speech bubble's drawn borders (normalized 0-1000, excluding tails and panel gutters). Translate concisely into ${targetLang}. Never translate sound effects (SFX). Return JSON array.`
             }
           ]
         }
@@ -295,7 +298,7 @@ CRITICAL NEGATIVE CONSTRAINTS:
               box_2d: {
                 type: 'ARRAY',
                 items: { type: 'INTEGER' },
-                description: '[ymin, xmin, ymax, xmax] tight bounding box of dialogue TEXT itself (excluding bubble tail), normalized 0-1000'
+                description: '[ymin, xmin, ymax, xmax] bounding box covering all lines of text inside the speech bubble, normalized 0-1000'
               },
               original_text: { type: 'STRING' },
               translation: { type: 'STRING' },

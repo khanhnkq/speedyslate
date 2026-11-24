@@ -214,6 +214,7 @@ export class OcrWorkerClient {
     imageUrl?: string;
     width?: number;
     height?: number;
+    sourceLang?: string;
   }): Promise<{ dialogues: DialogueItem[]; width: number; height: number }> {
     try {
       if (this.isServiceWorker) {
@@ -227,7 +228,8 @@ export class OcrWorkerClient {
           dataUrl: params.dataUrl,
           imageUrl: params.imageUrl,
           width: params.width,
-          height: params.height
+          height: params.height,
+          sourceLang: params.sourceLang
         });
 
         if (!resp?.success) {
@@ -263,7 +265,7 @@ export class OcrWorkerClient {
         } as any, [bitmap]);
 
         const rawLines = (result as any).dialogues as DialogueItem[];
-        const dialogues = BubbleAggregator.aggregateDialogues(rawLines, width, height);
+        const dialogues = BubbleAggregator.aggregateDialogues(rawLines, width, height, params.sourceLang);
 
         return { dialogues, width, height };
       }

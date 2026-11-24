@@ -136,7 +136,8 @@ async function runOcrOnImage(
   dataUrl?: string,
   imageUrl?: string,
   naturalW?: number,
-  naturalH?: number
+  naturalH?: number,
+  sourceLang?: string
 ): Promise<{ dialogues: DialogueItem[]; width: number; height: number }> {
   let blob: Blob;
   if (dataUrl) {
@@ -167,7 +168,7 @@ async function runOcrOnImage(
   }, [bitmap]);
 
   const rawDialogues = res.dialogues || [];
-  const dialogues = BubbleAggregator.aggregateDialogues(rawDialogues, width, height);
+  const dialogues = BubbleAggregator.aggregateDialogues(rawDialogues, width, height, sourceLang);
   // This result travels offscreen->background via runtime.sendMessage, which
   // cannot carry Uint8ClampedArray on Chrome — encode pixel patches to base64.
   encodeErasePatches(dialogues);
@@ -199,7 +200,7 @@ async function handleOffscreenMessage(msg: any): Promise<any> {
             if (!currentModelId || !activeBackend || (targetModelId && currentModelId !== targetModelId)) {
               await ensureModel(targetModelId, msg.useWebGpu ?? true);
             }
-            const res = await runOcrOnImage(msg.dataUrl, msg.imageUrl, msg.width, msg.height);
+            const res = await runOcrOnImage(msg.dataUrl, msg.imageUrl, msg.width, msg.height, msg.sourceLang);
             resolve({ success: true, ...res });
             break;
           }

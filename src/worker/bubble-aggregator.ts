@@ -1,6 +1,7 @@
 import { BoundingBox, DialogueItem, DialogueKind } from '../shared/types';
 import { VerticalText } from './vertical-text';
 import { OcrNoiseFilter } from './ocr-noise-filter';
+import { ReadingOrderSorter } from './reading-order';
 
 /**
  * Aggregates individual text lines into unified dialogue bubbles
@@ -18,7 +19,8 @@ export class BubbleAggregator {
   public static aggregateDialogues(
     items: DialogueItem[],
     imageWidth: number,
-    imageHeight: number
+    imageHeight: number,
+    sourceLang?: string
   ): DialogueItem[] {
     if (items.length === 0) return items;
     const filtered = OcrNoiseFilter.filterRawLines(items, imageWidth, imageHeight);
@@ -90,7 +92,8 @@ export class BubbleAggregator {
       }
     }
 
-    return deduped.sort((a, b) => a.box.y - b.box.y);
+    const dir = ReadingOrderSorter.detectDirection(deduped, sourceLang);
+    return ReadingOrderSorter.sort(deduped, dir);
   }
 
   /**

@@ -118,6 +118,7 @@ export interface OcrModelPreset {
     detUrl: string;
     recUrl: string;
     keysUrl: string;
+    det2Url?: string;
   };
 }
 

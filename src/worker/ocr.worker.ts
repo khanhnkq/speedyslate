@@ -194,7 +194,10 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
           det2Engine = null;
           if (msg.det2Buffer) {
             try {
-              const det2Session = await ort.InferenceSession.create(msg.det2Buffer, wasmOpts);
+              const det2Session =
+                (msg.useWebGpu !== false
+                  ? await tryCreateWebGpuSession(msg.det2Buffer, baseOpts, [1, 3, 64, 64])
+                  : null) ?? (await ort.InferenceSession.create(msg.det2Buffer, wasmOpts));
               // Supplementary engine: stricter prob-map cutoff + tighter unclip so
               // narration lines on screentone stay separated instead of merging into blobs
               det2Engine = new PaddleDetEngine(det2Session, { thresh: 0.3, boxThresh: 0.35, unclipRatio: 1.3 });
@@ -204,7 +207,7 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
           }
 
           recEngine = new PaddleRecEngine(recSession, msg.keysText, {
-            isCjkModel: /japan|korean|chinese|cjk/i.test(msg.modelId ?? '')
+            isCjkModel: /japan|korean|chinese|cjk|multilingual|v6/i.test(msg.modelId ?? '')
           });
           currentModelId = msg.modelId || 'loaded';
 

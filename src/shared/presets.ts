@@ -122,27 +122,54 @@ export const API_PRESETS: Record<ProviderType, {
  * Pre-configured presets for PaddleOCR ONNX models
  * Direct high-speed CDN links from HuggingFace
  */
+const PPU_ONNX_BASE = 'https://media.githubusercontent.com/media/PT-Perkasa-Pilar-Utama/ppu-paddle-ocr-models/main';
+const PPU_DICT_BASE = 'https://raw.githubusercontent.com/PT-Perkasa-Pilar-Utama/ppu-paddle-ocr-models/main';
+
 export const OCR_MODEL_PRESETS: OcrModelPreset[] = [
   {
     id: 'comic-manga-manhwa',
-    name: 'Comic & Manga AI Detector (~16MB - Chuyên Manga/Manhwa)',
-    description: 'Model RT-DETR-v2 11MB chuyên sâu được huấn luyện trên 11.000+ trang Manga & Manhwa. Bắt trọn mọi bong bóng gai nhọn, thoại la hét, SFX phức tạp.',
-    totalSizeMb: 15.9,
+    name: 'Comic & Manga AI Detector (~20MB - Chuyên Manga/Manhwa)',
+    description: 'RT-DETR-v2 chuyên Manga/Manhwa kết hợp DBNet v5 quét bù chữ dẫn truyện ngoài khung thoại.',
+    totalSizeMb: 20.4,
     files: {
       detUrl: 'https://huggingface.co/ogkalu/comic-text-and-bubble-detector/resolve/main/detector-v4-s_int8.onnx',
+      det2Url: `${PPU_ONNX_BASE}/detection/PP-OCRv5_mobile_det_infer.onnx`,
       recUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/en_PP-OCRv4_rec/model.onnx',
       keysUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/en_PP-OCRv4_rec/dict.txt'
     }
   },
   {
     id: 'comic-manga-cjk',
-    name: 'Comic & Manga CJK Raw (~27MB - Nhật/Hàn/Trung)',
-    description: 'Detector RT-DETR-v2 chuyên Manga kết hợp bộ nhận diện CJK 6.600+ ký tự Hán tự, Hiragana, Katakana, Hangul cho bản RAW gốc.',
-    totalSizeMb: 26.6,
+    name: 'Comic & Manga CJK Raw (~31MB - Nhật/Hàn/Trung)',
+    description: 'RT-DETR-v2 chuyên Manga kết hợp DBNet v5 quét bù & bộ nhận diện CJK 6.600+ ký tự cho bản RAW gốc.',
+    totalSizeMb: 31.1,
     files: {
       detUrl: 'https://huggingface.co/ogkalu/comic-text-and-bubble-detector/resolve/main/detector-v4-s_int8.onnx',
+      det2Url: `${PPU_ONNX_BASE}/detection/PP-OCRv5_mobile_det_infer.onnx`,
       recUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/ch_PP-OCRv4_rec/model.onnx',
       keysUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/rec/ch_PP-OCRv4_rec/dict.txt'
+    }
+  },
+  {
+    id: 'ppocr-v6-multilingual',
+    name: 'PaddleOCR v6 Small WebGPU (~30MB - Đa ngôn ngữ CJK + Latin)',
+    description: 'Thế hệ PP-OCRv6 mới nhất chạy 100% trên WebGPU (Det + Rec), hỗ trợ xoay phẳng chữ nghiêng và đa ngôn ngữ Nhật/Hàn/Trung/Anh.',
+    totalSizeMb: 29.7,
+    files: {
+      detUrl: `${PPU_ONNX_BASE}/detection/PP-OCRv6_small_det.onnx`,
+      recUrl: `${PPU_ONNX_BASE}/recognition/PP-OCRv6_small_rec.onnx`,
+      keysUrl: `${PPU_DICT_BASE}/recognition/ppocrv6_dict.txt`
+    }
+  },
+  {
+    id: 'ppocr-v5-english-fast',
+    name: 'PaddleOCR v5 English WebGPU (~12MB - Siêu tốc Comic/Manhwa Anh)',
+    description: 'Bộ PP-OCRv5 Mobile siêu nhẹ tối ưu riêng cho truyện tiếng Anh/Latin, chạy full WebGPU tốc độ cao.',
+    totalSizeMb: 12.0,
+    files: {
+      detUrl: `${PPU_ONNX_BASE}/detection/PP-OCRv5_mobile_det_infer.onnx`,
+      recUrl: `${PPU_ONNX_BASE}/recognition/multi/en/v5/en_PP-OCRv5_mobile_rec_infer.onnx`,
+      keysUrl: `${PPU_DICT_BASE}/recognition/multi/en/v5/ppocrv5_en_dict.txt`
     }
   }
 ];

@@ -106,12 +106,13 @@ async function ensureModel(modelId?: string, useWebGpu = true): Promise<OcrBacke
       throw new Error(`Model OCR "${targetId}" chưa tải. Vui lòng mở popup tiện ích để tải model.`);
     }
 
-    const { detBuffer, recBuffer, keysText } = await ModelDbService.getModelBuffers(targetId);
+    const { detBuffer, det2Buffer, recBuffer, keysText } = await ModelDbService.getModelBuffers(targetId);
     const res = await sendToWorker({
       _reqId: nextReqId(),
       type: 'INIT_MODEL',
       modelId: targetId,
       detBuffer,
+      det2Buffer,
       recBuffer,
       keysText,
       useWebGpu

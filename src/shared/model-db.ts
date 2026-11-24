@@ -5,9 +5,9 @@ const DB_VERSION = 1;
 const STORE_NAME = 'models_store';
 
 export interface StoredModelRecord {
-  id: string; // key e.g. 'comic-manga-manhwa:det', ':rec', ':keys'
+  id: string; // key e.g. 'comic-manga-manhwa:det', ':det2', ':rec', ':keys'
   modelId: string;
-  type: 'det' | 'rec' | 'keys';
+  type: 'det' | 'det2' | 'rec' | 'keys';
   data: ArrayBuffer | string;
   sizeBytes: number;
   updatedAt: number;
@@ -143,11 +143,17 @@ export class ModelDbService {
       return all.buffer;
     };
 
-    // Det model (weight 35%)
-    const detBuffer = await fetchWithProgress(preset.files.detUrl, 'Model Phát hiện chữ (Det)', 35, 0);
-
-    // Rec model (weight 60%)
-    const recBuffer = await fetchWithProgress(preset.files.recUrl, 'Model Nhận diện chữ (Rec)', 60, 35);
+    const hasDet2 = Boolean(preset.files.det2Url);
+    const detBuffer = await fetchWithProgress(preset.files.detUrl, 'Model Phát hiện chữ (Det)', hasDet2 ? 28 : 35, 0);
+    const det2Buffer = preset.files.det2Url
+      ? await fetchWithProgress(preset.files.det2Url, 'Model Quét bù (Det2)', 12, 28)
+      : undefined;
+    const recBuffer = await fetchWithProgress(
+      preset.files.recUrl,
+      'Model Nhận diện chữ (Rec)',
+      hasDet2 ? 55 : 60,
+      hasDet2 ? 40 : 35
+    );
 
     // Keys dictionary (weight 5%)
     onProgress?.(95, 'Đang tải từ điển ký tự...');
@@ -188,6 +194,16 @@ export class ModelDbService {
         updatedAt: now
       }
     ];
+    if (det2Buffer) {
+      records.push({
+        id: `${preset.id}:det2`,
+        modelId: preset.id,
+        type: 'det2',
+        data: det2Buffer,
+        sizeBytes: det2Buffer.byteLength,
+        updatedAt: now
+      });
+    }
 
     for (const record of records) {
       store.put(record);
@@ -211,6 +227,7 @@ export class ModelDbService {
 
     // 1. Explicitly delete known component primary keys
     store.delete(`${modelId}:det`);
+    store.delete(`${modelId}:det2`);
     store.delete(`${modelId}:rec`);
     store.delete(`${modelId}:keys`);
 
@@ -281,6 +298,7 @@ export class ModelDbService {
    */
   public static async getModelBuffers(modelId: string): Promise<{
     detBuffer: ArrayBuffer;
+    det2Buffer?: ArrayBuffer;
     recBuffer: ArrayBuffer;
     keysText: string;
   }> {
@@ -294,6 +312,7 @@ export class ModelDbService {
       req.onsuccess = () => {
         const records: StoredModelRecord[] = req.result || [];
         const detRecord = records.find((r) => r.type === 'det');
+        const det2Record = records.find((r) => r.type === 'det2');
         const recRecord = records.find((r) => r.type === 'rec');
         const keysRecord = records.find((r) => r.type === 'keys');
 
@@ -304,6 +323,7 @@ export class ModelDbService {
 
         resolve({
           detBuffer: detRecord.data as ArrayBuffer,
+          ...(det2Record ? { det2Buffer: det2Record.data as ArrayBuffer } : {}),
           recBuffer: recRecord.data as ArrayBuffer,
           keysText: keysRecord.data as string
         });

@@ -184,6 +184,7 @@ export class OcrWorkerClient {
           type: 'INIT_MODEL',
           modelId,
           detBuffer: buffers.detBuffer,
+          det2Buffer: buffers.det2Buffer,
           recBuffer: buffers.recBuffer,
           keysText: buffers.keysText,
           useWebGpu

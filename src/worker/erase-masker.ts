@@ -191,13 +191,12 @@ export class EraseMasker {
       return flatFill(rawDil, bgHex);
     }
 
-    // 4. Dilate 2px so fill donors sit beyond the anti-aliased glyph ring —
-    // a 1px ring leaves grey AA pixels as donors and they repaint the erased
-    // core as a faint dark ghost. Read each pass from a snapshot: mutating the
-    // same buffer while scanning grows the mask unboundedly toward +x/+y.
+    // 4. Dynamic halo dilation (2..5px scaled by line height) so fill donors
+    // sit beyond anti-aliased glyph rings and artist white halos (fuchidori).
+    const dilRadius = guidedActive ? 2 : InpaintSolver.computeDilationRadius(h);
     const dil = new Uint8Array(total);
     dil.set(mask);
-    for (let it = 0; it < 2; it++) {
+    for (let it = 0; it < dilRadius; it++) {
       const prev = dil.slice();
       for (let yy = 0; yy < h; yy++) {
         for (let xx = 0; xx < w; xx++) {
@@ -390,7 +389,7 @@ export class EraseMasker {
         }
       }
     }
-    const inpainted = InpaintSolver.diffuseMaskedRegion(data, dil, emit, w, h);
+    const inpainted = InpaintSolver.teleaInpaint(data, dil, emit, w, h, 3);
     return { x, y, width: w, height: h, pixels: inpainted, dbg: donorDbg };
   }
 

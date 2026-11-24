@@ -230,10 +230,10 @@ export class ChamberGapScanner {
     }
     if (inkMaxX - inkMinX < 6 || totalInk < 8) return null;
 
-    const x = Math.max(0, sx0 + inkMinX - 5);
-    const y = Math.max(0, sy0 + ly0 - 4);
-    const right = Math.min(w, sx0 + inkMaxX + 6);
-    const bottom = Math.min(h, sy0 + ly1 + 5);
+    const x = Math.max(0, sx0 + inkMinX - 4);
+    const y = Math.max(0, sy0 + ly0 - 1);
+    const right = Math.min(w, sx0 + inkMaxX + 5);
+    const bottom = Math.min(h, sy0 + ly1 + 2);
     return {
       x,
       y,

@@ -126,14 +126,14 @@ export class BubbleAggregator {
           const candBox = candidate.box;
           if (
             Boolean(lastLine.isDarkBackground) !== Boolean(candidate.isDarkBackground) &&
-            (Math.max(lastBox.height, candBox.height) >= 28 || candBox.y - (lastBox.y + lastBox.height) > 14)
+            Math.max(lastBox.height, candBox.height) >= 30
           ) {
             continue;
           }
 
           // 1. Font-size / Line-height consistency (lines in the same bubble have similar font size)
           const hRatio = Math.min(lastBox.height, candBox.height) / Math.max(lastBox.height, candBox.height);
-          if (hRatio < 0.45) continue;
+          if (hRatio < 0.38) continue;
 
           // 2. Strict vertical gap: measured from the bottom of the immediate last line
           const verticalGap = candBox.y - (lastBox.y + lastBox.height);
@@ -202,7 +202,7 @@ export class BubbleAggregator {
           const candBox = candidate.box;
           if (
             Boolean(lastLine.isDarkBackground) !== Boolean(candidate.isDarkBackground) &&
-            (Math.max(lastBox.height, candBox.height) >= 28 || candBox.y - (lastBox.y + lastBox.height) > 14)
+            Math.max(lastBox.height, candBox.height) >= 30
           ) {
             continue;
           }

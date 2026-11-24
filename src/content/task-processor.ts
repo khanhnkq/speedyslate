@@ -4,7 +4,7 @@ import { OverlayRenderer } from './overlay/overlay-renderer';
 import { OrderedTaskQueue, OcrTask, TranslationTask } from './priority-queue';
 import { ToonheyAdapter } from './toonhey-adapter';
 import { PageBadgeManager } from './page-badge';
-import { ImageCompressor } from './image-compressor';
+import { ImageCompressor, resolveOverlayDimensions } from './image-compressor';
 import { DebugLogger } from '../shared/debug-logger';
 import { SafeMessenger } from './safe-messenger';
 
@@ -88,14 +88,15 @@ export class TaskProcessor {
         );
       }
 
-      // Downscale and compress image (max 1280px) to reduce latency and token usage
-      const compressed = ImageCompressor.compressForVision(img, 1280, 0.78);
+      const captured = isVision
+        ? ImageCompressor.compressForVision(img, 1280, 0.78)
+        : ImageCompressor.captureForOcr(img, 2200);
 
       const resp: any = await SafeMessenger.send({
         action: 'OCR_IMAGE',
         imageUrl,
         chapterUrl: window.location.href,
-        dataUrl: compressed.dataUrl,
+        dataUrl: captured.dataUrl,
         naturalWidth,
         naturalHeight
       });
@@ -109,8 +110,12 @@ export class TaskProcessor {
         // 1. Direct result from Cache or Vision AI mode (already fully translated with styling)
         if (resp.cached || resp.isDirectTranslation) {
           if (resp.dialogues && resp.dialogues.length > 0) {
-            const renderW = img.naturalWidth || resp.naturalWidth || compressed.naturalWidth;
-            const renderH = img.naturalHeight || resp.naturalHeight || compressed.naturalHeight;
+            const { width: renderW, height: renderH } = resolveOverlayDimensions(
+              resp.naturalWidth,
+              resp.naturalHeight,
+              img.naturalWidth || captured.compressedWidth,
+              img.naturalHeight || captured.compressedHeight
+            );
             OverlayRenderer.renderDialogues(
               wrapper,
               resp.dialogues,
@@ -153,8 +158,8 @@ export class TaskProcessor {
             index: task.index,
             img: task.img,
             dialogues: resp.dialogues,
-            naturalWidth: resp.naturalWidth || compressed.naturalWidth,
-            naturalHeight: resp.naturalHeight || compressed.naturalHeight
+            naturalWidth: resp.naturalWidth || captured.compressedWidth,
+            naturalHeight: resp.naturalHeight || captured.compressedHeight
           });
         }
       } else {
@@ -248,8 +253,12 @@ export class TaskProcessor {
       }
 
       if (resp?.success && Array.isArray(resp.dialogues)) {
-        const renderW = img.naturalWidth || task.naturalWidth;
-        const renderH = img.naturalHeight || task.naturalHeight;
+        const { width: renderW, height: renderH } = resolveOverlayDimensions(
+          task.naturalWidth,
+          task.naturalHeight,
+          img.naturalWidth,
+          img.naturalHeight
+        );
         OverlayRenderer.renderDialogues(
           wrapper,
           resp.dialogues,

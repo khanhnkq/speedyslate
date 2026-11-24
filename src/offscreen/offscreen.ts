@@ -157,8 +157,8 @@ async function runOcrOnImage(
   }
 
   const bitmap = await createImageBitmap(blob);
-  const width = naturalW || bitmap.width;
-  const height = naturalH || bitmap.height;
+  const width = bitmap.width || naturalW || 800;
+  const height = bitmap.height || naturalH || 1200;
 
   const res = await sendToWorker({
     _reqId: nextReqId(),

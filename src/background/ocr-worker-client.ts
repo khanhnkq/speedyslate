@@ -253,8 +253,8 @@ export class OcrWorkerClient {
         }
 
         const bitmap = await createImageBitmap(blob);
-        const width = params.width || bitmap.width;
-        const height = params.height || bitmap.height;
+        const width = bitmap.width || params.width || 800;
+        const height = bitmap.height || params.height || 1200;
 
         const result = await this.sendMessageDirect({
           _reqId: this.nextReqId(),

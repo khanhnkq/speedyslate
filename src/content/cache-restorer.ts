@@ -2,6 +2,7 @@ import { BubbleTheme } from '../shared/types';
 import { SafeMessenger } from './safe-messenger';
 import { OverlayRenderer } from './overlay/overlay-renderer';
 import { PageBadgeManager } from './page-badge';
+import { resolveOverlayDimensions } from './image-compressor';
 
 /**
  * CacheRestorer: Restores previously completed translations from IndexedDB cache
@@ -42,11 +43,17 @@ export class CacheRestorer {
         if (cached && Array.isArray(cached.dialogues) && cached.dialogues.length > 0) {
           const wrapper = img.parentElement;
           if (wrapper) {
+            const { width: renderW, height: renderH } = resolveOverlayDimensions(
+              cached.naturalWidth,
+              cached.naturalHeight,
+              img.naturalWidth || 800,
+              img.naturalHeight || 1200
+            );
             OverlayRenderer.renderDialogues(
               wrapper,
               cached.dialogues,
-              img.naturalWidth || cached.naturalWidth || 800,
-              img.naturalHeight || cached.naturalHeight || 1200,
+              renderW,
+              renderH,
               bubbleTheme
             );
             img.dataset.slateStatus = 'translated';

@@ -12,7 +12,67 @@ export interface CompressedImageResult {
   compressedHeight: number;
 }
 
+export function resolveOverlayDimensions(
+  ocrWidth: number | undefined,
+  ocrHeight: number | undefined,
+  fallbackWidth: number,
+  fallbackHeight: number
+): { width: number; height: number } {
+  return {
+    width: ocrWidth && ocrWidth > 0 ? ocrWidth : fallbackWidth || 800,
+    height: ocrHeight && ocrHeight > 0 ? ocrHeight : fallbackHeight || 1200
+  };
+}
+
 export class ImageCompressor {
+  /**
+   * Captures lossless PNG pixels for local Hybrid OCR without JPEG 8x8 ringing.
+   * Only scales down proportionally when naturalWidth exceeds maxWidth (default 2200px).
+   */
+  public static captureForOcr(
+    img: HTMLImageElement,
+    maxWidth: number = 2200
+  ): CompressedImageResult {
+    const naturalWidth = img.naturalWidth || img.width || 800;
+    const naturalHeight = img.naturalHeight || img.height || 1200;
+
+    let targetWidth = naturalWidth;
+    let targetHeight = naturalHeight;
+    if (naturalWidth > maxWidth) {
+      const scale = maxWidth / naturalWidth;
+      targetWidth = maxWidth;
+      targetHeight = Math.round(naturalHeight * scale);
+    }
+
+    try {
+      if (typeof document !== 'undefined') {
+        const canvas = document.createElement('canvas');
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+          return {
+            dataUrl: canvas.toDataURL('image/png'),
+            naturalWidth,
+            naturalHeight,
+            compressedWidth: targetWidth,
+            compressedHeight: targetHeight
+          };
+        }
+      }
+    } catch {
+      // Cross-origin tainted canvas fallback (handled cleanly via background fetch)
+    }
+
+    return {
+      naturalWidth,
+      naturalHeight,
+      compressedWidth: targetWidth,
+      compressedHeight: targetHeight
+    };
+  }
+
   /**
    * Captures and optimizes an image for Vision AI transmission.
    * Only scales down width if naturalWidth exceeds maxDim (1280px).

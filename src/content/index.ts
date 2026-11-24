@@ -5,7 +5,6 @@ import { FloatingHud } from './hud/hud';
 import { OverlayRenderer } from './overlay/overlay-renderer';
 import { OrderedTaskQueue, OcrTask, TranslationTask } from './priority-queue';
 import { ToonheyAdapter } from './toonhey-adapter';
-import { PageBadgeManager } from './page-badge';
 import { ModelMissingBanner } from './missing-banner';
 import { DebugLogger } from '../shared/debug-logger';
 import { SafeMessenger } from './safe-messenger';
@@ -199,13 +198,12 @@ class SpeedySlateContentApp {
 
   private resetPageTranslations(): void {
     document
-      .querySelectorAll('.speedyslate-bubble, .speedyslate-erase-patch, .speedyslate-clean-canvas')
+      .querySelectorAll(
+        '.speedyslate-bubble, .speedyslate-erase-patch, .speedyslate-clean-canvas, .speedyslate-page-badge'
+      )
       .forEach((el) => el.remove());
-    this.images.forEach((img, idx) => {
+    this.images.forEach((img) => {
       delete img.dataset.slateStatus;
-      if (img.parentElement) {
-        PageBadgeManager.updateBadge(img.parentElement, idx, 'idle');
-      }
     });
     this.completedImages.clear();
     this.ocrQueue?.clear();

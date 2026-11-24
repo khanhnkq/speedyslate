@@ -24,6 +24,10 @@ export function parseCtcDictionary(keysText: string): string[] {
   const trimmed = keysText.replace(/(?:\r?\n)+$/, '');
   if (!trimmed) return [' '];
   const chars = trimmed.split(/\r?\n/);
+  while (chars.length > 0 && chars[0] === '') {
+    chars.shift();
+  }
+  if (chars.length === 0) return [' '];
   if (chars[chars.length - 1] !== ' ') {
     chars.push(' ');
   }

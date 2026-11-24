@@ -187,7 +187,7 @@ export class PaddleDetEngine implements ITextDetector {
             const rightB = other.x + other.width;
 
             const gapX = Math.max(0, Math.max(leftA, leftB) - Math.min(rightA, rightB));
-            const maxAllowedGap = Math.max(cur.height, other.height) * 2.2;
+            const maxAllowedGap = Math.max(cur.height, other.height) * 0.85;
 
             const newLeft = Math.min(leftA, leftB);
             const newRight = Math.max(rightA, rightB);

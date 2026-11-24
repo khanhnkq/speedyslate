@@ -10,8 +10,11 @@ import { decodePixels } from '../src/shared/erase-codec';
 
 interface LocalModel { id: string; dir: string; note: string }
 const MODELS: LocalModel[] = [
-  { id: 'comic-manga-manhwa', dir: 'comic-manga-manhwa', note: 'RT-DETR comic det 11MB + en rec' },
-  { id: 'paddle-det-mobile', dir: 'paddle-det-mobile', note: 'PP-OCRv4 mobile det 4.7MB + en rec' }
+  { id: 'comic-manga-manhwa', dir: 'comic-manga-manhwa', note: 'RT-DETR comic det 11MB + en v4 rec' },
+  { id: 'comic-manga-manhwa-det2', dir: 'comic-manga-manhwa-det2', note: 'RT-DETR + PP-OCRv5 det2 gap-fill + en v4 rec' },
+  { id: 'paddle-det-mobile', dir: 'paddle-det-mobile', note: 'PP-OCRv4 mobile det 4.7MB + en v4 rec' },
+  { id: 'ppocr-v5-english-fast', dir: 'ppocr-v5-english-fast', note: 'PP-OCRv5 mobile det + PP-OCRv5 en rec (~12MB)' },
+  { id: 'ppocr-v6-multilingual', dir: 'ppocr-v6-multilingual', note: 'PP-OCRv6 small det + PP-OCRv6 small rec (~30MB)' }
 ];
 
 const FIXTURES_DIR = '/test-fixtures/yotogi-mura';
@@ -64,6 +67,9 @@ function ensureWorker(): Worker {
   return worker;
 }
 
+let lastInitMs = 0;
+let lastActualBackend = 'wasm';
+
 async function loadModel(modelId: string, useWebGpu: boolean): Promise<void> {
   const m = MODELS.find((x) => x.id === modelId)!;
   const base = `/test-fixtures/models/${m.dir}`;
@@ -75,13 +81,16 @@ async function loadModel(modelId: string, useWebGpu: boolean): Promise<void> {
     fetch(`${base}/det2.onnx`).then((r) => (r.ok ? r.arrayBuffer() : undefined)).catch(() => undefined)
   ]);
   status(`init model ${m.id} (det ${(detBuffer.byteLength / 1e6).toFixed(1)}MB${det2Buffer ? ` + det2 ${(det2Buffer.byteLength / 1e6).toFixed(1)}MB` : ''})…`);
+  const tInit = performance.now();
   const transfers = [detBuffer, recBuffer, ...(det2Buffer ? [det2Buffer] : [])];
   const res = await sendToWorker(
     { _reqId: nextReqId(), type: 'INIT_MODEL', modelId: m.id, detBuffer, det2Buffer, recBuffer, keysText, useWebGpu },
     transfers
   );
   if (!res.success) throw new Error(res.error || 'init failed');
-  status(`model ready: ${m.id} @ ${res.backend}`);
+  lastInitMs = Math.round(performance.now() - tInit);
+  lastActualBackend = res.backend || 'wasm';
+  status(`model ready: ${m.id} @ ${lastActualBackend} (${lastInitMs}ms)`);
 }
 
 function makeCard(file: string): { stage: HTMLElement; panel: HTMLElement; card: HTMLElement } {
@@ -397,6 +406,8 @@ async function main() {
         at: new Date().toISOString(),
         model: modelId,
         backend,
+        actualBackend: lastActualBackend,
+        initMs: lastInitMs,
         results
       };
       const saved = await fetch('/save-result', { method: 'POST', body: JSON.stringify(payload) }).then((r) => r.json());

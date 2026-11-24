@@ -57,34 +57,12 @@ export interface WorkerMessageOut {
 
 type WorkerMessageInWithReqId = WorkerMessageIn & { _reqId?: string };
 
-function hasCeilMode(buffer: ArrayBuffer): boolean {
-  const bytes = new Uint8Array(buffer);
-  const target = [99, 101, 105, 108, 95, 109, 111, 100, 101]; // 'ceil_mode'
-  let match = 0;
-  for (let i = 0; i < bytes.length; i++) {
-    if (bytes[i] === target[match]) {
-      match++;
-      if (match === target.length) return true;
-    } else {
-      match = bytes[i] === target[0] ? 1 : 0;
-    }
-  }
-  return false;
-}
-
 async function tryCreateWebGpuSession(
   buffer: ArrayBuffer,
   opts: ort.InferenceSession.SessionOptions,
   testDims?: number[]
 ): Promise<ort.InferenceSession | null> {
   try {
-    // ONNX Runtime Web WebGPU provider does not implement ceil_mode padding in MaxPool yet.
-    // Models with ceil_mode=1 must run on high-performance multi-threaded WASM SIMD.
-    if (hasCeilMode(buffer)) {
-      console.log('[OCR Worker] Model contains ceil_mode operator unsupported by WebGPU. Using WASM SIMD.');
-      return null;
-    }
-
     const session = await ort.InferenceSession.create(buffer, {
       ...opts,
       executionProviders: ['webgpu']

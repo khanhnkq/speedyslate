@@ -5,15 +5,13 @@ import { OverlayStyler } from './overlay-styler';
 import { ErasePatcher } from './erase-patcher';
 import { ComicFontLoader } from './comic-font-loader';
 
+const resizeObservers = new WeakMap<HTMLElement, ResizeObserver>();
+
 /**
- * OverlayRenderer: Coordinates the rendering and lifecycle of comic overlays.
- * Integrates BubbleGeometry (aspect ratio & bound clamping) and TextAutoFitter (dynamic font scaling).
- * Following Single Responsibility Principle (SRP) & strictly < 500 lines.
+ * OverlayRenderer: Coordinates the rendering, responsive CSS scaling, and
+ * post-mount DOM overflow clamping of comic speech-bubble overlays.
  */
 export class OverlayRenderer {
-  /**
-   * Renders translated speech bubbles over the wrapped image.
-   */
   public static renderDialogues(
     wrapper: HTMLElement,
     dialogues: DialogueItem[],
@@ -23,14 +21,11 @@ export class OverlayRenderer {
   ): void {
     ComicFontLoader.ensureLoaded();
 
-    // 1. Remove previous bubbles, patches and clean canvases if any
     const existing = wrapper.querySelectorAll(
       '.speedyslate-bubble, .speedyslate-erase-patch, .speedyslate-clean-canvas'
     );
     existing.forEach((el) => el.remove());
 
-    // 2. Pixel-level erase: repaint only ink pixels so the original bubble
-    // and artwork are fully preserved (no overlay shape spills outside).
     const cleanCanvas = ErasePatcher.renderCleanCanvas(
       wrapper,
       dialogues,
@@ -38,24 +33,27 @@ export class OverlayRenderer {
       naturalHeight
     );
 
+    const renderedW = OverlayRenderer.measureRenderedWidth(wrapper, naturalWidth);
+
     for (const item of dialogues) {
-      if (!item.translatedText || !item.translatedText.trim()) continue;
+      const cleanTranslated = (item.translatedText || '').replace(/\s+/g, ' ').trim();
+      if (!cleanTranslated) continue;
 
-      // 2. Calculate calibrated coordinates covering the original text
       const coords = BubbleGeometry.computeCoordinates(item, naturalWidth, naturalHeight);
-
-      // 3. Fit font size + chord-aware line breaks for elliptical vs rectangular bubbles
       const useEllipse =
         item.isOvalChamber ?? (item.kind === undefined || item.kind === 'dialogue');
-      const fitted = TextAutoFitter.fitDialogue(
+
+      const fontSize = TextAutoFitter.computeScaledFontSize(
         coords.pixelWidth,
         coords.pixelHeight,
-        item.translatedText,
-        { elliptical: useEllipse }
+        cleanTranslated,
+        {
+          naturalWidth,
+          renderedWidth: renderedW,
+          elliptical: useEllipse
+        }
       );
-      const fontSize = fitted.fontSize;
 
-      // 4. Determine dark/light mode and the true sampled bubble colour
       const isDark = theme === 'dark' || (theme === 'auto' && item.isDarkBackground);
       const sampledBg =
         theme === 'auto' && item.bgColor && /^#[0-9a-fA-F]{6}$/.test(item.bgColor)
@@ -63,9 +61,6 @@ export class OverlayRenderer {
           : undefined;
       const eraseBg = OverlayStyler.resolveBackground(theme, !!isDark, item.bgColor);
 
-      // 5. Erasure strategy: pixel patches from the worker already removed the
-      // ink — the bubble goes transparent on top. Legacy per-line rect divs
-      // cover cached items that have lineBoxes but no pixel data.
       const hasPixelPatch = (item.erasePatches?.length ?? 0) > 0;
       const useLineErase =
         !hasPixelPatch &&
@@ -84,15 +79,17 @@ export class OverlayRenderer {
         );
       }
 
-      // 6. Create DOM element
       const bubble = document.createElement('div');
       bubble.className = 'speedyslate-bubble';
       bubble.id = item.id;
+      bubble.dataset.natBoxW = String(coords.pixelWidth);
+      bubble.dataset.natBoxH = String(coords.pixelHeight);
+      bubble.dataset.natImgW = String(naturalWidth);
+      bubble.dataset.ellipse = useEllipse ? '1' : '0';
       if (item.originalText) {
         bubble.title = item.originalText;
       }
 
-      // 7. Apply manga-authentic visual styling
       const transparentBg = hasPixelPatch || useLineErase;
       OverlayStyler.applyStyles(
         bubble,
@@ -104,9 +101,8 @@ export class OverlayRenderer {
         item.kind
       );
 
-      bubble.textContent = fitted.lines.length > 0 ? fitted.lines.join('\n') : item.translatedText;
+      bubble.textContent = cleanTranslated;
 
-      // 8. Peek original comic art only if holding Alt key (prevents accidental opacity loss during reading)
       bubble.addEventListener('mouseenter', (e: MouseEvent) => {
         if (e.altKey) {
           bubble.style.opacity = '0.12';
@@ -126,11 +122,84 @@ export class OverlayRenderer {
 
       wrapper.appendChild(bubble);
     }
+
+    // Immediate DOM overflow clamp + re-clamp once webfont finishes loading & on resize
+    OverlayRenderer.clampMountedBubbles(wrapper);
+    if (typeof document !== 'undefined' && (document as any).fonts?.ready) {
+      (document as any).fonts.ready
+        .then(() => OverlayRenderer.refitWrapperBubbles(wrapper))
+        .catch(() => {});
+    }
+    OverlayRenderer.attachResizeRefitter(wrapper);
+  }
+
+  private static measureRenderedWidth(wrapper: HTMLElement, fallbackW: number): number {
+    if (!wrapper) return fallbackW;
+    const cw = wrapper.clientWidth || wrapper.getBoundingClientRect?.()?.width || 0;
+    if (cw > 20) return cw;
+    const img = wrapper.querySelector?.('img') as HTMLImageElement | null;
+    const iw = img?.clientWidth || img?.getBoundingClientRect?.()?.width || 0;
+    return iw > 20 ? iw : fallbackW;
+  }
+
+  private static refitWrapperBubbles(wrapper: HTMLElement): void {
+    const bubbles = wrapper.querySelectorAll<HTMLElement>('.speedyslate-bubble');
+    if (bubbles.length === 0) return;
+    const firstImgW = Number(bubbles[0].dataset.natImgW) || 800;
+    const renderedW = OverlayRenderer.measureRenderedWidth(wrapper, firstImgW);
+
+    bubbles.forEach((bubble) => {
+      const natBoxW = Number(bubble.dataset.natBoxW) || 100;
+      const natBoxH = Number(bubble.dataset.natBoxH) || 60;
+      const natImgW = Number(bubble.dataset.natImgW) || firstImgW;
+      const elliptical = bubble.dataset.ellipse === '1';
+      const fs = TextAutoFitter.computeScaledFontSize(natBoxW, natBoxH, bubble.textContent || '', {
+        naturalWidth: natImgW,
+        renderedWidth: renderedW,
+        elliptical
+      });
+      bubble.style.fontSize = `${fs}px`;
+    });
+
+    OverlayRenderer.clampMountedBubbles(wrapper);
   }
 
   /**
-   * Toggles visibility of all translated overlays on the page
+   * Shrinks any mounted bubble whose rendered scrollHeight or scrollWidth
+   * exceeds its bounded speech-bubble client box down to a 6.5px floor.
    */
+  private static clampMountedBubbles(wrapper: HTMLElement): void {
+    const bubbles = wrapper.querySelectorAll<HTMLElement>('.speedyslate-bubble');
+    bubbles.forEach((b) => {
+      if (b.clientHeight < 8 || b.clientWidth < 8) return;
+      let fs = parseFloat(b.style.fontSize) || 12;
+      let guard = 0;
+      while (
+        guard < 24 &&
+        fs > 6.5 &&
+        (b.scrollHeight > b.clientHeight + 2 || b.scrollWidth > b.clientWidth + 2)
+      ) {
+        fs = Math.max(6.5, Number((fs - 0.5).toFixed(1)));
+        b.style.fontSize = `${fs}px`;
+        guard++;
+      }
+    });
+  }
+
+  private static attachResizeRefitter(wrapper: HTMLElement): void {
+    if (typeof ResizeObserver === 'undefined' || resizeObservers.has(wrapper)) return;
+    let lastW = Math.round(wrapper.clientWidth || 0);
+    const ro = new ResizeObserver(() => {
+      const nextW = Math.round(wrapper.clientWidth || 0);
+      if (nextW > 20 && Math.abs(nextW - lastW) >= 4) {
+        lastW = nextW;
+        OverlayRenderer.refitWrapperBubbles(wrapper);
+      }
+    });
+    ro.observe(wrapper);
+    resizeObservers.set(wrapper, ro);
+  }
+
   public static setAllVisibility(visible: boolean): void {
     const bubbles = document.querySelectorAll<HTMLElement>('.speedyslate-bubble');
     bubbles.forEach((b) => {

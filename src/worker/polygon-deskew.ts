@@ -14,7 +14,7 @@ export type Quad4 = [
  */
 export class PolygonDeskew {
   public static shouldWarp(angleDeg?: number): boolean {
-    return typeof angleDeg === 'number' && Math.abs(angleDeg) >= 4;
+    return typeof angleDeg === 'number' && Math.abs(angleDeg) >= 10;
   }
 
   public static minAreaQuad(boundaryPoints: [number, number][]): {

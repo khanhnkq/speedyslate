@@ -1918,16 +1918,16 @@
       if (ctx) {
         return (text, fontPx) => {
           ctx.font = `600 ${fontPx}px ${COMIC_FONT_STACK}`;
-          return ctx.measureText(text).width;
+          return ctx.measureText(text).width * 1.08;
         };
       }
       return (text, fontPx) => {
         let units = 0;
         for (const ch of text) {
-          if (ch === " ") units += 0.3;
-          else if (/[\u3000-\u9FFF\uAC00-\uD7AF]/.test(ch)) units += 1;
-          else if (/\p{Lu}/u.test(ch)) units += 0.64;
-          else units += 0.54;
+          if (ch === " ") units += 0.32;
+          else if (/[\u3000-\u9FFF\uAC00-\uD7AF]/.test(ch)) units += 1.02;
+          else if (/\p{Lu}/u.test(ch)) units += 0.66;
+          else units += 0.56;
         }
         return units * fontPx;
       };
@@ -1945,20 +1945,41 @@
     static computeOptimalFontSize(boxWidthPx, boxHeightPx, text) {
       return this.fitDialogue(boxWidthPx, boxHeightPx, text).fontSize;
     }
+    /**
+     * Computes CSS font-size scaled to the actual rendered DOM width of the comic
+     * image (`renderedWidth / naturalWidth`), deducting elliptical safe padding.
+     */
+    static computeScaledFontSize(naturalBoxWidthPx, naturalBoxHeightPx, text, opts) {
+      const natW = opts?.naturalWidth && opts.naturalWidth > 0 ? opts.naturalWidth : 0;
+      const renW = opts?.renderedWidth && opts.renderedWidth > 0 ? opts.renderedWidth : 0;
+      const scale = natW > 0 && renW > 0 ? renW / natW : 1;
+      const cssW = naturalBoxWidthPx * scale;
+      const cssH = naturalBoxHeightPx * scale;
+      const elliptical = Boolean(opts?.elliptical);
+      const innerW = elliptical ? cssW * 0.8 : cssW - 12;
+      const innerH = elliptical ? cssH * 0.88 : cssH - 6;
+      return this.fitDialogue(innerW, innerH, text, {
+        elliptical,
+        measureWidth: opts?.measureWidth,
+        minFontPx: 7.5,
+        maxFontPx: 22
+      }).fontSize;
+    }
     static fitDialogue(boxWidthPx, boxHeightPx, text, opts) {
       const trimmed = text.replace(/\s+/g, " ").trim();
-      if (!trimmed) return { fontSize: 14, lines: [] };
+      if (!trimmed) return { fontSize: 12, lines: [] };
       const measure = opts?.measureWidth ?? this.getDefaultMeasurer();
       const elliptical = Boolean(opts?.elliptical);
       const words = trimmed.split(" ").filter((w) => w.length > 0);
-      const availW = Math.max(20, boxWidthPx - 10);
-      const availH = Math.max(18, boxHeightPx - 6);
-      const lineHeightRatio = 1.24;
-      const maxFs = Math.min(28, Math.max(14, Math.floor(availH / 1.75)));
-      const minFs = 9;
+      const availW = Math.max(16, boxWidthPx - 4);
+      const availH = Math.max(14, boxHeightPx - 4);
+      const lineHeightRatio = 1.26;
+      const minFs = opts?.minFontPx ?? 9;
+      const capFs = opts?.maxFontPx ?? 26;
+      const maxFs = Math.min(capFs, Math.max(minFs, Math.floor(availH / 1.75)));
       for (let fs = maxFs; fs >= minFs; fs -= 0.5) {
         const lineH = fs * lineHeightRatio;
-        const maxLines = Math.max(1, Math.floor((availH + 2) / lineH));
+        const maxLines = Math.max(1, Math.floor((availH + 1) / lineH));
         if (!elliptical) {
           const lines = this.wrapGreedy(words, fs, () => availW, measure);
           if (lines && lines.length <= maxLines && lines.length * lineH <= availH + 1) {
@@ -1974,8 +1995,8 @@
             if (lineIdx >= targetN) return 0;
             const cy = startY + (lineIdx + 0.5) * lineH;
             const normY = 2 * cy / availH - 1;
-            const factor = Math.sqrt(Math.max(0.2, 1 - normY * normY * 0.78));
-            return availW * Math.max(0.52, factor);
+            const factor = Math.sqrt(Math.max(0.22, 1 - normY * normY * 0.75));
+            return availW * Math.max(0.55, factor);
           };
           const lines = this.wrapGreedy(words, fs, chordAt, measure);
           if (lines && lines.length <= targetN) {
@@ -2125,6 +2146,7 @@
       );
       const needsStrokeHalo = Boolean(transparentBg && (kind === "free" || kind === "sfx"));
       const haloColor = textColor === "#ffffff" ? "#111111" : "#ffffff";
+      const isEllipse = kind !== "free" && kind !== "sfx";
       let borderRadius;
       if (kind === "free") {
         borderRadius = "8px";
@@ -2135,21 +2157,15 @@
       }
       Object.assign(bubble.style, {
         position: "absolute",
-        // Anchored directly over the detected dialogue block inside the speech bubble
         top: `${coords.topPct}%`,
         left: `${coords.leftPct}%`,
         transform: "none",
-        // Width covers the dialogue block cleanly so original text doesn't poke out
         width: `${coords.widthPct}%`,
         maxWidth: `${coords.widthPct}%`,
-        // Height covers the full dialogue box so original text cannot poke out above or below
-        minHeight: `${coords.heightPct}%`,
-        height: "auto",
-        maxHeight: "none",
-        // Solid clean background masks underlying original comic text
+        height: `${coords.heightPct}%`,
+        maxHeight: `${coords.heightPct}%`,
         backgroundColor: bg,
         color: textColor,
-        // Zero borders, zero shadows, zero filters
         border: "none",
         outline: "none",
         boxShadow: "none",
@@ -2159,13 +2175,12 @@
         paintOrder: needsStrokeHalo ? "stroke fill" : "normal",
         borderRadius,
         boxSizing: "border-box",
-        padding: "3px 6px",
+        padding: isEllipse ? "5% 10%" : "3px 6px",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
         textAlign: "center",
-        // Bundled Vietnamese comic font with clean UI fallback
         fontFamily: "'SpeedySlateComic', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
         fontWeight: "600",
         lineHeight: "1.24",
@@ -2175,11 +2190,10 @@
         cursor: "default",
         transition: "opacity 0.15s ease-in-out",
         userSelect: "text",
-        whiteSpace: "pre-wrap",
+        whiteSpace: "normal",
         wordBreak: "normal",
         overflowWrap: "break-word",
         hyphens: "none",
-        // Allow Vietnamese diacritics and descenders to render without horizontal cutting
         overflow: "visible"
       });
       bubble.style.setProperty("text-wrap", "balance");
@@ -2379,10 +2393,8 @@
   };
 
   // src/content/overlay/overlay-renderer.ts
-  var OverlayRenderer = class {
-    /**
-     * Renders translated speech bubbles over the wrapped image.
-     */
+  var resizeObservers = /* @__PURE__ */ new WeakMap();
+  var OverlayRenderer = class _OverlayRenderer {
     static renderDialogues(wrapper, dialogues, naturalWidth, naturalHeight, theme = "auto") {
       ComicFontLoader.ensureLoaded();
       const existing = wrapper.querySelectorAll(
@@ -2395,17 +2407,22 @@
         naturalWidth,
         naturalHeight
       );
+      const renderedW = _OverlayRenderer.measureRenderedWidth(wrapper, naturalWidth);
       for (const item of dialogues) {
-        if (!item.translatedText || !item.translatedText.trim()) continue;
+        const cleanTranslated = (item.translatedText || "").replace(/\s+/g, " ").trim();
+        if (!cleanTranslated) continue;
         const coords = BubbleGeometry.computeCoordinates(item, naturalWidth, naturalHeight);
         const useEllipse = item.isOvalChamber ?? (item.kind === void 0 || item.kind === "dialogue");
-        const fitted = TextAutoFitter.fitDialogue(
+        const fontSize = TextAutoFitter.computeScaledFontSize(
           coords.pixelWidth,
           coords.pixelHeight,
-          item.translatedText,
-          { elliptical: useEllipse }
+          cleanTranslated,
+          {
+            naturalWidth,
+            renderedWidth: renderedW,
+            elliptical: useEllipse
+          }
         );
-        const fontSize = fitted.fontSize;
         const isDark = theme === "dark" || theme === "auto" && item.isDarkBackground;
         const sampledBg = theme === "auto" && item.bgColor && /^#[0-9a-fA-F]{6}$/.test(item.bgColor) ? item.bgColor : void 0;
         const eraseBg = OverlayStyler.resolveBackground(theme, !!isDark, item.bgColor);
@@ -2424,6 +2441,10 @@
         const bubble = document.createElement("div");
         bubble.className = "speedyslate-bubble";
         bubble.id = item.id;
+        bubble.dataset.natBoxW = String(coords.pixelWidth);
+        bubble.dataset.natBoxH = String(coords.pixelHeight);
+        bubble.dataset.natImgW = String(naturalWidth);
+        bubble.dataset.ellipse = useEllipse ? "1" : "0";
         if (item.originalText) {
           bubble.title = item.originalText;
         }
@@ -2437,7 +2458,7 @@
           transparentBg,
           item.kind
         );
-        bubble.textContent = fitted.lines.length > 0 ? fitted.lines.join("\n") : item.translatedText;
+        bubble.textContent = cleanTranslated;
         bubble.addEventListener("mouseenter", (e) => {
           if (e.altKey) {
             bubble.style.opacity = "0.12";
@@ -2452,10 +2473,70 @@
         });
         wrapper.appendChild(bubble);
       }
+      _OverlayRenderer.clampMountedBubbles(wrapper);
+      if (typeof document !== "undefined" && document.fonts?.ready) {
+        document.fonts.ready.then(() => _OverlayRenderer.refitWrapperBubbles(wrapper)).catch(() => {
+        });
+      }
+      _OverlayRenderer.attachResizeRefitter(wrapper);
+    }
+    static measureRenderedWidth(wrapper, fallbackW) {
+      if (!wrapper) return fallbackW;
+      const cw = wrapper.clientWidth || wrapper.getBoundingClientRect?.()?.width || 0;
+      if (cw > 20) return cw;
+      const img = wrapper.querySelector?.("img");
+      const iw = img?.clientWidth || img?.getBoundingClientRect?.()?.width || 0;
+      return iw > 20 ? iw : fallbackW;
+    }
+    static refitWrapperBubbles(wrapper) {
+      const bubbles = wrapper.querySelectorAll(".speedyslate-bubble");
+      if (bubbles.length === 0) return;
+      const firstImgW = Number(bubbles[0].dataset.natImgW) || 800;
+      const renderedW = _OverlayRenderer.measureRenderedWidth(wrapper, firstImgW);
+      bubbles.forEach((bubble) => {
+        const natBoxW = Number(bubble.dataset.natBoxW) || 100;
+        const natBoxH = Number(bubble.dataset.natBoxH) || 60;
+        const natImgW = Number(bubble.dataset.natImgW) || firstImgW;
+        const elliptical = bubble.dataset.ellipse === "1";
+        const fs = TextAutoFitter.computeScaledFontSize(natBoxW, natBoxH, bubble.textContent || "", {
+          naturalWidth: natImgW,
+          renderedWidth: renderedW,
+          elliptical
+        });
+        bubble.style.fontSize = `${fs}px`;
+      });
+      _OverlayRenderer.clampMountedBubbles(wrapper);
     }
     /**
-     * Toggles visibility of all translated overlays on the page
+     * Shrinks any mounted bubble whose rendered scrollHeight or scrollWidth
+     * exceeds its bounded speech-bubble client box down to a 6.5px floor.
      */
+    static clampMountedBubbles(wrapper) {
+      const bubbles = wrapper.querySelectorAll(".speedyslate-bubble");
+      bubbles.forEach((b) => {
+        if (b.clientHeight < 8 || b.clientWidth < 8) return;
+        let fs = parseFloat(b.style.fontSize) || 12;
+        let guard = 0;
+        while (guard < 24 && fs > 6.5 && (b.scrollHeight > b.clientHeight + 2 || b.scrollWidth > b.clientWidth + 2)) {
+          fs = Math.max(6.5, Number((fs - 0.5).toFixed(1)));
+          b.style.fontSize = `${fs}px`;
+          guard++;
+        }
+      });
+    }
+    static attachResizeRefitter(wrapper) {
+      if (typeof ResizeObserver === "undefined" || resizeObservers.has(wrapper)) return;
+      let lastW = Math.round(wrapper.clientWidth || 0);
+      const ro = new ResizeObserver(() => {
+        const nextW = Math.round(wrapper.clientWidth || 0);
+        if (nextW > 20 && Math.abs(nextW - lastW) >= 4) {
+          lastW = nextW;
+          _OverlayRenderer.refitWrapperBubbles(wrapper);
+        }
+      });
+      ro.observe(wrapper);
+      resizeObservers.set(wrapper, ro);
+    }
     static setAllVisibility(visible) {
       const bubbles = document.querySelectorAll(".speedyslate-bubble");
       bubbles.forEach((b) => {
@@ -2831,135 +2912,6 @@
     }
   };
 
-  // src/content/page-badge.ts
-  var PageBadgeManager = class {
-    static BADGE_CLASS = "speedyslate-page-badge";
-    /**
-     * Mounts or retrieves existing page badge on the comic image wrapper
-     */
-    static ensureBadge(wrapper, pageIndex) {
-      let badge = wrapper.querySelector(`.${this.BADGE_CLASS}`);
-      if (badge) return badge;
-      badge = document.createElement("div");
-      badge.className = this.BADGE_CLASS;
-      badge.dataset.pageIndex = String(pageIndex);
-      Object.assign(badge.style, {
-        position: "absolute",
-        top: "12px",
-        left: "12px",
-        zIndex: "60",
-        background: "#0D0D11",
-        border: "1px solid #26262E",
-        borderRadius: "6px",
-        padding: "4px 10px",
-        color: "#FFFFFF",
-        fontFamily: "'Space Grotesk', 'Inter', system-ui, -apple-system, sans-serif",
-        fontWeight: "700",
-        fontSize: "11px",
-        letterSpacing: "0.02em",
-        boxShadow: "0 4px 14px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.04)",
-        pointerEvents: "none",
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "6px",
-        transition: "all 0.15s ease",
-        userSelect: "none"
-      });
-      this.renderBadgeContent(badge, pageIndex, "idle");
-      wrapper.appendChild(badge);
-      return badge;
-    }
-    /**
-     * Updates badge status and message
-     */
-    static updateBadge(wrapper, pageIndex, status, count, keyInfo) {
-      const badge = this.ensureBadge(wrapper, pageIndex);
-      this.renderBadgeContent(badge, pageIndex, status, count, keyInfo);
-    }
-    static renderBadgeContent(badge, pageIndex, status, count, keyInfo) {
-      let dotColor = "#555555";
-      let statusText = "";
-      let isPulsing = false;
-      switch (status) {
-        case "idle":
-          dotColor = "#555555";
-          statusText = "";
-          break;
-        case "ocr_running":
-          dotColor = "#E52E3D";
-          statusText = "Qu\xE9t OCR...";
-          isPulsing = true;
-          break;
-        case "ocr_done":
-          dotColor = "#E52E3D";
-          statusText = count !== void 0 ? `${count} c\xE2u` : "\u0110\xE3 qu\xE9t";
-          break;
-        case "translating":
-          dotColor = "#E52E3D";
-          statusText = "\u0110ang d\u1ECBch...";
-          isPulsing = true;
-          break;
-        case "translated":
-          dotColor = "#E52E3D";
-          statusText = count !== void 0 ? `${count} c\xE2u` : "\u0110\xE3 d\u1ECBch";
-          break;
-        case "no_text":
-          dotColor = "#333333";
-          statusText = "Kh\xF4ng ch\u1EEF";
-          break;
-        case "error": {
-          dotColor = "#FF3B47";
-          const rawErr = (keyInfo?.errorMessage || "").toLowerCase();
-          if (rawErr.includes("timeout") || rawErr.includes("qu\xE1 th\u1EDDi gian")) {
-            statusText = "Timeout 27s";
-          } else if (rawErr.includes("429")) {
-            statusText = "Limit (429)";
-          } else if (rawErr.includes("403")) {
-            statusText = "T\u1EEB ch\u1ED1i (403)";
-          } else if (rawErr.includes("401")) {
-            statusText = "Key sai (401)";
-          } else if (rawErr.includes("safety")) {
-            statusText = "Ch\u1EB7n 18+";
-          } else {
-            statusText = keyInfo?.errorMessage ? keyInfo.errorMessage.slice(0, 18) : "L\u1ED7i";
-          }
-          break;
-        }
-      }
-      const pulseAnim = isPulsing ? "animation: speedyslatePulse 1.2s infinite ease-in-out;" : "";
-      const keyBadge = keyInfo?.keyIndex !== void 0 ? `<span style="background: #140A0B; border: 1px solid #4D1217; color: #FFA5AC; border-radius: 4px; padding: 1px 5px; font-size: 10px; font-weight: 700; letter-spacing: 0.02em;">Key #${keyInfo.keyIndex}${keyInfo.totalKeys && keyInfo.totalKeys > 1 ? `/${keyInfo.totalKeys}` : ""}</span>` : "";
-      const statusSpan = statusText ? status === "error" ? `<span style="color: #FFA5AC; font-weight: 700; font-size: 10px; background: #1C0A0B; border: 1px solid #E52E3D; border-radius: 4px; padding: 1px 5px;">${statusText}</span>` : `<span style="color: #A0A0AB; font-weight: 600; font-size: 10px;">${statusText}</span>` : "";
-      badge.innerHTML = `
-      <style>
-        @keyframes speedyslatePulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.35; transform: scale(0.85); }
-        }
-      </style>
-      <span style="width: 6px; height: 6px; border-radius: 50%; background: ${dotColor}; box-shadow: 0 0 5px ${dotColor}; display: inline-block; ${pulseAnim}"></span>
-      <span style="color: #FFFFFF; font-weight: 700;">#${pageIndex + 1}</span>
-      ${keyBadge}
-      ${statusSpan}
-    `;
-      if (status === "error") {
-        badge.style.border = "1px solid #E52E3D";
-        badge.title = keyInfo?.errorMessage ? `Trang #${pageIndex + 1}: ${keyInfo.errorMessage}` : "\u0110\xE3 x\u1EA3y ra l\u1ED7i";
-        badge.style.pointerEvents = "auto";
-        badge.style.cursor = "help";
-      } else if (status === "translated" || status === "translating" || status === "ocr_running") {
-        badge.style.border = "1px solid rgba(229, 46, 61, 0.4)";
-        badge.title = "";
-        badge.style.pointerEvents = "none";
-        badge.style.cursor = "default";
-      } else {
-        badge.style.border = "1px solid #26262E";
-        badge.title = "";
-        badge.style.pointerEvents = "none";
-        badge.style.cursor = "default";
-      }
-    }
-  };
-
   // src/content/missing-banner.ts
   var ModelMissingBanner = class {
     static show() {
@@ -3315,13 +3267,6 @@
         const naturalWidth = img.naturalWidth || img.width || 800;
         const naturalHeight = img.naturalHeight || img.height || 1200;
         img.dataset.slateStatus = "ocr_running";
-        PageBadgeManager.updateBadge(
-          wrapper,
-          task.index,
-          "ocr_running",
-          void 0,
-          isVision && totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : void 0
-        );
         if (isVision) {
           this.ctx.hud.log(
             `Trang #${task.index + 1}${totalKeys > 1 ? ` (Key #${estimatedKey}/${totalKeys})` : ""}: Vision AI \u0111ang nh\u1EADn di\u1EC7n v\xE0 d\u1ECBch...`
@@ -3359,30 +3304,20 @@
               img.dataset.slateStatus = "translated";
               const finalKey = resp.keyIndex || estimatedKey;
               const finalTotal = resp.totalKeys || totalKeys;
-              PageBadgeManager.updateBadge(
-                wrapper,
-                task.index,
-                "translated",
-                resp.dialogues.length,
-                !resp.cached && finalKey ? { keyIndex: finalKey, totalKeys: finalTotal } : void 0
-              );
               this.ctx.hud.log(
                 resp.cached ? `Trang #${task.index + 1}: N\u1EA1p t\u1EEB Cache (0ms)` : `Trang #${task.index + 1}${finalTotal > 1 ? ` (Key #${finalKey}/${finalTotal})` : ""}: Vision AI \u0111\xE3 d\u1ECBch ${resp.dialogues.length} c\xE2u tho\u1EA1i`
               );
             } else {
               img.dataset.slateStatus = "no_text";
-              PageBadgeManager.updateBadge(wrapper, task.index, "no_text");
               this.ctx.hud.log(`Trang #${task.index + 1}: Kh\xF4ng c\xF3 ch\u1EEF tho\u1EA1i`);
             }
             this.ctx.markImageCompleted(img);
           } else if (!resp.dialogues || resp.dialogues.length === 0) {
             img.dataset.slateStatus = "no_text";
-            PageBadgeManager.updateBadge(wrapper, task.index, "no_text");
             this.ctx.markImageCompleted(img);
             this.ctx.hud.log(`Trang #${task.index + 1}: Kh\xF4ng c\xF3 ch\u1EEF`);
           } else {
             img.dataset.slateStatus = "ocr_done";
-            PageBadgeManager.updateBadge(wrapper, task.index, "ocr_done", resp.dialogues.length);
             this.ctx.hud.log(`Trang #${task.index + 1}: \u0110\xE3 qu\xE9t ${resp.dialogues.length} c\xE2u tho\u1EA1i, \u0111ang ch\u1EDD d\u1ECBch...`);
             this.ctx.translationQueue.enqueue({
               index: task.index,
@@ -3395,13 +3330,6 @@
         } else {
           img.dataset.slateStatus = "error";
           const errMsg = resp?.error || "L\u1ED7i nh\u1EADn di\u1EC7n OCR";
-          PageBadgeManager.updateBadge(
-            wrapper,
-            task.index,
-            "error",
-            void 0,
-            isVision && totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys, errorMessage: errMsg } : { errorMessage: errMsg }
-          );
           this.ctx.hud.log(`L\u1ED7i OCR trang #${task.index + 1}: ${errMsg}`, true);
           DebugLogger.error("Content:OCR", `Trang #${task.index + 1}: ${errMsg}`);
           if (this.ctx.ocrQueue.size() <= 1 && this.ctx.translationQueue.size() === 0) {
@@ -3415,13 +3343,6 @@
           return;
         }
         img.dataset.slateStatus = "error";
-        PageBadgeManager.updateBadge(
-          wrapper,
-          task.index,
-          "error",
-          void 0,
-          isVision && totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys, errorMessage: errMsg } : { errorMessage: errMsg }
-        );
         this.ctx.hud.log(`L\u1ED7i OCR trang #${task.index + 1}: ${errMsg}`, true);
         DebugLogger.error("Content:OCR", `Trang #${task.index + 1}: ${errMsg}`, err);
         if (this.ctx.ocrQueue.size() <= 1 && this.ctx.translationQueue.size() === 0) {
@@ -3444,13 +3365,6 @@
       const estimatedKey = totalKeys > 0 ? task.index % totalKeys + 1 : void 0;
       try {
         img.dataset.slateStatus = "translating";
-        PageBadgeManager.updateBadge(
-          wrapper,
-          task.index,
-          "translating",
-          task.dialogues.length,
-          totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys } : void 0
-        );
         this.ctx.hud.log(
           `Trang #${task.index + 1}${totalKeys > 1 ? ` (Key #${estimatedKey}/${totalKeys})` : ""}: \u0110ang d\u1ECBch ${task.dialogues.length} c\xE2u tho\u1EA1i...`
         );
@@ -3490,13 +3404,6 @@
           img.dataset.slateStatus = "translated";
           const finalKey = resp.keyIndex || estimatedKey;
           const finalTotal = resp.totalKeys || totalKeys;
-          PageBadgeManager.updateBadge(
-            wrapper,
-            task.index,
-            "translated",
-            resp.dialogues.length,
-            finalKey ? { keyIndex: finalKey, totalKeys: finalTotal } : void 0
-          );
           this.ctx.markImageCompleted(img);
           this.ctx.hud.log(
             `Trang #${task.index + 1}${finalTotal > 1 ? ` (Key #${finalKey}/${finalTotal})` : ""}: Ho\xE0n t\u1EA5t ${resp.dialogues.length} c\xE2u tho\u1EA1i`
@@ -3504,13 +3411,6 @@
         } else {
           img.dataset.slateStatus = "error";
           const errMsg = resp?.error || "L\u1ED7i API d\u1ECBch";
-          PageBadgeManager.updateBadge(
-            wrapper,
-            task.index,
-            "error",
-            void 0,
-            totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys, errorMessage: errMsg } : { errorMessage: errMsg }
-          );
           this.ctx.hud.log(`L\u1ED7i d\u1ECBch trang #${task.index + 1}: ${errMsg}`, true);
           DebugLogger.error("Content:Translate", `Trang #${task.index + 1}: ${errMsg}`);
           if (this.ctx.translationQueue.size() <= 1 && this.ctx.ocrQueue.size() === 0) {
@@ -3524,13 +3424,6 @@
           return;
         }
         img.dataset.slateStatus = "error";
-        PageBadgeManager.updateBadge(
-          wrapper,
-          task.index,
-          "error",
-          void 0,
-          totalKeys > 0 ? { keyIndex: estimatedKey, totalKeys, errorMessage: errMsg } : { errorMessage: errMsg }
-        );
         this.ctx.hud.log(`L\u1ED7i d\u1ECBch trang #${task.index + 1}: ${errMsg}`, true);
         DebugLogger.error("Content:Translate", `Trang #${task.index + 1}: ${errMsg}`, err);
         if (this.ctx.translationQueue.size() <= 1 && this.ctx.ocrQueue.size() === 0) {
@@ -3632,7 +3525,6 @@
                 bubbleTheme
               );
               img.dataset.slateStatus = "translated";
-              PageBadgeManager.updateBadge(wrapper, i, "translated", cached.dialogues.length);
             }
             markCompleted(img);
             newlyRestored++;
@@ -3689,7 +3581,6 @@
         this.hooks.completedImages.delete(img);
         const idx = this.hooks.images.indexOf(img);
         if (idx !== -1) {
-          if (img.parentElement) PageBadgeManager.updateBadge(img.parentElement, idx, "idle");
           this.hooks.onImageRecycled?.(idx, img);
         }
       });
@@ -3729,10 +3620,6 @@
             ToonheyAdapter.wrapImage(img);
             this.spaShield.watch(img);
             this.hooks.images.push(img);
-            const index = this.hooks.images.length - 1;
-            if (img.parentElement) {
-              PageBadgeManager.ensureBadge(img.parentElement, index);
-            }
             newFound++;
           }
         }
@@ -3740,11 +3627,6 @@
           this.hooks.images.sort(
             (a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
           );
-          this.hooks.images.forEach((img, idx) => {
-            if (img.parentElement) {
-              PageBadgeManager.ensureBadge(img.parentElement, idx);
-            }
-          });
           this.hooks.onNewImagesDetected(this.hooks.images.length);
         }
       } finally {
@@ -4124,12 +4006,11 @@
       }
     }
     resetPageTranslations() {
-      document.querySelectorAll(".speedyslate-bubble, .speedyslate-erase-patch, .speedyslate-clean-canvas").forEach((el) => el.remove());
-      this.images.forEach((img, idx) => {
+      document.querySelectorAll(
+        ".speedyslate-bubble, .speedyslate-erase-patch, .speedyslate-clean-canvas, .speedyslate-page-badge"
+      ).forEach((el) => el.remove());
+      this.images.forEach((img) => {
         delete img.dataset.slateStatus;
-        if (img.parentElement) {
-          PageBadgeManager.updateBadge(img.parentElement, idx, "idle");
-        }
       });
       this.completedImages.clear();
       this.ocrQueue?.clear();

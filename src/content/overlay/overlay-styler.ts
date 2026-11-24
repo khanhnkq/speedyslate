@@ -59,33 +59,27 @@ export class OverlayStyler {
     // Speech bubbles erase as an ellipse so the overlay keeps the original
     // balloon silhouette and never pokes past its curved border. Rectangular
     // narration boxes (free) stay softly squared like the printed frame.
+    const isEllipse = kind !== 'free' && kind !== 'sfx';
     let borderRadius: string;
     if (kind === 'free') {
       borderRadius = '8px';
     } else if (kind === 'sfx') {
       borderRadius = '10px';
     } else {
-      // dialogue or unknown kind: organic balloon shape
       borderRadius = '50%';
     }
 
     Object.assign(bubble.style, {
       position: 'absolute',
-      // Anchored directly over the detected dialogue block inside the speech bubble
       top: `${coords.topPct}%`,
       left: `${coords.leftPct}%`,
       transform: 'none',
-      // Width covers the dialogue block cleanly so original text doesn't poke out
       width: `${coords.widthPct}%`,
       maxWidth: `${coords.widthPct}%`,
-      // Height covers the full dialogue box so original text cannot poke out above or below
-      minHeight: `${coords.heightPct}%`,
-      height: 'auto',
-      maxHeight: 'none',
-      // Solid clean background masks underlying original comic text
+      height: `${coords.heightPct}%`,
+      maxHeight: `${coords.heightPct}%`,
       backgroundColor: bg,
       color: textColor,
-      // Zero borders, zero shadows, zero filters
       border: 'none',
       outline: 'none',
       boxShadow: 'none',
@@ -95,13 +89,12 @@ export class OverlayStyler {
       paintOrder: needsStrokeHalo ? 'stroke fill' : 'normal',
       borderRadius,
       boxSizing: 'border-box',
-      padding: '3px 6px',
+      padding: isEllipse ? '5% 10%' : '3px 6px',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
       textAlign: 'center',
-      // Bundled Vietnamese comic font with clean UI fallback
       fontFamily: "'SpeedySlateComic', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
       fontWeight: '600',
       lineHeight: '1.24',
@@ -111,11 +104,10 @@ export class OverlayStyler {
       cursor: 'default',
       transition: 'opacity 0.15s ease-in-out',
       userSelect: 'text',
-      whiteSpace: 'pre-wrap',
+      whiteSpace: 'normal',
       wordBreak: 'normal',
       overflowWrap: 'break-word',
       hyphens: 'none',
-      // Allow Vietnamese diacritics and descenders to render without horizontal cutting
       overflow: 'visible'
     });
 

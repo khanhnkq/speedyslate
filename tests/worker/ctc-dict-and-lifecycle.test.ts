@@ -16,6 +16,11 @@ describe('parseCtcDictionary', () => {
   it('does not duplicate space if dictionary already ends with space', () => {
     expect(parseCtcDictionary('a\nb\n ')).toEqual(['a', 'b', ' ']);
   });
+
+  it('strips pre-prepended leading blank line from ppu-paddle-ocr-models v5/v6 dicts to prevent -1 char shift', () => {
+    expect(parseCtcDictionary('\n0\n1\n2\n')).toEqual(['0', '1', '2', ' ']);
+    expect(parseCtcDictionary('\r\n!\n"\n')).toEqual(['!', '"', ' ']);
+  });
 });
 
 describe('ONNX Tensor disposal & session release', () => {

@@ -1,7 +1,6 @@
 import { BubbleTheme } from '../shared/types';
 import { SafeMessenger } from './safe-messenger';
 import { OverlayRenderer } from './overlay/overlay-renderer';
-import { PageBadgeManager } from './page-badge';
 import { resolveOverlayDimensions } from './image-compressor';
 
 /**
@@ -57,7 +56,6 @@ export class CacheRestorer {
               bubbleTheme
             );
             img.dataset.slateStatus = 'translated';
-            PageBadgeManager.updateBadge(wrapper, i, 'translated', cached.dialogues.length);
           }
           markCompleted(img);
           newlyRestored++;

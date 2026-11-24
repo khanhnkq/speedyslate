@@ -13,27 +13,14 @@ export class ImageUtils {
    */
   public static calculateDetResize(
     width: number,
-    height: number
+    height: number,
+    maxLongSide: number = 960
   ): { targetW: number; targetH: number; ratioW: number; ratioH: number } {
-    let ratio = 1.0;
+    const longSide = Math.max(width, height);
+    let ratio = longSide > maxLongSide ? maxLongSide / longSide : 1.0;
 
-    // Maintain optimal width for comic text detection (960px - 1120px)
-    if (width > 1120) {
-      ratio = 1120 / width;
-    } else if (width < 800) {
-      ratio = Math.min(1.5, 960 / width);
-    }
-
-    // Modern WebGPU/WASM supports height up to 3840px safely
-    if (height * ratio > 3840) {
-      ratio = 3840 / height;
-    }
-
-    let targetW = Math.round(width * ratio);
-    let targetH = Math.round(height * ratio);
-
-    targetW = Math.max(32, Math.round(targetW / 32) * 32);
-    targetH = Math.max(32, Math.round(targetH / 32) * 32);
+    let targetW = Math.max(32, Math.round((width * ratio) / 32) * 32);
+    let targetH = Math.max(32, Math.round((height * ratio) / 32) * 32);
 
     return {
       targetW,

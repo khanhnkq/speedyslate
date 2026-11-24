@@ -5,8 +5,8 @@ const COMIC_FONT_STACK = "'SpeedySlateComic', 'Segoe UI', system-ui, -apple-syst
 /**
  * TextAutoFitter: Fits translated dialogue inside rectangular or elliptical
  * comic speech bubbles using real Canvas 2D `measureText` (with pure-math
- * fallback in headless Node) and elliptical chord width budgets so glyphs
- * never clip curved balloon borders.
+ * fallback in headless Node), rendered CSS display scaling, and elliptical
+ * chord width budgets so glyphs never overflow speech bubble borders.
  */
 export class TextAutoFitter {
   private static measureCtx: CanvasRenderingContext2D | null | undefined;
@@ -29,17 +29,18 @@ export class TextAutoFitter {
     if (ctx) {
       return (text: string, fontPx: number) => {
         ctx.font = `600 ${fontPx}px ${COMIC_FONT_STACK}`;
-        return ctx.measureText(text).width;
+        // 1.08 safety multiplier absorbs font-swap metric variance (Patrick Hand vs fallback)
+        return ctx.measureText(text).width * 1.08;
       };
     }
 
     return (text: string, fontPx: number) => {
       let units = 0;
       for (const ch of text) {
-        if (ch === ' ') units += 0.3;
-        else if (/[\u3000-\u9FFF\uAC00-\uD7AF]/.test(ch)) units += 1.0;
-        else if (/\p{Lu}/u.test(ch)) units += 0.64;
-        else units += 0.54;
+        if (ch === ' ') units += 0.32;
+        else if (/[\u3000-\u9FFF\uAC00-\uD7AF]/.test(ch)) units += 1.02;
+        else if (/\p{Lu}/u.test(ch)) units += 0.66;
+        else units += 0.56;
       }
       return units * fontPx;
     };
@@ -64,28 +65,69 @@ export class TextAutoFitter {
     return this.fitDialogue(boxWidthPx, boxHeightPx, text).fontSize;
   }
 
+  /**
+   * Computes CSS font-size scaled to the actual rendered DOM width of the comic
+   * image (`renderedWidth / naturalWidth`), deducting elliptical safe padding.
+   */
+  public static computeScaledFontSize(
+    naturalBoxWidthPx: number,
+    naturalBoxHeightPx: number,
+    text: string,
+    opts?: {
+      naturalWidth?: number;
+      renderedWidth?: number;
+      elliptical?: boolean;
+      measureWidth?: WidthMeasurer;
+    }
+  ): number {
+    const natW = opts?.naturalWidth && opts.naturalWidth > 0 ? opts.naturalWidth : 0;
+    const renW = opts?.renderedWidth && opts.renderedWidth > 0 ? opts.renderedWidth : 0;
+    const scale = natW > 0 && renW > 0 ? renW / natW : 1;
+
+    const cssW = naturalBoxWidthPx * scale;
+    const cssH = naturalBoxHeightPx * scale;
+    const elliptical = Boolean(opts?.elliptical);
+
+    // Match OverlayStyler's interior padding ('5% 10%' for ellipse, '3px 6px' for rect)
+    const innerW = elliptical ? cssW * 0.8 : cssW - 12;
+    const innerH = elliptical ? cssH * 0.88 : cssH - 6;
+
+    return this.fitDialogue(innerW, innerH, text, {
+      elliptical,
+      measureWidth: opts?.measureWidth,
+      minFontPx: 7.5,
+      maxFontPx: 22
+    }).fontSize;
+  }
+
   public static fitDialogue(
     boxWidthPx: number,
     boxHeightPx: number,
     text: string,
-    opts?: { elliptical?: boolean; measureWidth?: WidthMeasurer }
+    opts?: {
+      elliptical?: boolean;
+      measureWidth?: WidthMeasurer;
+      minFontPx?: number;
+      maxFontPx?: number;
+    }
   ): { fontSize: number; lines: string[] } {
     const trimmed = text.replace(/\s+/g, ' ').trim();
-    if (!trimmed) return { fontSize: 14, lines: [] };
+    if (!trimmed) return { fontSize: 12, lines: [] };
 
     const measure = opts?.measureWidth ?? this.getDefaultMeasurer();
     const elliptical = Boolean(opts?.elliptical);
     const words = trimmed.split(' ').filter((w) => w.length > 0);
 
-    const availW = Math.max(20, boxWidthPx - 10);
-    const availH = Math.max(18, boxHeightPx - 6);
-    const lineHeightRatio = 1.24;
-    const maxFs = Math.min(28, Math.max(14, Math.floor(availH / 1.75)));
-    const minFs = 9;
+    const availW = Math.max(16, boxWidthPx - 4);
+    const availH = Math.max(14, boxHeightPx - 4);
+    const lineHeightRatio = 1.26;
+    const minFs = opts?.minFontPx ?? 9;
+    const capFs = opts?.maxFontPx ?? 26;
+    const maxFs = Math.min(capFs, Math.max(minFs, Math.floor(availH / 1.75)));
 
     for (let fs = maxFs; fs >= minFs; fs -= 0.5) {
       const lineH = fs * lineHeightRatio;
-      const maxLines = Math.max(1, Math.floor((availH + 2) / lineH));
+      const maxLines = Math.max(1, Math.floor((availH + 1) / lineH));
 
       if (!elliptical) {
         const lines = this.wrapGreedy(words, fs, () => availW, measure);
@@ -95,18 +137,16 @@ export class TextAutoFitter {
         continue;
       }
 
-      // Elliptical bubble: try target line counts 1..maxLines so top/bottom
-      // lines wrap to the narrower chord width at their vertical position.
       for (let targetN = 1; targetN <= maxLines; targetN++) {
         const blockH = targetN * lineH;
         if (blockH > availH + 1) break;
         const startY = (availH - blockH) * 0.5;
         const chordAt = (lineIdx: number): number => {
-          if (lineIdx >= targetN) return 0; // force spillover check
+          if (lineIdx >= targetN) return 0;
           const cy = startY + (lineIdx + 0.5) * lineH;
-          const normY = (2 * cy) / availH - 1; // -1..+1
-          const factor = Math.sqrt(Math.max(0.2, 1 - normY * normY * 0.78));
-          return availW * Math.max(0.52, factor);
+          const normY = (2 * cy) / availH - 1;
+          const factor = Math.sqrt(Math.max(0.22, 1 - normY * normY * 0.75));
+          return availW * Math.max(0.55, factor);
         };
         const lines = this.wrapGreedy(words, fs, chordAt, measure);
         if (lines && lines.length <= targetN) {
@@ -115,8 +155,7 @@ export class TextAutoFitter {
       }
     }
 
-    const fallbackLines =
-      this.wrapGreedy(words, minFs, () => availW, measure, true) || [trimmed];
+    const fallbackLines = this.wrapGreedy(words, minFs, () => availW, measure, true) || [trimmed];
     return { fontSize: minFs, lines: fallbackLines };
   }
 

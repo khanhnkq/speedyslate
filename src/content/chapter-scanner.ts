@@ -1,5 +1,4 @@
 import { ToonheyAdapter } from './toonhey-adapter';
-import { PageBadgeManager } from './page-badge';
 import { SpaOverlayShield } from './spa-shield';
 
 export interface ChapterScannerHooks {
@@ -28,7 +27,6 @@ export class ChapterScanner {
       this.hooks.completedImages.delete(img);
       const idx = this.hooks.images.indexOf(img);
       if (idx !== -1) {
-        if (img.parentElement) PageBadgeManager.updateBadge(img.parentElement, idx, 'idle');
         this.hooks.onImageRecycled?.(idx, img);
       }
     });
@@ -67,10 +65,6 @@ export class ChapterScanner {
           ToonheyAdapter.wrapImage(img);
           this.spaShield.watch(img);
           this.hooks.images.push(img);
-          const index = this.hooks.images.length - 1;
-          if (img.parentElement) {
-            PageBadgeManager.ensureBadge(img.parentElement, index);
-          }
           newFound++;
         }
       }
@@ -79,11 +73,6 @@ export class ChapterScanner {
         this.hooks.images.sort((a, b) =>
           a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
         );
-        this.hooks.images.forEach((img, idx) => {
-          if (img.parentElement) {
-            PageBadgeManager.ensureBadge(img.parentElement, idx);
-          }
-        });
         this.hooks.onNewImagesDetected(this.hooks.images.length);
       }
     } finally {

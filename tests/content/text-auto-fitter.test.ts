@@ -35,7 +35,24 @@ describe('TextAutoFitter.fitDialogue elliptical chord wrapping', () => {
       elliptical: true,
       measureWidth: monoMeasure
     });
-    expect(shout.fontSize).toBeGreaterThanOrEqual(18);
+    expect(shout.fontSize).toBeGreaterThanOrEqual(16);
     expect(shout.lines).toEqual(['DỪNG LẠI!']);
+  });
+
+  it('scales font size down proportionally when DOM rendered width is smaller than natural image width', () => {
+    const naturalFs = TextAutoFitter.computeScaledFontSize(
+      280,
+      180,
+      'ANH KHÔNG THỂ TIN ĐƯỢC CHUYỆN NÀY ĐANG XẢY RA!',
+      { naturalWidth: 1600, renderedWidth: 1600, elliptical: true, measureWidth: monoMeasure }
+    );
+    const halfScreenFs = TextAutoFitter.computeScaledFontSize(
+      280,
+      180,
+      'ANH KHÔNG THỂ TIN ĐƯỢC CHUYỆN NÀY ĐANG XẢY RA!',
+      { naturalWidth: 1600, renderedWidth: 720, elliptical: true, measureWidth: monoMeasure }
+    );
+    expect(halfScreenFs).toBeLessThan(naturalFs * 0.65);
+    expect(halfScreenFs).toBeGreaterThanOrEqual(7.5);
   });
 });

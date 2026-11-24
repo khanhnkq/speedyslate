@@ -11,10 +11,9 @@ import { decodePixels } from '../src/shared/erase-codec';
 interface LocalModel { id: string; dir: string; note: string }
 const MODELS: LocalModel[] = [
   { id: 'comic-manga-manhwa', dir: 'comic-manga-manhwa', note: 'RT-DETR comic det 11MB + en v4 rec' },
-  { id: 'comic-manga-manhwa-det2', dir: 'comic-manga-manhwa-det2', note: 'RT-DETR + PP-OCRv5 det2 gap-fill + en v4 rec' },
   { id: 'paddle-det-mobile', dir: 'paddle-det-mobile', note: 'PP-OCRv4 mobile det 4.7MB + en v4 rec' },
-  { id: 'ppocr-v5-english-fast', dir: 'ppocr-v5-english-fast', note: 'PP-OCRv5 mobile det + PP-OCRv5 en rec (~12MB)' },
-  { id: 'ppocr-v6-multilingual', dir: 'ppocr-v6-multilingual', note: 'PP-OCRv6 small det + PP-OCRv6 small rec (~30MB)' }
+  { id: 'ppocr-v5-english-fast', dir: 'ppocr-v5-english-fast', note: 'PP-OCRv4 det + PP-OCRv5 en rec (~12.2MB)' },
+  { id: 'ppocr-v6-multilingual', dir: 'ppocr-v6-multilingual', note: 'PP-OCRv4 det + PP-OCRv6 small rec (~25MB)' }
 ];
 
 const FIXTURES_DIR = '/test-fixtures/yotogi-mura';

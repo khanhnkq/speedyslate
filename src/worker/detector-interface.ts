@@ -11,6 +11,8 @@ export interface ITextDetector {
     originalHeight: number
   ): Promise<BoundingBox[]>;
 
+  release?(): Promise<void>;
+
   /**
    * Segmentation detectors (DB/PaddleDet) expose the raw per-pixel text
    * probability map of the last detectText call, at model-input resolution.

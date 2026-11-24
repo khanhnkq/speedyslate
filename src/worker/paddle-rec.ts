@@ -19,10 +19,20 @@ interface PreparedCrop {
   decoded: boolean;
 }
 
+export function parseCtcDictionary(keysText: string): string[] {
+  const trimmed = keysText.replace(/(?:\r?\n)+$/, '');
+  if (!trimmed) return [' '];
+  const chars = trimmed.split(/\r?\n/);
+  if (chars[chars.length - 1] !== ' ') {
+    chars.push(' ');
+  }
+  return chars;
+}
+
 export class PaddleRecEngine {
   private session: ort.InferenceSession;
   private characters: string[];
-  private targetH: number = 48; // PP-OCRv4 standard height
+  private targetH: number = 48; // PP-OCRv4/v5/v6 standard height
   private isCjkModel: boolean;
   private batchSupported: boolean = true;
 
@@ -33,12 +43,11 @@ export class PaddleRecEngine {
   ) {
     this.session = session;
     this.isCjkModel = opts?.isCjkModel ?? false;
-    // Split keysText by line, preserving character order
-    this.characters = keysText.split(/\r?\n/);
-    // In PaddleOCR CTC models, the last class index represents SPACE (' ')
-    if (this.characters.length > 0) {
-      this.characters[this.characters.length - 1] = ' ';
-    }
+    this.characters = parseCtcDictionary(keysText);
+  }
+
+  public async release(): Promise<void> {
+    await this.session.release?.();
   }
 
   /**
@@ -196,22 +205,30 @@ export class PaddleRecEngine {
           bucketW,
           this.targetH
         );
-        const output = await this.session.run({ [inputName]: tensor });
-        const outputTensor = output[this.session.outputNames[0]];
-        const dims = outputTensor.dims;
-        if (dims.length !== 3) {
-          throw new Error(`Unexpected rec output dims: ${dims.join('x')}`);
-        }
-        const seqLen = dims[1];
-        const numClasses = dims[2];
-        const rowLen = seqLen * numClasses;
-        const data = outputTensor.data as Float32Array;
-        for (let r = 0; r < batch.length; r++) {
-          const row = data.subarray(r * rowLen, (r + 1) * rowLen);
-          const res = this.ctcDecode(row, [1, seqLen, numClasses]);
-          batch[r].text = res.text;
-          batch[r].confidence = res.confidence;
-          batch[r].decoded = true;
+        let output: Record<string, ort.Tensor> | null = null;
+        try {
+          output = await this.session.run({ [inputName]: tensor });
+          const outputTensor = output[this.session.outputNames[0]];
+          const dims = outputTensor.dims;
+          if (dims.length !== 3) {
+            throw new Error(`Unexpected rec output dims: ${dims.join('x')}`);
+          }
+          const seqLen = dims[1];
+          const numClasses = dims[2];
+          const rowLen = seqLen * numClasses;
+          const data = outputTensor.data as Float32Array;
+          for (let r = 0; r < batch.length; r++) {
+            const row = data.subarray(r * rowLen, (r + 1) * rowLen);
+            const res = this.ctcDecode(row, [1, seqLen, numClasses]);
+            batch[r].text = res.text;
+            batch[r].confidence = res.confidence;
+            batch[r].decoded = true;
+          }
+        } finally {
+          tensor.dispose?.();
+          if (output) {
+            for (const out of Object.values(output)) out.dispose?.();
+          }
         }
       }
     }
@@ -239,9 +256,17 @@ export class PaddleRecEngine {
     inputName: string
   ): Promise<{ text: string; confidence: number }> {
     const tensor = ImageUtils.imageToRecTensor(crop.imageData, crop.targetW, this.targetH);
-    const output = await this.session.run({ [inputName]: tensor });
-    const outputTensor = output[this.session.outputNames[0]];
-    return this.ctcDecode(outputTensor.data as Float32Array, outputTensor.dims);
+    let output: Record<string, ort.Tensor> | null = null;
+    try {
+      output = await this.session.run({ [inputName]: tensor });
+      const outputTensor = output[this.session.outputNames[0]];
+      return this.ctcDecode(outputTensor.data as Float32Array, outputTensor.dims);
+    } finally {
+      tensor.dispose?.();
+      if (output) {
+        for (const out of Object.values(output)) out.dispose?.();
+      }
+    }
   }
 
   /**

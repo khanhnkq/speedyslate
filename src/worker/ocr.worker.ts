@@ -14,8 +14,11 @@ import { BubbleAggregator } from './bubble-aggregator';
 // wasmPaths must be local — AMO Compliance: No remote code execution
 const basePath = self.location.href.substring(0, self.location.href.lastIndexOf('/') + 1);
 ort.env.wasm.wasmPaths = basePath;
-ort.env.wasm.numThreads = Math.min(4, Math.max(1, ((self as any).navigator?.hardwareConcurrency ?? 2) - 1));
+ort.env.wasm.numThreads = (self as any).crossOriginIsolated
+  ? Math.min(4, Math.max(1, ((self as any).navigator?.hardwareConcurrency ?? 2) - 1))
+  : 1;
 ort.env.wasm.simd = true;
+(ort.env as any).webgpu = { ...((ort.env as any).webgpu || {}), powerPreference: 'high-performance' };
 ort.env.logLevel = 'error';
 
 let detEngine: ITextDetector | null = null;
@@ -91,7 +94,18 @@ async function tryCreateWebGpuSession(
       const inputName = session.inputNames[0];
       const totalElements = testDims.reduce((acc, d) => acc * d, 1);
       const testTensor = new ort.Tensor('float32', new Float32Array(totalElements), testDims);
-      await session.run({ [inputName]: testTensor });
+      let probeResults: Record<string, ort.Tensor> | null = null;
+      try {
+        probeResults = await session.run({ [inputName]: testTensor });
+      } catch (probeErr) {
+        await session.release?.().catch(() => {});
+        throw probeErr;
+      } finally {
+        testTensor.dispose?.();
+        if (probeResults) {
+          for (const t of Object.values(probeResults)) t.dispose?.();
+        }
+      }
     }
 
     return session;
@@ -121,6 +135,13 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
           if (!msg.detBuffer || !msg.recBuffer || !msg.keysText) {
             throw new Error('Thiếu dữ liệu buffer hoặc keys để khởi tạo model.');
           }
+
+          await detEngine?.release?.().catch(() => {});
+          await det2Engine?.release?.().catch(() => {});
+          await recEngine?.release?.().catch(() => {});
+          detEngine = null;
+          det2Engine = null;
+          recEngine = null;
 
           const baseOpts: ort.InferenceSession.SessionOptions = {
             graphOptimizationLevel: 'all',

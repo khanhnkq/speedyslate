@@ -78,7 +78,7 @@ export default defineConfig(({ mode }) => {
           const onnxDist = resolve(__dirname, 'node_modules/onnxruntime-web/dist');
           if (fs.existsSync(onnxDist)) {
             const files = fs.readdirSync(onnxDist).filter(
-              (f) => f.endsWith('.wasm') || (f.startsWith('ort-wasm') && f.endsWith('.mjs'))
+              (f) => f.startsWith('ort-wasm') && (f.endsWith('.wasm') || f.endsWith('.mjs'))
             );
             for (const file of files) {
               fs.copyFileSync(resolve(onnxDist, file), resolve(outDir, file));

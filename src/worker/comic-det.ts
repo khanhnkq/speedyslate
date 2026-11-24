@@ -20,6 +20,10 @@ export class ComicDetEngine implements ITextDetector {
     this.session = session;
   }
 
+  public async release(): Promise<void> {
+    await this.session.release?.();
+  }
+
   /**
    * Detects text regions in an image canvas.
    * Outputs clean bounding boxes for text lines, ready for CTC recognition.
@@ -57,16 +61,28 @@ export class ComicDetEngine implements ITextDetector {
       BigInt(originalHeight)
     ]), [1, 2]);
 
-    // 4. Run inference
+    // 4. Run inference and copy result typed arrays before disposing tensors
     const feeds: Record<string, ort.Tensor> = {
       images: imagesTensor,
       orig_target_sizes: origTargetSizes
     };
 
-    const results = await this.session.run(feeds);
-    const labelsData = results.labels.data;
-    const boxesData = results.boxes.data as Float32Array;
-    const scoresData = results.scores.data as Float32Array;
+    let results: Record<string, ort.Tensor> | null = null;
+    let labelsData: ArrayLike<number | bigint>;
+    let boxesData: Float32Array;
+    let scoresData: Float32Array;
+    try {
+      results = await this.session.run(feeds);
+      labelsData = Array.from(results.labels.data as ArrayLike<number | bigint>);
+      boxesData = new Float32Array(results.boxes.data as Float32Array);
+      scoresData = new Float32Array(results.scores.data as Float32Array);
+    } finally {
+      imagesTensor.dispose?.();
+      origTargetSizes.dispose?.();
+      if (results) {
+        for (const out of Object.values(results)) out.dispose?.();
+      }
+    }
 
     // 5. Extract bounding boxes
     const numQueries = scoresData.length;

@@ -21,6 +21,10 @@ export class PaddleDetEngine implements ITextDetector {
     if (opts?.unclipRatio !== undefined) this.unclipRatio = opts.unclipRatio;
   }
 
+  public async release(): Promise<void> {
+    await this.session.release?.();
+  }
+
   /**
    * Detects text regions in an image bitmap or canvas.
    * Outputs unified text-line bounding boxes (words on the same line are merged).
@@ -45,15 +49,24 @@ export class PaddleDetEngine implements ITextDetector {
 
     const tensor = ImageUtils.imageToDetTensor(imageData, targetW, targetH);
 
-    // Run inference
+    // Run inference and clone prob map before disposing GPU/WASM tensors
     const feeds: Record<string, ort.Tensor> = {};
     const inputName = this.session.inputNames[0] || 'x';
     feeds[inputName] = tensor;
 
-    const results = await this.session.run(feeds);
-    const outputName = this.session.outputNames[0];
-    const outputTensor = results[outputName];
-    const predData = outputTensor.data as Float32Array;
+    let results: Record<string, ort.Tensor> | null = null;
+    let predData: Float32Array;
+    try {
+      results = await this.session.run(feeds);
+      const outputName = this.session.outputNames[0];
+      const outputTensor = results[outputName];
+      predData = new Float32Array(outputTensor.data as Float32Array);
+    } finally {
+      tensor.dispose?.();
+      if (results) {
+        for (const out of Object.values(results)) out.dispose?.();
+      }
+    }
 
     // Keep the per-pixel text-probability map — downstream erase masking uses
     // it as the authoritative "text lives here" signal (DB segmentation).

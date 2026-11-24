@@ -1,0 +1,254 @@
+.motion-stage {
+  position: relative;
+  background: var(--bg-surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-card);
+  overflow: hidden;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.62);
+}
+
+.stage-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  background: #0B0D13;
+  border-bottom: 1px solid var(--line-hair);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.stage-steps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.step-pill {
+  padding: 4px 9px;
+  border-radius: 4px;
+  color: var(--ink-muted);
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.step-pill.is-active {
+  color: #FFFFFF;
+  background: var(--accent-soft);
+  border-color: rgba(229, 46, 61, 0.45);
+}
+
+.mode-switch {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.mode-btn {
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  background: transparent;
+  white-space: nowrap;
+}
+
+.mode-btn.is-active {
+  background: var(--accent);
+  color: #FFFFFF;
+}
+
+.viewport-canvas {
+  position: relative;
+  aspect-ratio: 500 / 540;
+  width: 100%;
+  background: #141722;
+  user-select: none;
+  overflow: hidden;
+}
+
+.manga-scene {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Choreographed Motion Layers */
+.motion-stage[data-mode="motion"] .raw-glyphs {
+  animation: eraseRawGlyphs 7.6s infinite cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.motion-stage[data-mode="motion"] .det-box {
+  stroke-dasharray: 420;
+  stroke-dashoffset: 420;
+  animation: drawDetBox 7.6s infinite cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.motion-stage[data-mode="motion"] .inpaint-flash {
+  opacity: 0;
+  animation: pulseInpaint 7.6s infinite ease-out;
+}
+
+.motion-stage[data-mode="motion"] .vn-glyphs {
+  opacity: 0;
+  transform: translate3d(0, 5px, 0);
+  animation: typesetReveal 7.6s infinite cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.motion-stage[data-mode="motion"] .scan-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, #E52E3D 20%, #FF808B 50%, #E52E3D 80%, transparent 100%);
+  box-shadow: 0 0 18px rgba(229, 46, 61, 0.85);
+  pointer-events: none;
+  animation: sweepBeam 7.6s infinite cubic-bezier(0.35, 0, 0.25, 1);
+}
+
+.motion-stage[data-mode="motion"] .split-layer,
+.motion-stage[data-mode="motion"] .split-handle {
+  display: none;
+}
+
+/* Interactive Split Scrubbing Mode */
+.motion-stage[data-mode="split"] .scan-beam,
+.motion-stage[data-mode="split"] .det-box,
+.motion-stage[data-mode="split"] .inpaint-flash {
+  display: none;
+}
+
+.motion-stage[data-mode="split"] .raw-glyphs {
+  animation: none;
+  opacity: 1;
+}
+
+.motion-stage[data-mode="split"] .vn-glyphs {
+  animation: none;
+  opacity: 0;
+}
+
+.split-layer {
+  position: absolute;
+  inset: 0;
+  clip-path: inset(0 0 0 var(--split-pct, 50%));
+  pointer-events: none;
+}
+
+.split-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--split-pct, 50%);
+  width: 2px;
+  background: var(--accent);
+  cursor: ew-resize;
+  z-index: 12;
+}
+
+.split-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  background: #0B0D13;
+  border: 1.5px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.7);
+}
+
+/* Live HUD Overlay inside Hero Demo */
+.demo-hud {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 13px;
+  background: rgba(11, 13, 19, 0.94);
+  border: 1px solid var(--line-strong);
+  border-left: 2px solid var(--accent);
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-primary);
+}
+
+.timeline-track {
+  height: 3px;
+  width: 100%;
+  background: #141824;
+  overflow: hidden;
+}
+
+.timeline-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+  animation: progressFill 7.6s infinite linear;
+}
+
+.motion-stage[data-mode="split"] .timeline-fill {
+  animation: none;
+  transform: scaleX(1);
+}
+
+@keyframes sweepBeam {
+  0% { transform: translate3d(0, 0%, 0); opacity: 0; }
+  4% { opacity: 1; }
+  28% { transform: translate3d(0, 520px, 0); opacity: 1; }
+  33%, 100% { transform: translate3d(0, 540px, 0); opacity: 0; }
+}
+
+@keyframes drawDetBox {
+  0%, 5% { stroke-dashoffset: 420; opacity: 0; }
+  12%, 34% { stroke-dashoffset: 0; opacity: 1; }
+  44%, 100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+@keyframes eraseRawGlyphs {
+  0%, 34% { opacity: 1; filter: blur(0px); }
+  46%, 92% { opacity: 0; filter: blur(2px); }
+  98%, 100% { opacity: 1; filter: blur(0px); }
+}
+
+@keyframes pulseInpaint {
+  0%, 33% { opacity: 0; }
+  39% { opacity: 0.42; }
+  50%, 100% { opacity: 0; }
+}
+
+@keyframes typesetReveal {
+  0%, 48% { opacity: 0; transform: translate3d(0, 5px, 0); }
+  58%, 91% { opacity: 1; transform: translate3d(0, 0, 0); }
+  97%, 100% { opacity: 0; transform: translate3d(0, -2px, 0); }
+}
+
+@keyframes progressFill {
+  0% { transform: scaleX(0); }
+  100% { transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-stage * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

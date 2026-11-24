@@ -8,6 +8,7 @@
     "version:bump": "python3 scripts/bump_version.py",
     "build:chrome": "vite build --mode chrome",
     "build:firefox": "vite build --mode firefox",
+    "build:site": "vite build --config vite.site.config.ts",
     "build": "python3 scripts/bump_version.py && npm run build:chrome && npm run build:firefox",
     "package:chrome": "npm run build:chrome && python3 scripts/package.py chrome",
     "package:firefox": "npm run build:firefox && python3 scripts/package.py firefox",

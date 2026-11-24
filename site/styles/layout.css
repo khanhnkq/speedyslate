@@ -1,0 +1,440 @@
+/* 0. Navigation (Single-line 64px architectural bar) */
+.site-nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: 64px;
+  background: rgba(8, 9, 13, 0.88);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line-hair);
+}
+
+.nav-inner {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.nav-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.nav-brand img {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-secondary);
+}
+
+.nav-links a:hover {
+  color: var(--ink-primary);
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lang-btn {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-ctrl);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.lang-btn:hover {
+  color: var(--ink-primary);
+  border-color: var(--ink-secondary);
+}
+
+.nav-cta {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+/* 1. Hero Section (5/7 Asymmetric Split, fits 100dvh, max pt-20) */
+.hero-sec {
+  min-height: calc(100dvh - 64px);
+  padding: 48px 0 56px;
+  display: flex;
+  align-items: center;
+  background:
+    linear-gradient(to right, rgba(29, 33, 48, 0.28) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(29, 33, 48, 0.28) 1px, transparent 1px);
+  background-size: 96px 96px;
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 48px;
+  align-items: center;
+}
+
+.hero-title {
+  margin-top: 18px;
+  font-family: var(--font-display);
+  font-size: clamp(32px, 3.4vw, 46px);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  font-weight: 700;
+}
+
+.hero-title span {
+  color: var(--accent);
+}
+
+.hero-sub {
+  margin-top: 18px;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink-secondary);
+  max-width: 44ch;
+}
+
+.hero-ctas {
+  margin-top: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* 2. Metrics Hairline Strip (Layout Family #2: 4-cell divided strip) */
+.metrics-strip {
+  border-top: 1px solid var(--line-hair);
+  border-bottom: 1px solid var(--line-hair);
+  background: var(--bg-surface);
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.metric-cell {
+  padding: 28px 24px;
+  border-right: 1px solid var(--line-hair);
+}
+
+.metric-cell:last-child {
+  border-right: none;
+}
+
+.metric-val {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink-primary);
+}
+
+.metric-val span {
+  color: var(--accent);
+}
+
+.metric-lbl {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--ink-secondary);
+}
+
+/* 3. Interactive Store-Assets Stage (Layout Family #3: Tabbed Theatre) */
+.showcase-sec {
+  padding: 88px 0;
+}
+
+.sec-head-stack {
+  max-width: 62ch;
+  margin-bottom: 32px;
+}
+
+.sec-h2 {
+  font-family: var(--font-display);
+  font-size: clamp(28px, 3.2vw, 40px);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+.sec-lead {
+  margin-top: 12px;
+  font-size: 16px;
+  color: var(--ink-secondary);
+}
+
+.stage-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border: 1px solid var(--line-hair);
+  border-bottom: none;
+  border-radius: var(--r-card) var(--r-card) 0 0;
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.stage-tab {
+  padding: 14px 14px;
+  text-align: left;
+  border-right: 1px solid var(--line-hair);
+  border-bottom: 2px solid transparent;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.stage-tab:last-child {
+  border-right: none;
+}
+
+.stage-tab .t-idx {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-muted);
+  margin-bottom: 3px;
+}
+
+.stage-tab .t-name {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+
+.stage-tab.is-active {
+  background: var(--bg-elevated);
+  border-bottom-color: var(--accent);
+}
+
+.stage-tab.is-active .t-idx {
+  color: var(--accent);
+}
+
+.stage-tab.is-active .t-name {
+  color: var(--ink-primary);
+}
+
+.stage-frame {
+  border: 1px solid var(--line-hair);
+  border-radius: 0 0 var(--r-card) var(--r-card);
+  background: #0B0D13;
+  overflow: hidden;
+}
+
+.stage-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1280 / 800;
+}
+
+/* 4. Asymmetric 4-Cell Technical Bento (Layout Family #4: 8/4 + 4/8) */
+.bento-sec {
+  padding: 84px 0;
+  border-top: 1px solid var(--line-hair);
+}
+
+.bento-grid {
+  margin-top: 36px;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 18px;
+}
+
+.bento-cell {
+  border: 1px solid var(--line-hair);
+  border-radius: var(--r-card);
+  padding: 28px;
+  background: var(--bg-surface);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.bento-8 { grid-column: span 8; }
+.bento-4 { grid-column: span 4; }
+.bento-tint {
+  background: linear-gradient(155deg, #151219 0%, #0E1017 100%);
+  border-color: rgba(229, 46, 61, 0.34);
+}
+.bento-elev {
+  background: var(--bg-elevated);
+}
+
+.bento-idx {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 0.06em;
+}
+
+.bento-h3 {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+.bento-p {
+  margin-top: 8px;
+  font-size: 14.5px;
+  color: var(--ink-secondary);
+  max-width: 58ch;
+}
+
+.code-strip {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 12px 14px;
+  background: #090B10;
+  border: 1px solid var(--line-hair);
+  border-radius: var(--r-ctrl);
+  color: #D7DDF0;
+  overflow-x: auto;
+}
+
+/* 5. Editorial Install & Governance Split (Layout Family #5) */
+.install-sec {
+  padding: 84px 0;
+  border-top: 1px solid var(--line-hair);
+}
+
+.install-split {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 48px;
+  align-items: start;
+}
+
+.dl-list {
+  margin-top: 24px;
+  border-top: 1px solid var(--line-hair);
+}
+
+.dl-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line-hair);
+}
+
+.dl-meta strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 16px;
+}
+
+.dl-meta span {
+  font-size: 13px;
+  color: var(--ink-secondary);
+}
+
+.promo-card-preview {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-card);
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+
+.promo-card-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.gov-meta {
+  padding: 20px 22px;
+}
+
+.gov-links {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #FF7883;
+}
+
+.site-footer {
+  border-top: 1px solid var(--line-hair);
+  padding: 28px 0;
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+
+.footer-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 980px) {
+  .hero-grid,
+  .install-split {
+    grid-template-columns: 1fr;
+  }
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .metric-cell:nth-child(2) {
+    border-right: none;
+  }
+  .metric-cell:nth-child(-n+2) {
+    border-bottom: 1px solid var(--line-hair);
+  }
+  .stage-tabs {
+    grid-template-columns: 1fr;
+  }
+  .stage-tab {
+    border-right: none;
+    border-bottom: 1px solid var(--line-hair);
+  }
+  .bento-8, .bento-4 {
+    grid-column: span 12;
+  }
+}
+
+@media (max-width: 680px) {
+  .nav-links {
+    display: none;
+  }
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+  .metric-cell {
+    border-right: none;
+    border-bottom: 1px solid var(--line-hair);
+  }
+  .metric-cell:last-child {
+    border-bottom: none;
+  }
+}

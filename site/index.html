@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SpeedySlate | WebGPU Manga &amp; Webtoon Auto-Translator</title>
+    <meta
+      name="description"
+      content="Local WebGPU PaddleOCR v6, zero-bleed Telea FMM text erasure, elliptical comic typesetting, and multi-AI translation for Chrome and Firefox." />
+    <meta property="og:title" content="SpeedySlate | WebGPU Manga &amp; Webtoon Translator" />
+    <meta property="og:description" content="Erase raw CJK/Latin comic text and typeset translations in under 1 second per page." />
+    <meta property="og:image" content="./assets/promo/promo-marquee-1400x560.png" />
+    <link rel="icon" type="image/svg+xml" href="./assets/icons/icon.svg" />
+    <link rel="stylesheet" href="./styles/tokens.css" />
+    <link rel="stylesheet" href="./styles/hero-motion.css" />
+    <link rel="stylesheet" href="./styles/layout.css" />
+  </head>
+  <body>
+    <header class="site-nav">
+      <div class="container nav-inner">
+        <a href="./" class="nav-brand">
+          <img src="./assets/icons/icon.svg" width="30" height="30" alt="SpeedySlate mark" />
+          <span>SPEEDYSLATE</span>
+        </a>
+
+        <nav class="nav-links" aria-label="Primary">
+          <a href="#showcase" data-i18n="navShowcase">Giao diện</a>
+          <a href="#architecture" data-i18n="navArch">Kiến trúc</a>
+          <a href="#install" data-i18n="navInstall">Cài đặt</a>
+          <a href="./privacy.html" data-i18n="navPrivacy">Quyền riêng tư</a>
+          <a href="https://github.com/khanhnkq/speedyslate" target="_blank" rel="noopener">GitHub</a>
+        </nav>
+
+        <div class="nav-actions">
+          <button type="button" id="btn-lang" class="lang-btn" aria-label="Switch language">VI / EN</button>
+          <a href="#install" class="btn btn-primary nav-cta" data-i18n="ctaPrimary">Add to Chrome</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <!-- 1. HERO WITH LIVE 4-PHASE MOTION GRAPHIC & INTERACTIVE SPLIT SCRUBBER -->
+      <section class="hero-sec">
+        <div class="container hero-grid">
+          <div>
+            <div class="eyebrow-tag" data-i18n="heroEyebrow">WEBGPU MANGA &amp; WEBTOON ENGINE</div>
+            <h1 class="hero-title" data-i18n-html="heroTitle">
+              Dịch truyện RAW sang <span>Tiếng Việt</span> dưới 1 giây
+            </h1>
+            <p class="hero-sub" data-i18n="heroSub">
+              Quét chữ cục bộ bằng PaddleOCR v6 trên GPU, xóa sạch chữ gốc không lem viền và dàn trang trực tiếp trong bóng thoại.
+            </p>
+            <div class="hero-ctas">
+              <a href="#install" class="btn btn-primary" data-i18n="ctaPrimary">Add to Chrome</a>
+              <a href="https://github.com/khanhnkq/speedyslate/releases" target="_blank" rel="noopener" class="btn btn-ghost" data-i18n="ctaFirefox">Firefox Add-on</a>
+            </div>
+          </div>
+
+          <div class="motion-stage" id="hero-stage" data-mode="motion" style="--split-pct: 52%;">
+            <div class="stage-topbar">
+              <div class="stage-steps" id="stage-steps">
+                <span class="step-pill is-active" data-step="0">01 DETECT</span>
+                <span class="step-pill" data-step="1">02 INPAINT</span>
+                <span class="step-pill" data-step="2">03 TYPESET</span>
+              </div>
+              <div class="mode-switch" role="tablist" aria-label="Demo mode">
+                <button type="button" class="mode-btn is-active" data-set-mode="motion">AUTO MOTION</button>
+                <button type="button" class="mode-btn" data-set-mode="split">SPLIT SCRUB</button>
+              </div>
+            </div>
+
+            <div class="viewport-canvas" id="hero-viewport">
+              <div class="scan-beam"></div>
+
+              <!-- Base Choreographed SVG Scene -->
+              <svg class="manga-scene" viewBox="0 0 500 540" xmlns="http://www.w3.org/2000/svg" aria-label="Live translation pipeline animation">
+                <defs>
+                  <linearGradient id="hSky" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#DCE1EE" />
+                    <stop offset="100%" stop-color="#FFFFFF" />
+                  </linearGradient>
+                  <linearGradient id="hNight" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#171A26" />
+                    <stop offset="100%" stop-color="#222738" />
+                  </linearGradient>
+                </defs>
+                <rect width="500" height="540" fill="#ECEEF4" />
+
+                <!-- Panel 1 -->
+                <rect x="16" y="14" width="468" height="264" fill="#FFFFFF" stroke="#111217" stroke-width="4" />
+                <rect x="18" y="16" width="464" height="158" fill="url(#hSky)" />
+                <g stroke="#181A22" stroke-width="1.6" opacity="0.16">
+                  <line x1="20" y1="28" x2="205" y2="136" />
+                  <line x1="480" y1="28" x2="295" y2="136" />
+                </g>
+                <!-- Character -->
+                <path d="M 162,276 L 184,198 L 224,180 L 276,180 L 318,198 L 340,276 Z" fill="#171923" stroke="#111217" stroke-width="3.2" />
+                <path d="M 215,182 L 250,226 L 285,182" fill="#F2F3F7" stroke="#111217" stroke-width="2.8" />
+                <path d="M 220,115 C 220,78 280,78 280,115 L 276,158 L 250,178 L 224,158 Z" fill="#FFFFFF" stroke="#111217" stroke-width="3.2" />
+                <path d="M 205,124 L 195,90 L 218,96 L 230,66 L 250,86 L 272,64 L 284,94 L 306,88 L 295,125 C 282,102 218,102 205,124 Z" fill="#14161F" stroke="#111217" stroke-width="2.8" />
+                <path d="M 228,127 L 243,130" stroke="#111217" stroke-width="3" stroke-linecap="round" />
+                <path d="M 272,127 L 257,130" stroke="#111217" stroke-width="3" stroke-linecap="round" />
+                <rect x="234" y="132" width="5" height="5" fill="#111217" />
+                <rect x="261" y="132" width="5" height="5" fill="#111217" />
+                <path d="M 244,153 L 257,151" stroke="#111217" stroke-width="2.4" stroke-linecap="round" />
+
+                <!-- Speech Balloons Panel 1 -->
+                <ellipse cx="104" cy="104" rx="70" ry="62" fill="#FFFFFF" stroke="#111217" stroke-width="3.5" />
+                <polygon points="140,152 172,170 153,138" fill="#FFFFFF" stroke="#111217" stroke-width="3.2" />
+                <ellipse cx="104" cy="104" rx="68" ry="60" fill="#FFFFFF" />
+
+                <ellipse cx="394" cy="106" rx="72" ry="60" fill="#FFFFFF" stroke="#111217" stroke-width="3.5" />
+                <polygon points="345,148 318,168 334,134" fill="#FFFFFF" stroke="#111217" stroke-width="3.2" />
+                <ellipse cx="394" cy="106" rx="70" ry="58" fill="#FFFFFF" />
+
+                <!-- Panel 2 -->
+                <rect x="16" y="292" width="468" height="234" fill="url(#hNight)" stroke="#111217" stroke-width="4" />
+                <rect x="36" y="376" width="66" height="148" fill="#10121A" stroke="#2D3246" stroke-width="2" />
+                <rect x="116" y="352" width="82" height="172" fill="#131620" stroke="#2D3246" stroke-width="2" />
+                <rect x="318" y="366" width="90" height="158" fill="#10121A" stroke="#2D3246" stroke-width="2" />
+                <rect x="42" y="314" width="214" height="72" rx="4" fill="#FFFFFF" stroke="#111217" stroke-width="3.2" />
+                <ellipse cx="372" cy="436" rx="84" ry="64" fill="#FFFFFF" stroke="#111217" stroke-width="3.5" />
+
+                <!-- Raw Japanese Layer -->
+                <g class="raw-glyphs" font-family="sans-serif" font-weight="800" fill="#14161E" text-anchor="middle">
+                  <text x="122" y="80" font-size="17">待</text><text x="122" y="101" font-size="17">て</text><text x="122" y="122" font-size="17">！</text>
+                  <text x="92" y="80" font-size="17">罠</text><text x="92" y="101" font-size="17">が</text><text x="92" y="122" font-size="17">あ</text><text x="92" y="143" font-size="17">る</text>
+                  <text x="410" y="82" font-size="17">今</text><text x="410" y="103" font-size="17">す</text><text x="410" y="124" font-size="17">ぐ</text>
+                  <text x="380" y="82" font-size="17">盾</text><text x="380" y="103" font-size="17">を</text><text x="380" y="124" font-size="17">張</text><text x="380" y="145" font-size="17">れ</text>
+                  <text x="149" y="344" font-size="14">第０９区 — 七日目の夜</text>
+                  <text x="149" y="367" font-size="14">暗号信号の解読が完了。</text>
+                  <text x="372" y="428" font-size="16">よし、準備完了</text>
+                  <text x="372" y="452" font-size="16">突入するぞ！</text>
+                </g>
+
+                <!-- Detection Bounding Reticles -->
+                <g fill="none" stroke="#E52E3D" stroke-width="2.2">
+                  <rect class="det-box" x="54" y="58" width="98" height="96" rx="4" />
+                  <rect class="det-box" x="346" y="60" width="96" height="94" rx="4" />
+                  <rect class="det-box" x="50" y="322" width="198" height="56" rx="4" />
+                  <rect class="det-box" x="304" y="396" width="136" height="76" rx="4" />
+                </g>
+
+                <!-- Inpaint Mask Flash -->
+                <g class="inpaint-flash" fill="#E52E3D">
+                  <ellipse cx="104" cy="104" rx="56" ry="48" />
+                  <ellipse cx="394" cy="106" rx="58" ry="46" />
+                  <rect x="52" y="324" width="194" height="52" rx="3" />
+                  <ellipse cx="372" cy="436" rx="68" ry="50" />
+                </g>
+
+                <!-- Translated Typeset Layer -->
+                <g class="vn-glyphs" font-family="'SpeedySlateComic', sans-serif" font-weight="700" fill="#111217" text-anchor="middle">
+                  <text x="104" y="88" font-size="17.5">Khoan đã!</text>
+                  <text x="104" y="109" font-size="17.5">Phía trước có</text>
+                  <text x="104" y="130" font-size="17.5">bẫy phục kích!</text>
+
+                  <text x="394" y="98" font-size="18">Mở khiên chắn</text>
+                  <text x="394" y="121" font-size="18">ngay lập tức!</text>
+
+                  <text x="149" y="344" font-size="16.5">Đêm thứ 7 tại Khu 09 —</text>
+                  <text x="149" y="368" font-size="16.5">tín hiệu đã được giải mã.</text>
+
+                  <text x="372" y="428" font-size="18.5">Tốt lắm, chuẩn bị</text>
+                  <text x="372" y="452" font-size="18.5">đột kích thôi!</text>
+                </g>
+              </svg>
+
+              <!-- Interactive Split Layer (Active in SPLIT SCRUB mode) -->
+              <div class="split-layer" aria-hidden="true">
+                <svg class="manga-scene" viewBox="0 0 500 540" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="500" height="540" fill="#ECEEF4" />
+                  <rect x="16" y="14" width="468" height="264" fill="#FFFFFF" stroke="#111217" stroke-width="4" />
+                  <rect x="18" y="16" width="464" height="158" fill="url(#hSky)" />
+                  <path d="M 162,276 L 184,198 L 224,180 L 276,180 L 318,198 L 340,276 Z" fill="#171923" stroke="#111217" stroke-width="3.2" />
+                  <path d="M 215,182 L 250,226 L 285,182" fill="#F2F3F7" stroke="#111217" stroke-width="2.8" />
+                  <path d="M 220,115 C 220,78 280,78 280,115 L 276,158 L 250,178 L 224,158 Z" fill="#FFFFFF" stroke="#111217" stroke-width="3.2" />
+                  <path d="M 205,124 L 195,90 L 218,96 L 230,66 L 250,86 L 272,64 L 284,94 L 306,88 L 295,125 C 282,102 218,102 205,124 Z" fill="#14161F" stroke="#111217" stroke-width="2.8" />
+                  <path d="M 228,127 L 243,130" stroke="#111217" stroke-width="3" stroke-linecap="round" />
+                  <path d="M 272,127 L 257,130" stroke="#111217" stroke-width="3" stroke-linecap="round" />
+                  <rect x="234" y="132" width="5" height="5" fill="#111217" />
+                  <rect x="261" y="132" width="5" height="5" fill="#111217" />
+                  <path d="M 244,153 L 257,151" stroke="#111217" stroke-width="2.4" stroke-linecap="round" />
+                  <ellipse cx="104" cy="104" rx="70" ry="62" fill="#FFFFFF" stroke="#111217" stroke-width="3.5" />
+                  <polygon points="140,152 172,170 153,138" fill="#FFFFFF" stroke="#111217" stroke-width="3.2" />
+                  <ellipse cx="104" cy="104" rx="68" ry="60" fill="#FFFFFF" />
+                  <ellipse cx="394" cy="106" rx="72" ry="60" fill="#FFFFFF" stroke="#111217" stroke-width="3.5" />
+                  <polygon points="345,148 318,168 334,134" fill="#FFFFFF" stroke="#111217" stroke-width="3.2" />
+                  <ellipse cx="394" cy="106" rx="70" ry="58" fill="#FFFFFF" />
+                  <rect x="16" y="292" width="468" height="234" fill="url(#hNight)" stroke="#111217" stroke-width="4" />
+                  <rect x="36" y="376" width="66" height="148" fill="#10121A" stroke="#2D3246" stroke-width="2" />
+                  <rect x="116" y="352" width="82" height="172" fill="#131620" stroke="#2D3246" stroke-width="2" />
+                  <rect x="318" y="366" width="90" height="158" fill="#10121A" stroke="#2D3246" stroke-width="2" />
+                  <rect x="42" y="314" width="214" height="72" rx="4" fill="#FFFFFF" stroke="#111217" stroke-width="3.2" />
+                  <ellipse cx="372" cy="436" rx="84" ry="64" fill="#FFFFFF" stroke="#111217" stroke-width="3.5" />
+                  <g font-family="'SpeedySlateComic', sans-serif" font-weight="700" fill="#111217" text-anchor="middle">
+                    <text x="104" y="88" font-size="17.5">Khoan đã!</text>
+                    <text x="104" y="109" font-size="17.5">Phía trước có</text>
+                    <text x="104" y="130" font-size="17.5">bẫy phục kích!</text>
+                    <text x="394" y="98" font-size="18">Mở khiên chắn</text>
+                    <text x="394" y="121" font-size="18">ngay lập tức!</text>
+                    <text x="149" y="344" font-size="16.5">Đêm thứ 7 tại Khu 09 —</text>
+                    <text x="149" y="368" font-size="16.5">tín hiệu đã được giải mã.</text>
+                    <text x="372" y="428" font-size="18.5">Tốt lắm, chuẩn bị</text>
+                    <text x="372" y="452" font-size="18.5">đột kích thôi!</text>
+                  </g>
+                </svg>
+              </div>
+
+              <div class="split-handle" id="split-handle" role="slider" aria-label="Compare raw and translated manga" aria-valuemin="5" aria-valuemax="95" aria-valuenow="52" tabindex="0">
+                <div class="split-knob">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M8 9l-4 3l4 3" /><path d="M16 9l4 3l-4 3" />
+                  </svg>
+                </div>
+              </div>
+
+              <div class="demo-hud" id="demo-telemetry">PP-OCRv6 FP32 | TELEA FMM | 0px BLEED</div>
+            </div>
+
+            <div class="timeline-track"><div class="timeline-fill"></div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. METRICS HAIRLINE STRIP (NO EYEBROW, NO CARDS) -->
+      <section class="metrics-strip" aria-label="Performance metrics">
+        <div class="container metrics-grid">
+          <div class="metric-cell">
+            <div class="metric-val">&lt; 1.0<span>s</span></div>
+            <div class="metric-lbl" data-i18n="m1">Thời gian quét &amp; xóa chữ mỗi trang trên WebGPU</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-val">91.5<span>%</span></div>
+            <div class="metric-lbl" data-i18n="m2">Độ chính xác nhận diện ký tự PaddleOCR v6 Hybrid</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-val">0<span> VND</span></div>
+            <div class="metric-lbl" data-i18n="m3">Chi phí OCR cục bộ kèm dự phòng Google Dịch 0-Key</div>
+          </div>
+          <div class="metric-cell">
+            <div class="metric-val">0<span> px</span></div>
+            <div class="metric-lbl" data-i18n="m4">Độ tràn viền nhờ phép đóng hình thái học &amp; Telea FMM</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. INTERACTIVE PRODUCT STAGE (USES GENERATED 1280x800 ASSETS) -->
+      <section class="showcase-sec" id="showcase">
+        <div class="container">
+          <div class="sec-head-stack">
+            <h2 class="sec-h2" data-i18n="showTitle">Trải nghiệm thực tế bên trong tiện ích</h2>
+            <p class="sec-lead" data-i18n="showLead">
+              Toàn bộ quá trình nhận diện, xóa chữ, xoay vòng khóa API và kiểm soát tên miền gói gọn trong một bảng điều khiển dưới 500 KB.
+            </p>
+          </div>
+
+          <div class="stage-tabs" role="tablist" id="screenshot-tabs">
+            <button type="button" class="stage-tab is-active" role="tab" aria-selected="true" data-shot="./assets/screenshots/01-hero-before-after.png">
+              <span class="t-idx">01 / PIPELINE</span>
+              <span class="t-name" data-i18n="tab1">Đối chiếu Trước &amp; Sau</span>
+            </button>
+            <button type="button" class="stage-tab" role="tab" aria-selected="false" data-shot="./assets/screenshots/02-hybrid-webgpu-engine.png">
+              <span class="t-idx">02 / ENGINE</span>
+              <span class="t-name" data-i18n="tab2">WebGPU OCR &amp; Vision AI</span>
+            </button>
+            <button type="button" class="stage-tab" role="tab" aria-selected="false" data-shot="./assets/screenshots/03-clean-inpaint-typeset.png">
+              <span class="t-idx">03 / INPAINT</span>
+              <span class="t-name" data-i18n="tab3">Xóa chữ Telea FMM</span>
+            </button>
+            <button type="button" class="stage-tab" role="tab" aria-selected="false" data-shot="./assets/screenshots/04-multi-ai-keyed-json.png">
+              <span class="t-idx">04 / API POOL</span>
+              <span class="t-name" data-i18n="tab4">Xoay vòng Key &amp; Keyed JSON</span>
+            </button>
+            <button type="button" class="stage-tab" role="tab" aria-selected="false" data-shot="./assets/screenshots/05-privacy-crop-autoscroll.png">
+              <span class="t-idx">05 / CROP</span>
+              <span class="t-name" data-i18n="tab5">Kiểm soát Web &amp; Chụp vùng</span>
+            </button>
+          </div>
+
+          <div class="stage-frame">
+            <img
+              id="active-screenshot"
+              src="./assets/screenshots/01-hero-before-after.png"
+              width="1280"
+              height="800"
+              alt="SpeedySlate product interface preview" />
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. ASYMMETRIC 4-CELL TECHNICAL BENTO (SECOND & FINAL EYEBROW ON PAGE) -->
+      <section class="bento-sec" id="architecture">
+        <div class="container">
+          <div class="sec-head-stack">
+            <div class="eyebrow-tag" style="margin-bottom: 14px;" data-i18n="archEyebrow">CLEAN-ROOM ENGINEERING</div>
+            <h2 class="sec-h2" data-i18n="archTitle">Giải quyết triệt để 4 bài toán khó nhất khi dịch truyện trực tiếp</h2>
+          </div>
+
+          <div class="bento-grid">
+            <article class="bento-cell bento-8 bento-tint">
+              <div>
+                <div class="bento-idx">01 / MORPHOLOGICAL CLOSING + TELEA FMM</div>
+                <h3 class="bento-h3" data-i18n="b1Title">Xóa sạch chữ dính sát vách trong mà không lẹm 1 pixel viền bong bóng</h3>
+                <p class="bento-p" data-i18n="b1Body">
+                  Kết hợp phép đóng hình thái học đĩa tròn R=5px với phương trình đạo hàm riêng Eikonal của Telea để tái tạo nền giấy và dải chuyển sắc mượt mà, loại bỏ hoàn toàn các miếng vá chữ nhật thô kệch.
+                </p>
+              </div>
+              <div class="code-strip">closedInterior = erodeDisk(dilateDisk(paperInterior, 5), 5) -&gt; 0.0px outer border shift</div>
+            </article>
+
+            <article class="bento-cell bento-4">
+              <div>
+                <div class="bento-idx">02 / KEYED JSON SCHEMA</div>
+                <h3 class="bento-h3" data-i18n="b2Title">Không bao giờ dịch trượt ô thoại</h3>
+                <p class="bento-p" data-i18n="b2Body">
+                  Mọi bóng thoại được khóa cứng bằng định danh b0..bN ở tầng JSON Schema và tự động sắp thứ tự đọc Phải-sang-Trái cho Manga Nhật hoặc Trái-sang-Phải cho Webtoon Hàn.
+                </p>
+              </div>
+              <div class="code-strip">{"b0": "Khoan đã!", "b1": "Mở khiên chắn ngay!"}</div>
+            </article>
+
+            <article class="bento-cell bento-4 bento-elev">
+              <div>
+                <div class="bento-idx">03 / FAILOVER ROTATION</div>
+                <h3 class="bento-h3" data-i18n="b3Title">Đa API Key kèm Cứu hộ 0-Key</h3>
+                <p class="bento-p" data-i18n="b3Body">
+                  Tự động luân phiên qua Gemini, Groq, DeepSeek, OpenRouter, Ollama cục bộ và tự chuyển sang Google Dịch miễn phí ngay khi chạm giới hạn HTTP 429.
+                </p>
+              </div>
+              <div class="code-strip">Gemini -&gt; Groq -&gt; DeepSeek -&gt; Google GTX</div>
+            </article>
+
+            <article class="bento-cell bento-8">
+              <div>
+                <div class="bento-idx">04 / RESPONSIVE CHORD FITTER &amp; SCREEN CROP</div>
+                <h3 class="bento-h3" data-i18n="b4Title">Co giãn cỡ chữ khớp dây cung elip &amp; khoanh vùng dịch Alt+Shift+X</h3>
+                <p class="bento-p" data-i18n="b4Body">
+                  Đo độ rộng chữ thực tế bằng Canvas 2D theo đúng kích thước cột đọc trên màn hình, kết hợp ResizeObserver chống tràn chữ và công cụ chụp dịch trực tiếp các trình đọc vẽ bằng Canvas/WebGL.
+                </p>
+              </div>
+              <div class="code-strip">Alt + Hover: Peek Raw Original | Spacebar: Auto-Scroll 1x–8x | Alt + Shift + X: Crop</div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. INSTALL & PRIVACY GOVERNANCE SPLIT -->
+      <section class="install-sec" id="install">
+        <div class="container install-split">
+          <div>
+            <h2 class="sec-h2" data-i18n="instTitle">Cài đặt miễn phí trên Chrome &amp; Firefox</h2>
+            <p class="sec-lead" data-i18n="instLead">
+              Mã nguồn mở giấy phép MIT, tuân thủ đầy đủ tiêu chuẩn kiểm duyệt Manifest V3 của Chrome Web Store và Mozilla Add-ons (AMO).
+            </p>
+
+            <div class="dl-list">
+              <div class="dl-row">
+                <div class="dl-meta">
+                  <strong>Google Chrome / Brave / Edge (MV3)</strong>
+                  <span data-i18n="dlChromeSub">Hỗ trợ tăng tốc phần cứng WebGPU qua Offscreen Worker</span>
+                </div>
+                <a href="https://github.com/khanhnkq/speedyslate/releases" target="_blank" rel="noopener" class="btn btn-primary" data-i18n="ctaPrimary">Add to Chrome</a>
+              </div>
+
+              <div class="dl-row">
+                <div class="dl-meta">
+                  <strong>Mozilla Firefox Desktop &amp; Android (AMO)</strong>
+                  <span data-i18n="dlFxSub">Tương thích Firefox 140+ Desktop và Firefox 142+ Android</span>
+                </div>
+                <a href="https://github.com/khanhnkq/speedyslate/releases" target="_blank" rel="noopener" class="btn btn-ghost" data-i18n="ctaFirefox">Firefox Add-on</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="promo-card-preview">
+            <img src="./assets/promo/promo-small-440x280.png" width="440" height="280" alt="SpeedySlate Chrome Web Store badge" />
+            <div class="gov-meta">
+              <strong style="font-family: var(--font-display); font-size: 16px;" data-i18n="privCardTitle">Mặc định riêng tư tuyệt đối</strong>
+              <p style="margin-top: 6px; font-size: 13.5px; color: var(--ink-secondary);" data-i18n="privCardBody">
+                SpeedySlate không thu thập dữ liệu duyệt web, không có máy chủ trung gian và mặc định tắt trên mọi trang web cho tới khi bạn chủ động bật.
+              </p>
+              <div class="gov-links">
+                <a href="./privacy.html" data-i18n="privLink">Đọc Chính sách Quyền riêng tư -&gt;</a>
+                <a href="https://github.com/khanhnkq/speedyslate" target="_blank" rel="noopener">MIT Source Code -&gt;</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <span>SpeedySlate Open-Source Project (MIT License)</span>
+        <div style="display: flex; gap: 20px;">
+          <a href="./privacy.html">Privacy Policy</a>
+          <a href="https://github.com/khanhnkq/speedyslate" target="_blank" rel="noopener">GitHub Repository</a>
+        </div>
+      </div>
+    </footer>
+
+    <script type="module" src="./scripts/main.ts"></script>
+  </body>
+</html>

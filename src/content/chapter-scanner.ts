@@ -1,5 +1,6 @@
 import { ToonheyAdapter } from './toonhey-adapter';
 import { PageBadgeManager } from './page-badge';
+import { SpaOverlayShield } from './spa-shield';
 
 export interface ChapterScannerHooks {
   images: HTMLImageElement[];
@@ -7,6 +8,7 @@ export interface ChapterScannerHooks {
   isTranslating: () => boolean;
   onNewImagesDetected: (totalCount: number) => void;
   onImageVisible: (index: number, img: HTMLImageElement) => void;
+  onImageRecycled?: (index: number, img: HTMLImageElement) => void;
 }
 
 /**
@@ -18,9 +20,19 @@ export class ChapterScanner {
   private mutationObserver: MutationObserver | null = null;
   private intersectionObserver: IntersectionObserver | null = null;
   private observeInterval: ReturnType<typeof setInterval> | null = null;
+  private spaShield: SpaOverlayShield;
   private isDetecting = false;
 
-  constructor(private hooks: ChapterScannerHooks) {}
+  constructor(private hooks: ChapterScannerHooks) {
+    this.spaShield = new SpaOverlayShield((img) => {
+      this.hooks.completedImages.delete(img);
+      const idx = this.hooks.images.indexOf(img);
+      if (idx !== -1) {
+        if (img.parentElement) PageBadgeManager.updateBadge(img.parentElement, idx, 'idle');
+        this.hooks.onImageRecycled?.(idx, img);
+      }
+    });
+  }
 
   public start(): void {
     this.detectImages();
@@ -53,6 +65,7 @@ export class ChapterScanner {
       for (const img of rawImages) {
         if (!this.hooks.images.includes(img)) {
           ToonheyAdapter.wrapImage(img);
+          this.spaShield.watch(img);
           this.hooks.images.push(img);
           const index = this.hooks.images.length - 1;
           if (img.parentElement) {

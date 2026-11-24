@@ -7,6 +7,7 @@ export interface HudMenuCallbacks {
   onToggleVisibility: () => void;
   onClearChapterCache: () => void;
   onClearAllCache?: () => void;
+  onStartScreenCrop?: () => void;
 }
 
 /**
@@ -103,6 +104,19 @@ export class HudMenu {
     };
 
     wrap.appendChild(itemVis);
+    if (this.callbacks.onStartScreenCrop) {
+      const itemCrop = this.menuItem(
+        ChubbyIcons.bolt(15, '#E52E3D'),
+        'Khoanh vùng dịch màn hình (Alt+Shift+X)',
+        true
+      );
+      itemCrop.onclick = (e) => {
+        e.stopPropagation();
+        this.close();
+        this.callbacks.onStartScreenCrop?.();
+      };
+      wrap.appendChild(itemCrop);
+    }
     wrap.appendChild(itemClear);
     wrap.appendChild(itemClearAll);
     return wrap;

@@ -1,3 +1,5 @@
+import { MediaTargetResolver } from './media-target';
+
 /**
  * Adapter specifically crafted for toonhey.com and similar vertical webtoon readers
  * Robustly extracts 100% of current episode panels while filtering out 100% of recommendation thumbnails
@@ -172,7 +174,8 @@ export class ToonheyAdapter {
     }
 
     // 3. Exclude UI assets by URL and class keywords
-    const src = (img.currentSrc || img.src || img.dataset.src || img.getAttribute('data-src') || '').toLowerCase();
+    const bestUrl = MediaTargetResolver.extractBestImageUrl(img) || '';
+    const src = bestUrl.toLowerCase();
     const className = (img.className || '').toLowerCase();
     const id = (img.id || '').toLowerCase();
 
@@ -200,17 +203,8 @@ export class ToonheyAdapter {
       }
     }
 
-    // 5. Must have a valid image source or lazy loading attribute
-    const hasSource = Boolean(
-      img.src ||
-      img.dataset.src ||
-      img.getAttribute('data-src') ||
-      img.getAttribute('data-original') ||
-      img.getAttribute('data-lazy-src') ||
-      img.getAttribute('data-actual-src')
-    );
-
-    return hasSource;
+    // 5. Must have a valid image source, srcset, or lazy loading attribute
+    return Boolean(bestUrl);
   }
 
   /**
@@ -225,21 +219,7 @@ export class ToonheyAdapter {
    * Force-loads a single image by swapping lazy data-src attributes to active src
    */
   public static forceTriggerImage(img: HTMLImageElement): void {
-    const realSrc =
-      img.dataset.src ||
-      img.getAttribute('data-src') ||
-      img.getAttribute('data-original') ||
-      img.getAttribute('data-lazy-src') ||
-      img.getAttribute('data-actual-src');
-
-    if (realSrc && img.src !== realSrc) {
-      img.src = realSrc;
-    }
-    img.loading = 'eager';
-    img.decoding = 'async';
-    img.removeAttribute('data-src');
-    img.removeAttribute('data-lazy-src');
-    img.classList.remove('lazy', 'lazyload', 'loading');
+    MediaTargetResolver.promoteLazyAndSrcset(img);
   }
 
   /**

@@ -143,6 +143,18 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
         }
       }
 
+      case 'CAPTURE_VISIBLE_TAB': {
+        try {
+          const dataUrl = await browser.tabs.captureVisibleTab(undefined, { format: 'png' });
+          return { success: true, dataUrl };
+        } catch (err: any) {
+          return {
+            success: false,
+            error: err?.message || 'Không thể chụp tab hiện tại (hãy click mở tiện ích trên trang này trước)'
+          };
+        }
+      }
+
       default:
         return { success: false, error: 'Action không hợp lệ' };
     }

@@ -8,6 +8,7 @@ export interface HudCallbacks {
   onToggleVisibility: (visible: boolean) => void;
   onClearChapterCache: () => void;
   onClearAllCache?: () => void;
+  onStartScreenCrop?: () => void;
 }
 
 /**
@@ -72,7 +73,8 @@ export class FloatingHud {
       onClearAllCache: () => {
         this.callbacks.onClearAllCache?.();
         this.setState('idle');
-      }
+      },
+      onStartScreenCrop: () => this.callbacks.onStartScreenCrop?.()
     });
 
     this.setupEvents();

@@ -13,6 +13,7 @@ import { TaskProcessor } from './task-processor';
 import { SiteMatcher } from '../shared/site-matcher';
 import { CacheRestorer } from './cache-restorer';
 import { ChapterScanner } from './chapter-scanner';
+import { isScreenCropShortcut, ScreenCropOverlay } from './screen-crop';
 
 class SpeedySlateContentApp {
   private settings!: ExtensionSettings;
@@ -21,6 +22,8 @@ class SpeedySlateContentApp {
   private translationQueue!: OrderedTaskQueue<TranslationTask>;
   private taskProcessor!: TaskProcessor;
   private scanner!: ChapterScanner;
+  private screenCrop!: ScreenCropOverlay;
+  private cropKeyListener: ((e: KeyboardEvent) => void) | null = null;
   private images: HTMLImageElement[] = [];
   private completedImages = new Set<HTMLImageElement>();
   private isModelReady: boolean = false;
@@ -102,7 +105,8 @@ class SpeedySlateContentApp {
         await SafeMessenger.send({ action: 'CLEAR_ALL_CACHE' });
         this.resetPageTranslations();
         this.hud?.log('Đã dọn sạch toàn bộ cache');
-      }
+      },
+      onStartScreenCrop: () => this.screenCrop?.startSelection()
     });
   }
 
@@ -155,9 +159,29 @@ class SpeedySlateContentApp {
           this.restoreCachedTranslations();
         }
       },
-      onImageVisible: (index, img) => this.ocrQueue.enqueue({ index, img })
+      onImageVisible: (index, img) => this.ocrQueue.enqueue({ index, img }),
+      onImageRecycled: (index, img) => {
+        this.hud?.updateStatus(this.completedImages.size, this.images.length);
+        if (this.hud?.getState() === 'translating') {
+          this.ocrQueue.enqueue({ index, img });
+        } else {
+          this.restoreCachedTranslations();
+        }
+      }
     });
     this.scanner.start();
+
+    this.screenCrop = new ScreenCropOverlay(
+      () => (this.settings?.bubbleTheme || 'auto') as BubbleTheme,
+      (msg, isErr) => this.hud?.log(msg, isErr)
+    );
+    this.cropKeyListener = (e: KeyboardEvent) => {
+      if (isScreenCropShortcut(e)) {
+        e.preventDefault();
+        this.screenCrop.startSelection();
+      }
+    };
+    window.addEventListener('keydown', this.cropKeyListener, true);
 
     await this.restoreCachedTranslations();
     await this.checkModelStatusFromBackground(false);
@@ -273,6 +297,10 @@ class SpeedySlateContentApp {
     this.translationQueue?.pause();
     this.translationQueue?.clear();
     this.scanner?.stop();
+    if (this.cropKeyListener) {
+      window.removeEventListener('keydown', this.cropKeyListener, true);
+      this.cropKeyListener = null;
+    }
     this.resetPageTranslations();
     this.hud?.destroy();
     this.hud = null;

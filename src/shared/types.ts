@@ -70,6 +70,7 @@ export type ProviderType =
   | 'openrouter' 
   | 'openai' 
   | 'ollama' 
+  | 'google_free'
   | 'custom';
 
 export interface ProviderConfig {
@@ -101,6 +102,7 @@ export interface ExtensionSettings {
   rateLimitDelayMs?: number; // Minimum spacing between API translation requests in ms
   useWebGpu: boolean;       // Use WebGPU backend for ONNX (default: true, falls back to WASM)
   rotateProviders: boolean; // Auto-rotate across configured providers with failover on 429
+  enableFreeFallback?: boolean; // Automatically rescue via GoogleFreeProvider when all LLM providers fail
   glossary?: string;        // "Term = Translation" lines applied verbatim to prompts
   translateSfx?: boolean;   // When false, kind==='sfx' items are filtered before translation
 }

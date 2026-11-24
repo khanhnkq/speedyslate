@@ -1,6 +1,7 @@
 import { DialogueItem, DialogueTranslateContext, ExtensionSettings, ProviderType } from '../../shared/types';
 import { ITranslationProvider } from './translation-provider.interface';
 import { TranslationProviderFactory } from './provider-factory';
+import { GoogleFreeProvider } from './google-translate-provider';
 import { DebugLogger } from '../../shared/debug-logger';
 import { ApiKeyRotator } from './api-key-rotator';
 import { API_PRESETS } from '../../shared/presets';
@@ -61,9 +62,10 @@ export class MultiProviderRotator implements ITranslationProvider {
   }
 
   private isProviderConfigured(type: ProviderType): boolean {
+    if (type === 'google_free') return this.settings.activeProvider === 'google_free';
     const cfg = this.settings.providers[type];
     if (!cfg) return false;
-    if (type === 'ollama') return Boolean(cfg.baseUrl);
+    if (type === 'ollama') return this.settings.activeProvider === 'ollama' && Boolean(cfg.baseUrl);
     const keys = ApiKeyRotator.parseKeys(cfg.apiKey);
     return keys.length > 0;
   }
@@ -165,6 +167,22 @@ export class MultiProviderRotator implements ITranslationProvider {
             `Provider [${providerName}] gặp sự cố (${err.message}). Đang tự động đổi sang [${nextName}]...`
           );
         }
+      }
+    }
+
+    if (this.settings.enableFreeFallback !== false) {
+      try {
+        DebugLogger.warn(
+          'MultiProviderRotator',
+          `Tất cả LLM provider thất bại (${lastError?.message || 'không có key'}). Đang cứu hộ tự động qua Google Translate Free...`
+        );
+        const rescue = new GoogleFreeProvider();
+        const rescued = await rescue.translateDialogues(texts, targetLang, sourceLang, ctx);
+        this.lastActiveProviderType = 'google_free';
+        this.lastKeyIndex = 1;
+        return rescued;
+      } catch (freeErr: any) {
+        DebugLogger.warn('MultiProviderRotator', `Google Translate rescue thất bại: ${freeErr?.message}`);
       }
     }
 

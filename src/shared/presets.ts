@@ -100,6 +100,14 @@ export const API_PRESETS: Record<ProviderType, {
     requiresApiKey: false,
     defaultDelayMs: 0
   },
+  google_free: {
+    name: 'Google Translate (Free 0-Key)',
+    baseUrl: 'https://translate.googleapis.com',
+    defaultModel: 'gtx-free',
+    suggestedModels: ['gtx-free'],
+    requiresApiKey: false,
+    defaultDelayMs: 300
+  },
   custom: {
     name: 'Tùy chỉnh (Custom Endpoint)',
     baseUrl: 'http://localhost:8000/v1',
@@ -221,6 +229,13 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
       apiKey: '',
       model: API_PRESETS.ollama.defaultModel
     },
+    google_free: {
+      type: 'google_free',
+      name: API_PRESETS.google_free.name,
+      baseUrl: API_PRESETS.google_free.baseUrl,
+      apiKey: '',
+      model: API_PRESETS.google_free.defaultModel
+    },
     custom: {
       type: 'custom',
       name: API_PRESETS.custom.name,
@@ -240,6 +255,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   rateLimitDelayMs: 1200,
   useWebGpu: true,
   rotateProviders: true,
+  enableFreeFallback: true,
   glossary: '',
   translateSfx: false
 };

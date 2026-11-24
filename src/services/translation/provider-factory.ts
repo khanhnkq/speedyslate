@@ -1,6 +1,7 @@
 import { ExtensionSettings, ProviderType } from '../../shared/types';
 import { AntigravityProvider } from './antigravity-provider';
 import { GeminiProvider } from './gemini-provider';
+import { GoogleFreeProvider } from './google-translate-provider';
 import { OpenAIProvider } from './openai-provider';
 import { MultiProviderRotator } from './multi-provider-rotator';
 import { ITranslationProvider } from './translation-provider.interface';
@@ -31,6 +32,10 @@ export class TranslationProviderFactory {
     type: ProviderType,
     settings: ExtensionSettings
   ): ITranslationProvider {
+    if (type === 'google_free') {
+      return new GoogleFreeProvider();
+    }
+
     const config = settings.providers[type];
 
     if (!config) {

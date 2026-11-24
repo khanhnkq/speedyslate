@@ -40,7 +40,7 @@ Tuân thủ nghiêm ngặt quy định duyệt extension của Mozilla Add-ons (
 ---
 
 ## 4. 🧪 Local OCR Test Harness (Quy trình test sau mỗi thay đổi)
-- **Fixtures**: `test-fixtures/yotogi-mura/` (22 ảnh 1128×1600, gitignored) + `test-fixtures/models/<preset>/{det.onnx,rec.onnx,dict.txt}`.
+- **Fixtures**: `test-fixtures/sample-manga/` (22 ảnh 1128×1600, gitignored) + `test-fixtures/models/<preset>/{det.onnx,rec.onnx,dict.txt}`.
 - **Server**: `node scripts/test-server.mjs 8642` — static + `POST /save-result` + `POST /save-image?name=&run=` → `test-harness/results/`.
 - **Chạy test thật** (headless Chrome, không cần extension):
   `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --user-data-dir=/tmp/chrome-ocr-test "http://127.0.0.1:8642/test-harness/index.html?auto=1&model=<modelId>&backend=wasm|webgpu&images=all|0,3,5"`

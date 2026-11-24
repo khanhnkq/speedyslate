@@ -16,7 +16,7 @@ const MODELS: LocalModel[] = [
   { id: 'ppocr-v6-multilingual', dir: 'ppocr-v6-multilingual', note: 'PP-OCRv4 det + PP-OCRv6 small rec (~25MB)' }
 ];
 
-const FIXTURES_DIR = '/test-fixtures/yotogi-mura';
+const FIXTURES_DIR = new URLSearchParams(location.search).get('dir') || '/test-fixtures/sample-manga';
 const WORKER_URL = '/dist/chrome/worker.js';
 
 interface ImgResult {

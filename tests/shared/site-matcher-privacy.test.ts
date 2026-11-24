@@ -21,7 +21,7 @@ function walkFiles(dir: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) walkFiles(full, out);
-    else if (/\.(ts|js|html|css|json)$/.test(entry.name)) out.push(full);
+    else if (/\.(ts|js|html|css|json|md)$/.test(entry.name)) out.push(full);
   }
   return out;
 }
@@ -42,8 +42,11 @@ describe('SiteMatcher clean zero-default allowlist & privacy audit', () => {
     const root = path.resolve(__dirname, '../..');
     const files = [
       ...walkFiles(path.join(root, 'src')),
+      ...walkFiles(path.join(root, 'docs')),
       ...(fs.existsSync(path.join(root, 'dist/chrome')) ? walkFiles(path.join(root, 'dist/chrome')) : []),
       ...(fs.existsSync(path.join(root, 'dist/firefox')) ? walkFiles(path.join(root, 'dist/firefox')) : []),
+      path.join(root, 'test-harness/harness.ts'),
+      path.join(root, 'AGENTS.md'),
       path.join(root, 'manifest.chrome.json'),
       path.join(root, 'manifest.firefox.json'),
       path.join(root, 'package.json')
@@ -52,8 +55,13 @@ describe('SiteMatcher clean zero-default allowlist & privacy audit', () => {
     const flagged: string[] = [];
     for (const file of files) {
       const rel = path.relative(root, file);
+      const rawContent = fs.readFileSync(file, 'utf8');
+      if (rawContent.includes('18+')) {
+        flagged.push(`${rel} (contains 18+)`);
+        continue;
+      }
       const baseWords = path.basename(file).split(/[^a-z0-9]+/i).filter(Boolean);
-      const textWords = fs.readFileSync(file, 'utf8').match(/[a-z0-9]{5,}/gi) || [];
+      const textWords = rawContent.match(/[a-z0-9]{5,}/gi) || [];
       for (const w of [...baseWords, ...textWords]) {
         if (FORBIDDEN_STEM_DIGESTS.has(stemDigest(w))) {
           flagged.push(rel);

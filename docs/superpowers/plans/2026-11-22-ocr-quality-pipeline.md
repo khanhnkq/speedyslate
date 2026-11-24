@@ -234,7 +234,7 @@
 
 - [ ] **Step 1:** `npm run test && npm run type-check` → sạch.
 - [ ] **Step 2:** `npm run build:chrome && npm run build:firefox` → pass, bundle không lỗi.
-- [ ] **Step 3:** Checklist manual: (a) trang toonhey strip dài — rec nhanh hơn, overlay trùng màu bubble; (b) trang manga RAW cột dọc; (c) bubble nền đen; (d) SFX on/off; (e) glossary consistency qua 2 trang.
+- [ ] **Step 3:** Checklist manual: (a) trang webtoon strip dài — rec nhanh hơn, overlay trùng màu bubble; (b) trang manga RAW cột dọc; (c) bubble nền đen; (d) SFX on/off; (e) glossary consistency qua 2 trang.
 - [ ] **Step 4:** Kiểm tra file-size limit: `wc -l src/worker/*.ts src/content/overlay/*.ts src/services/translation/*.ts` — không file nào ≥ 500.
 - [ ] **Step 5:** Commit `chore: verify ocr quality pipeline` (nếu có thay đổi).
 

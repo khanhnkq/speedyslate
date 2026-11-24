@@ -179,7 +179,7 @@ git commit -m "feat(ocr): add 4-point rotated polygon extraction, perspective de
 - Create: `src/content/media-target.ts`
 - Create: `src/content/spa-shield.ts`
 - Create: `src/content/screen-crop.ts`
-- Modify: `src/content/toonhey-adapter.ts:174-244`
+- Modify: `src/content/panel-adapter.ts:174-244`
 - Modify: `src/content/chapter-scanner.ts`
 - Modify: `src/content/hud/hud-menu.ts` (add `"Khoanh vùng dịch màn hình (Alt+Shift+X)"` action)
 - Modify: `src/background/index.ts` (add `CAPTURE_VISIBLE_TAB` handler calling `browser.tabs.captureVisibleTab`)

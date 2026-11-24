@@ -212,11 +212,11 @@ CRITICAL NEGATIVE CONSTRAINTS:
     const finishReason = candidate?.finishReason;
     const blockReason = data?.promptFeedback?.blockReason;
 
-    // Detect Google Safety Filter block on sensitive/18+ content
+    // Detect Vision API content filter block (e.g. intense action/battle artwork)
     if (finishReason === 'SAFETY' || blockReason === 'SAFETY') {
       const reason = finishReason || blockReason;
-      DebugLogger.warn('Gemini Vision', `Ảnh bị Google Safety Filter chặn (${reason}: nội dung nhạy cảm/18+).`);
-      throw new Error(`Google Safety Filter chặn ảnh này (${reason}: ảnh nhạy cảm/18+). Bạn có thể đổi sang chế độ OCR Hybrid (quét cục bộ bằng WebGPU) để dịch không bị kiểm duyệt.`);
+      DebugLogger.warn('Gemini Vision', `Ảnh bị bộ lọc Vision từ chối xử lý (${reason}).`);
+      throw new Error(`Bộ lọc Vision từ chối xử lý khung tranh này (${reason}). Bạn có thể chuyển sang chế độ Hybrid OCR (quét chữ cục bộ bằng WebGPU) để dịch bình thường.`);
     }
 
     const candidateText = candidate?.content?.parts?.[0]?.text;

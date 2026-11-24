@@ -153,7 +153,7 @@ describe('OcrNoiseFilter', () => {
     const items = [
       mk('1', 'o O ○', 100, 100, 30, 40),
       mk('2', '一丨─', 120, 200, 40, 20),
-      mk('3', 'Read first at toonhey.com', 50, 10, 400, 28),
+      mk('3', 'Read first at asuracomic.net', 50, 10, 400, 28),
       mk('4', 'やめろ！ colamanga.com', 200, 300, 180, 32)
     ];
     const kept = OcrNoiseFilter.filterRawLines(items, 800, 1200);
@@ -183,7 +183,7 @@ Implement clean-room rules in `src/worker/ocr-noise-filter.ts`:
 3. Thought-bubble circle tails (`^[0oO○●⊙◯°.\s]+$`).
 4. Speedline / single-stroke misreads (`^[一丨丶─│|/\\_=~—–-]+$`).
 5. Standalone page-number digits at top/bottom 4% margin.
-6. Scanlator watermark full-line rejection (`/(?:discord\.gg|patreon\.com|read\s+(?:at|on)\b|toonhey\.com|colamanga|baozimh|asuracomic|reaperscans)/i` when text has no surrounding story clause).
+6. Scanlator watermark full-line rejection (`/(?:discord\.gg|patreon\.com|read\s+(?:at|on)\b|colamanga|baozimh|asuracomic|reaperscans)/i` when text has no surrounding story clause).
 7. Trailing domain/watermark debris stripper (`stripTrailingWatermark` removing trailing `(?:https?:\/\/)?[\w-]+\.(?:com|net|org|xyz|gg|me)\b.*$` and scaling `box.width` proportionally).
 8. Conservative Furigana suppression: kana-only (`^[\u3040-\u309F\u30A0-\u30FFー・\s]+$`) item whose thickness (`isVertical ? width : height`) is `< 0.48×` a parallel overlapping Kanji-bearing (`[\u4E00-\u9FFF]`) item within `0.6×` parent thickness gap.
 

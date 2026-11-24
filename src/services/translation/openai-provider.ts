@@ -140,9 +140,9 @@ Return ONLY a valid JSON object containing a "dialogues" array:
     const finishReason = choice?.finish_reason;
 
     if (finishReason === 'content_filter') {
-      DebugLogger.warn('OpenAI/Vision API', 'Ảnh bị Content Filter chặn (nội dung nhạy cảm/18+).');
+      DebugLogger.warn('OpenAI/Vision API', 'Ảnh bị bộ lọc Vision từ chối xử lý.');
       throw new Error(
-        'AI Content Filter chặn ảnh này (ảnh nhạy cảm/18+). Bạn có thể đổi sang chế độ OCR Hybrid (quét cục bộ bằng WebGPU) để dịch không bị kiểm duyệt.'
+        'Bộ lọc Vision từ chối xử lý khung tranh này. Bạn có thể chuyển sang chế độ Hybrid OCR (quét chữ cục bộ bằng WebGPU) để dịch bình thường.'
       );
     }
 

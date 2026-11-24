@@ -54,6 +54,7 @@
       "resources": [
         "worker.js",
         "icons/*",
+        "fonts/*",
         "*.wasm",
         "*.mjs",
         "src/popup/popup.html"

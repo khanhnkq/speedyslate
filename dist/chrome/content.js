@@ -1112,6 +1112,14 @@
       requiresApiKey: false,
       defaultDelayMs: 0
     },
+    google_free: {
+      name: "Google Translate (Free 0-Key)",
+      baseUrl: "https://translate.googleapis.com",
+      defaultModel: "gtx-free",
+      suggestedModels: ["gtx-free"],
+      requiresApiKey: false,
+      defaultDelayMs: 300
+    },
     custom: {
       name: "T\xF9y ch\u1EC9nh (Custom Endpoint)",
       baseUrl: "http://localhost:8000/v1",
@@ -1121,27 +1129,53 @@
       defaultDelayMs: 1e3
     }
   };
+  var PPU_ONNX_BASE = "https://media.githubusercontent.com/media/PT-Perkasa-Pilar-Utama/ppu-paddle-ocr-models/main";
+  var PPU_DICT_BASE = "https://raw.githubusercontent.com/PT-Perkasa-Pilar-Utama/ppu-paddle-ocr-models/main";
   var OCR_MODEL_PRESETS = [
     {
       id: "comic-manga-manhwa",
-      name: "Comic & Manga AI Detector (~16MB - Chuy\xEAn Manga/Manhwa)",
-      description: "Model RT-DETR-v2 11MB chuy\xEAn s\xE2u \u0111\u01B0\u1EE3c hu\u1EA5n luy\u1EC7n tr\xEAn 11.000+ trang Manga & Manhwa. B\u1EAFt tr\u1ECDn m\u1ECDi bong b\xF3ng gai nh\u1ECDn, tho\u1EA1i la h\xE9t, SFX ph\u1EE9c t\u1EA1p.",
-      totalSizeMb: 15.9,
+      name: "Comic & Manga AI Detector (~20MB - Chuy\xEAn Manga/Manhwa)",
+      description: "RT-DETR-v2 chuy\xEAn Manga/Manhwa k\u1EBFt h\u1EE3p DBNet v5 qu\xE9t b\xF9 ch\u1EEF d\u1EABn truy\u1EC7n ngo\xE0i khung tho\u1EA1i.",
+      totalSizeMb: 20.4,
       files: {
         detUrl: "https://huggingface.co/ogkalu/comic-text-and-bubble-detector/resolve/main/detector-v4-s_int8.onnx",
+        det2Url: `${PPU_ONNX_BASE}/detection/PP-OCRv5_mobile_det_infer.onnx`,
         recUrl: "https://huggingface.co/deepghs/paddleocr/resolve/main/rec/en_PP-OCRv4_rec/model.onnx",
         keysUrl: "https://huggingface.co/deepghs/paddleocr/resolve/main/rec/en_PP-OCRv4_rec/dict.txt"
       }
     },
     {
       id: "comic-manga-cjk",
-      name: "Comic & Manga CJK Raw (~27MB - Nh\u1EADt/H\xE0n/Trung)",
-      description: "Detector RT-DETR-v2 chuy\xEAn Manga k\u1EBFt h\u1EE3p b\u1ED9 nh\u1EADn di\u1EC7n CJK 6.600+ k\xFD t\u1EF1 H\xE1n t\u1EF1, Hiragana, Katakana, Hangul cho b\u1EA3n RAW g\u1ED1c.",
-      totalSizeMb: 26.6,
+      name: "Comic & Manga CJK Raw (~31MB - Nh\u1EADt/H\xE0n/Trung)",
+      description: "RT-DETR-v2 chuy\xEAn Manga k\u1EBFt h\u1EE3p DBNet v5 qu\xE9t b\xF9 & b\u1ED9 nh\u1EADn di\u1EC7n CJK 6.600+ k\xFD t\u1EF1 cho b\u1EA3n RAW g\u1ED1c.",
+      totalSizeMb: 31.1,
       files: {
         detUrl: "https://huggingface.co/ogkalu/comic-text-and-bubble-detector/resolve/main/detector-v4-s_int8.onnx",
+        det2Url: `${PPU_ONNX_BASE}/detection/PP-OCRv5_mobile_det_infer.onnx`,
         recUrl: "https://huggingface.co/deepghs/paddleocr/resolve/main/rec/ch_PP-OCRv4_rec/model.onnx",
         keysUrl: "https://huggingface.co/deepghs/paddleocr/resolve/main/rec/ch_PP-OCRv4_rec/dict.txt"
+      }
+    },
+    {
+      id: "ppocr-v6-multilingual",
+      name: "PaddleOCR v6 Small WebGPU (~30MB - \u0110a ng\xF4n ng\u1EEF CJK + Latin)",
+      description: "Th\u1EBF h\u1EC7 PP-OCRv6 m\u1EDBi nh\u1EA5t ch\u1EA1y 100% tr\xEAn WebGPU (Det + Rec), h\u1ED7 tr\u1EE3 xoay ph\u1EB3ng ch\u1EEF nghi\xEAng v\xE0 \u0111a ng\xF4n ng\u1EEF Nh\u1EADt/H\xE0n/Trung/Anh.",
+      totalSizeMb: 29.7,
+      files: {
+        detUrl: `${PPU_ONNX_BASE}/detection/PP-OCRv6_small_det.onnx`,
+        recUrl: `${PPU_ONNX_BASE}/recognition/PP-OCRv6_small_rec.onnx`,
+        keysUrl: `${PPU_DICT_BASE}/recognition/ppocrv6_dict.txt`
+      }
+    },
+    {
+      id: "ppocr-v5-english-fast",
+      name: "PaddleOCR v5 English WebGPU (~12MB - Si\xEAu t\u1ED1c Comic/Manhwa Anh)",
+      description: "B\u1ED9 PP-OCRv5 Mobile si\xEAu nh\u1EB9 t\u1ED1i \u01B0u ri\xEAng cho truy\u1EC7n ti\u1EBFng Anh/Latin, ch\u1EA1y full WebGPU t\u1ED1c \u0111\u1ED9 cao.",
+      totalSizeMb: 12,
+      files: {
+        detUrl: `${PPU_ONNX_BASE}/detection/PP-OCRv5_mobile_det_infer.onnx`,
+        recUrl: `${PPU_ONNX_BASE}/recognition/multi/en/v5/en_PP-OCRv5_mobile_rec_infer.onnx`,
+        keysUrl: `${PPU_DICT_BASE}/recognition/multi/en/v5/ppocrv5_en_dict.txt`
       }
     }
   ];
@@ -1198,6 +1232,13 @@
         apiKey: "",
         model: API_PRESETS.ollama.defaultModel
       },
+      google_free: {
+        type: "google_free",
+        name: API_PRESETS.google_free.name,
+        baseUrl: API_PRESETS.google_free.baseUrl,
+        apiKey: "",
+        model: API_PRESETS.google_free.defaultModel
+      },
       custom: {
         type: "custom",
         name: API_PRESETS.custom.name,
@@ -1217,6 +1258,7 @@
     rateLimitDelayMs: 1200,
     useWebGpu: true,
     rotateProviders: true,
+    enableFreeFallback: true,
     glossary: "",
     translateSfx: false
   };
@@ -1445,6 +1487,19 @@
         this.callbacks.onClearAllCache?.();
       };
       wrap.appendChild(itemVis);
+      if (this.callbacks.onStartScreenCrop) {
+        const itemCrop = this.menuItem(
+          ChubbyIcons.bolt(15, "#E52E3D"),
+          "Khoanh v\xF9ng d\u1ECBch m\xE0n h\xECnh (Alt+Shift+X)",
+          true
+        );
+        itemCrop.onclick = (e) => {
+          e.stopPropagation();
+          this.close();
+          this.callbacks.onStartScreenCrop?.();
+        };
+        wrap.appendChild(itemCrop);
+      }
       wrap.appendChild(itemClear);
       wrap.appendChild(itemClearAll);
       return wrap;
@@ -1540,7 +1595,8 @@
         onClearAllCache: () => {
           this.callbacks.onClearAllCache?.();
           this.setState("idle");
-        }
+        },
+        onStartScreenCrop: () => this.callbacks.onStartScreenCrop?.()
       });
       this.setupEvents();
       this.mountToBody();
@@ -1842,68 +1898,118 @@
   };
 
   // src/content/overlay/text-auto-fitter.ts
+  var COMIC_FONT_STACK = "'SpeedySlateComic', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif";
   var TextAutoFitter = class {
-    /**
-     * Finds the length of the longest word in the sentence (used for word-wrap constraints).
-     */
+    static measureCtx;
+    static getDefaultMeasurer() {
+      if (this.measureCtx === void 0) {
+        try {
+          if (typeof document !== "undefined") {
+            const c = document.createElement("canvas");
+            this.measureCtx = c.getContext("2d");
+          } else {
+            this.measureCtx = null;
+          }
+        } catch {
+          this.measureCtx = null;
+        }
+      }
+      const ctx = this.measureCtx;
+      if (ctx) {
+        return (text, fontPx) => {
+          ctx.font = `600 ${fontPx}px ${COMIC_FONT_STACK}`;
+          return ctx.measureText(text).width;
+        };
+      }
+      return (text, fontPx) => {
+        let units = 0;
+        for (const ch of text) {
+          if (ch === " ") units += 0.3;
+          else if (/[\u3000-\u9FFF\uAC00-\uD7AF]/.test(ch)) units += 1;
+          else if (/\p{Lu}/u.test(ch)) units += 0.64;
+          else units += 0.54;
+        }
+        return units * fontPx;
+      };
+    }
     static getLongestWordLength(text) {
       if (!text) return 0;
       const words = text.split(/\s+/);
       let maxLen = 0;
       for (const w of words) {
         const clean = w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
-        if (clean.length > maxLen) {
-          maxLen = clean.length;
-        }
+        if (clean.length > maxLen) maxLen = clean.length;
       }
       return maxLen;
     }
-    /**
-     * Dynamically calculates the optimal font size (in pixels) to fit inside the bubble bounds.
-     * Scales from 9px up to 28px based on bubble capacity and text length.
-     */
     static computeOptimalFontSize(boxWidthPx, boxHeightPx, text) {
-      const trimmed = text.trim();
-      if (!trimmed) return 14;
-      const words = trimmed.split(/\s+/).filter((w) => w.length > 0);
-      const longestWordLen = this.getLongestWordLength(trimmed);
-      const availW = Math.max(16, boxWidthPx - 12);
-      const availH = Math.max(16, boxHeightPx - 8);
-      const lineHeightRatio = 1.28;
-      const charWidthRatio = 0.56;
-      const maxFs = Math.min(26, Math.max(14, Math.floor(availH / 1.9)));
+      return this.fitDialogue(boxWidthPx, boxHeightPx, text).fontSize;
+    }
+    static fitDialogue(boxWidthPx, boxHeightPx, text, opts) {
+      const trimmed = text.replace(/\s+/g, " ").trim();
+      if (!trimmed) return { fontSize: 14, lines: [] };
+      const measure = opts?.measureWidth ?? this.getDefaultMeasurer();
+      const elliptical = Boolean(opts?.elliptical);
+      const words = trimmed.split(" ").filter((w) => w.length > 0);
+      const availW = Math.max(20, boxWidthPx - 10);
+      const availH = Math.max(18, boxHeightPx - 6);
+      const lineHeightRatio = 1.24;
+      const maxFs = Math.min(28, Math.max(14, Math.floor(availH / 1.75)));
       const minFs = 9;
       for (let fs = maxFs; fs >= minFs; fs -= 0.5) {
-        const longestWordWidth = longestWordLen * fs * 0.58;
-        if (longestWordWidth > availW && fs > minFs) {
+        const lineH = fs * lineHeightRatio;
+        const maxLines = Math.max(1, Math.floor((availH + 2) / lineH));
+        if (!elliptical) {
+          const lines = this.wrapGreedy(words, fs, () => availW, measure);
+          if (lines && lines.length <= maxLines && lines.length * lineH <= availH + 1) {
+            return { fontSize: Number(fs.toFixed(1)), lines };
+          }
           continue;
         }
-        const charsPerLine = Math.max(1, Math.floor(availW / (fs * charWidthRatio)));
-        const linesCount = this.simulateLineCount(words, charsPerLine);
-        const totalTextHeight = linesCount * (fs * lineHeightRatio);
-        if (totalTextHeight <= availH - 2) {
-          return Number(fs.toFixed(1));
+        for (let targetN = 1; targetN <= maxLines; targetN++) {
+          const blockH = targetN * lineH;
+          if (blockH > availH + 1) break;
+          const startY = (availH - blockH) * 0.5;
+          const chordAt = (lineIdx) => {
+            if (lineIdx >= targetN) return 0;
+            const cy = startY + (lineIdx + 0.5) * lineH;
+            const normY = 2 * cy / availH - 1;
+            const factor = Math.sqrt(Math.max(0.2, 1 - normY * normY * 0.78));
+            return availW * Math.max(0.52, factor);
+          };
+          const lines = this.wrapGreedy(words, fs, chordAt, measure);
+          if (lines && lines.length <= targetN) {
+            return { fontSize: Number(fs.toFixed(1)), lines };
+          }
         }
       }
-      return minFs;
+      const fallbackLines = this.wrapGreedy(words, minFs, () => availW, measure, true) || [trimmed];
+      return { fontSize: minFs, lines: fallbackLines };
     }
-    /**
-     * Fast exact line-wrap simulation based on whitespace-separated words.
-     */
-    static simulateLineCount(words, charsPerLine) {
-      let lines = 1;
-      let currentLineChars = 0;
-      for (let i = 0; i < words.length; i++) {
-        const wLen = words[i].length;
-        if (currentLineChars === 0) {
-          currentLineChars = wLen;
-        } else if (currentLineChars + 1 + wLen <= charsPerLine) {
-          currentLineChars += 1 + wLen;
+    static wrapGreedy(words, fs, maxWidthForLine, measure, allowOverflowWord = false) {
+      const lines = [];
+      let cur = "";
+      for (const w of words) {
+        const limit = maxWidthForLine(lines.length);
+        if (limit <= 0) return null;
+        if (!cur) {
+          if (!allowOverflowWord && measure(w, fs) > limit) return null;
+          cur = w;
+          continue;
+        }
+        const candidate = `${cur} ${w}`;
+        if (measure(candidate, fs) <= limit) {
+          cur = candidate;
         } else {
-          lines++;
-          currentLineChars = wLen;
+          lines.push(cur);
+          const nextLimit = maxWidthForLine(lines.length);
+          if (nextLimit <= 0 || !allowOverflowWord && measure(w, fs) > nextLimit) {
+            return null;
+          }
+          cur = w;
         }
       }
+      if (cur) lines.push(cur);
       return lines;
     }
   };
@@ -1918,11 +2024,33 @@
       let leftPct;
       let widthPct;
       let heightPct;
+      const rawAspect = item.box.height / Math.max(1, item.box.width);
+      const needsChamberExpansion = Boolean(item.chamberBox) && (item.isVertical === true || rawAspect >= 1.4 || item.box.width < 65);
       if (item.normBox) {
         topPct = item.normBox.ymin / 10;
         leftPct = item.normBox.xmin / 10;
         widthPct = Math.max(1, (item.normBox.xmax - item.normBox.xmin) / 10);
         heightPct = Math.max(1, (item.normBox.ymax - item.normBox.ymin) / 10);
+      } else if (needsChamberExpansion && item.chamberBox) {
+        const insetX = item.chamberBox.width * 0.06;
+        const insetY = item.chamberBox.height * 0.05;
+        const safeX = item.chamberBox.x + insetX;
+        const safeY = item.chamberBox.y + insetY;
+        const safeW = Math.max(16, item.chamberBox.width - insetX * 2);
+        const safeH = Math.max(16, item.chamberBox.height - insetY * 2);
+        topPct = safeY / Math.max(1, naturalHeight) * 100;
+        leftPct = safeX / Math.max(1, naturalWidth) * 100;
+        widthPct = safeW / Math.max(1, naturalWidth) * 100;
+        heightPct = Math.min(28, safeH / Math.max(1, naturalHeight) * 100);
+        return {
+          topPct: Math.max(0.5, topPct),
+          leftPct: Math.max(0.5, leftPct),
+          widthPct: Math.min(99 - leftPct, widthPct),
+          heightPct,
+          pixelWidth: widthPct / 100 * naturalWidth,
+          pixelHeight: heightPct / 100 * naturalHeight,
+          aspectRatio: safeH / Math.max(1, safeW)
+        };
       } else {
         topPct = item.box.y / Math.max(1, naturalHeight) * 100;
         leftPct = item.box.x / Math.max(1, naturalWidth) * 100;
@@ -1995,6 +2123,8 @@
       const textColor = _OverlayStyler.textColorFor(
         bgColor ?? (isDark ? "#111111" : "#ffffff")
       );
+      const needsStrokeHalo = Boolean(transparentBg && (kind === "free" || kind === "sfx"));
+      const haloColor = textColor === "#ffffff" ? "#111111" : "#ffffff";
       let borderRadius;
       if (kind === "free") {
         borderRadius = "8px";
@@ -2024,7 +2154,9 @@
         outline: "none",
         boxShadow: "none",
         filter: "none",
-        textShadow: "none",
+        textShadow: needsStrokeHalo ? `0 1px 2px rgba(0,0,0,0.38)` : "none",
+        webkitTextStroke: needsStrokeHalo ? `3px ${haloColor}` : "0px transparent",
+        paintOrder: needsStrokeHalo ? "stroke fill" : "normal",
         borderRadius,
         boxSizing: "border-box",
         padding: "3px 6px",
@@ -2033,10 +2165,10 @@
         alignItems: "center",
         justifyContent: "center",
         textAlign: "center",
-        // High-readability comic font stack with full Vietnamese diacritic support
-        fontFamily: "'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
-        fontWeight: "bold",
-        lineHeight: "1.25",
+        // Bundled Vietnamese comic font with clean UI fallback
+        fontFamily: "'SpeedySlateComic', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
+        fontWeight: "600",
+        lineHeight: "1.24",
         letterSpacing: "-0.01em",
         fontSize: `${fontSize}px`,
         zIndex: "50",
@@ -2056,15 +2188,50 @@
   };
 
   // src/shared/erase-codec.ts
+  var RLE_PREFIX = "rle1:";
   function b64ToU8(s) {
     const bin = atob(s);
     const u8 = new Uint8ClampedArray(bin.length);
     for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
     return u8;
   }
+  function decodePixelsRle(encoded) {
+    const bytes = b64ToU8(encoded.slice(RLE_PREFIX.length));
+    if (bytes.length < 4) return new Uint8ClampedArray(0);
+    const pixelCount = (bytes[0] | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) >>> 0;
+    const out = new Uint8ClampedArray(pixelCount * 4);
+    let pos = 4;
+    let dst = 0;
+    while (pos < bytes.length && dst < out.length) {
+      const header = bytes[pos++];
+      if (header >= 128) {
+        const count = header - 128 + 2;
+        const r = bytes[pos++] ?? 0;
+        const g = bytes[pos++] ?? 0;
+        const b = bytes[pos++] ?? 0;
+        const a = bytes[pos++] ?? 0;
+        for (let k = 0; k < count && dst < out.length; k++) {
+          out[dst++] = r;
+          out[dst++] = g;
+          out[dst++] = b;
+          out[dst++] = a;
+        }
+      } else {
+        const count = header + 1;
+        const byteLen = count * 4;
+        const end = Math.min(bytes.length, pos + byteLen);
+        while (pos < end && dst < out.length) {
+          out[dst++] = bytes[pos++];
+        }
+      }
+    }
+    return out;
+  }
   function decodePixels(pixels) {
     if (pixels instanceof Uint8ClampedArray) return pixels;
-    if (typeof pixels === "string") return b64ToU8(pixels);
+    if (typeof pixels === "string") {
+      return pixels.startsWith(RLE_PREFIX) ? decodePixelsRle(pixels) : b64ToU8(pixels);
+    }
     if (Array.isArray(pixels)) {
       return new Uint8ClampedArray(pixels);
     }
@@ -2153,12 +2320,71 @@
     }
   };
 
+  // src/content/overlay/comic-font-loader.ts
+  var STYLE_ID = "speedyslate-comic-font-face";
+  var ComicFontLoader = class {
+    static resolveAssetUrl(path, g = globalThis) {
+      const getUrl = g?.browser?.runtime?.getURL ?? g?.chrome?.runtime?.getURL;
+      if (typeof getUrl === "function") {
+        try {
+          return getUrl(path);
+        } catch {
+          return null;
+        }
+      }
+      if (g?.location?.pathname?.includes("/test-harness/")) {
+        return `/public/${path}`;
+      }
+      return null;
+    }
+    static ensureLoaded() {
+      if (typeof document === "undefined" || document.getElementById(STYLE_ID)) return;
+      try {
+        const viUrl = this.resolveAssetUrl("fonts/PatrickHand-vi.woff2");
+        const extUrl = this.resolveAssetUrl("fonts/PatrickHand-latin-ext.woff2");
+        const latUrl = this.resolveAssetUrl("fonts/PatrickHand-latin.woff2");
+        if (!viUrl || !extUrl || !latUrl) return;
+        const style = document.createElement("style");
+        style.id = STYLE_ID;
+        style.textContent = `
+        @font-face {
+          font-family: 'SpeedySlateComic';
+          font-style: normal;
+          font-weight: 400 700;
+          font-display: swap;
+          src: url('${viUrl}') format('woff2');
+          unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+        }
+        @font-face {
+          font-family: 'SpeedySlateComic';
+          font-style: normal;
+          font-weight: 400 700;
+          font-display: swap;
+          src: url('${extUrl}') format('woff2');
+          unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+        }
+        @font-face {
+          font-family: 'SpeedySlateComic';
+          font-style: normal;
+          font-weight: 400 700;
+          font-display: swap;
+          src: url('${latUrl}') format('woff2');
+          unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+        }
+      `;
+        (document.head || document.documentElement)?.appendChild(style);
+      } catch {
+      }
+    }
+  };
+
   // src/content/overlay/overlay-renderer.ts
   var OverlayRenderer = class {
     /**
      * Renders translated speech bubbles over the wrapped image.
      */
     static renderDialogues(wrapper, dialogues, naturalWidth, naturalHeight, theme = "auto") {
+      ComicFontLoader.ensureLoaded();
       const existing = wrapper.querySelectorAll(
         ".speedyslate-bubble, .speedyslate-erase-patch, .speedyslate-clean-canvas"
       );
@@ -2172,13 +2398,14 @@
       for (const item of dialogues) {
         if (!item.translatedText || !item.translatedText.trim()) continue;
         const coords = BubbleGeometry.computeCoordinates(item, naturalWidth, naturalHeight);
-        const useEllipse = item.kind === void 0 || item.kind === "dialogue";
-        const fitScale = useEllipse ? 0.85 : 1;
-        const fontSize = TextAutoFitter.computeOptimalFontSize(
-          coords.pixelWidth * fitScale,
-          coords.pixelHeight * fitScale,
-          item.translatedText
+        const useEllipse = item.isOvalChamber ?? (item.kind === void 0 || item.kind === "dialogue");
+        const fitted = TextAutoFitter.fitDialogue(
+          coords.pixelWidth,
+          coords.pixelHeight,
+          item.translatedText,
+          { elliptical: useEllipse }
         );
+        const fontSize = fitted.fontSize;
         const isDark = theme === "dark" || theme === "auto" && item.isDarkBackground;
         const sampledBg = theme === "auto" && item.bgColor && /^#[0-9a-fA-F]{6}$/.test(item.bgColor) ? item.bgColor : void 0;
         const eraseBg = OverlayStyler.resolveBackground(theme, !!isDark, item.bgColor);
@@ -2210,7 +2437,7 @@
           transparentBg,
           item.kind
         );
-        bubble.textContent = item.translatedText;
+        bubble.textContent = fitted.lines.length > 0 ? fitted.lines.join("\n") : item.translatedText;
         bubble.addEventListener("mouseenter", (e) => {
           if (e.altKey) {
             bubble.style.opacity = "0.12";
@@ -2297,6 +2524,84 @@
         this.activeCount--;
         this.dispatch();
       }
+    }
+  };
+
+  // src/content/media-target.ts
+  var LAZY_ATTRS = [
+    "data-src",
+    "data-original",
+    "data-lazy-src",
+    "data-actual-src",
+    "data-url",
+    "data-origin",
+    "data-full-image",
+    "data-real-src"
+  ];
+  var MediaTargetResolver = class {
+    static parseBestSrcsetUrl(srcset) {
+      if (!srcset || !srcset.trim()) return null;
+      let bestUrl = null;
+      let bestScore = -1;
+      for (const part of srcset.split(",")) {
+        const tokens = part.trim().split(/\s+/).filter(Boolean);
+        if (tokens.length === 0) continue;
+        const url = tokens[0];
+        if (!url || url.startsWith("data:image/svg")) continue;
+        let score = 1;
+        const desc = tokens[1] || "";
+        const wMatch = desc.match(/^(\d+(?:\.\d+)?)w$/i);
+        const xMatch = desc.match(/^(\d+(?:\.\d+)?)x$/i);
+        if (wMatch) score = Number(wMatch[1]);
+        else if (xMatch) score = Number(xMatch[1]) * 1e3;
+        if (score >= bestScore) {
+          bestScore = score;
+          bestUrl = url;
+        }
+      }
+      return bestUrl;
+    }
+    static parseCssBackgroundUrl(bgValue) {
+      if (!bgValue || bgValue === "none") return null;
+      const m = bgValue.match(/url\(\s*['"]?([^'")]+)['"]?\s*\)/i);
+      if (!m?.[1] || m[1].startsWith("data:image/svg")) return null;
+      return m[1].trim();
+    }
+    static extractBestImageUrl(el) {
+      if (el.tagName === "IMG") {
+        const img = el;
+        for (const attr of LAZY_ATTRS) {
+          const val = img.getAttribute(attr);
+          if (val && !val.startsWith("data:image/svg")) return val.trim();
+        }
+        const picSource = img.parentElement?.tagName === "PICTURE" ? img.parentElement.querySelector("source[srcset]") : null;
+        if (picSource) {
+          const fromPic = this.parseBestSrcsetUrl(picSource.getAttribute("srcset") || "");
+          if (fromPic) return fromPic;
+        }
+        const fromSrcset = this.parseBestSrcsetUrl(img.getAttribute("srcset") || img.srcset || "");
+        if (fromSrcset) return fromSrcset;
+        const direct = img.currentSrc || img.src || "";
+        return direct && !direct.startsWith("data:image/svg") ? direct : null;
+      }
+      const inlineBg = this.parseCssBackgroundUrl(el.style?.backgroundImage || "");
+      if (inlineBg) return inlineBg;
+      if (typeof window !== "undefined" && window.getComputedStyle) {
+        return this.parseCssBackgroundUrl(window.getComputedStyle(el).backgroundImage || "");
+      }
+      return null;
+    }
+    static promoteLazyAndSrcset(img) {
+      const best = this.extractBestImageUrl(img);
+      if (best && !best.startsWith("data:") && img.src !== best) {
+        img.src = best;
+      }
+      img.loading = "eager";
+      img.decoding = "async";
+      for (const attr of LAZY_ATTRS) {
+        img.removeAttribute(attr);
+      }
+      img.classList.remove("lazy", "lazyload", "loading");
     }
   };
 
@@ -2435,7 +2740,8 @@
           }
         }
       }
-      const src = (img.currentSrc || img.src || img.dataset.src || img.getAttribute("data-src") || "").toLowerCase();
+      const bestUrl = MediaTargetResolver.extractBestImageUrl(img) || "";
+      const src = bestUrl.toLowerCase();
       const className = (img.className || "").toLowerCase();
       const id = (img.id || "").toLowerCase();
       const ignoredKeywords = [
@@ -2476,10 +2782,7 @@
           return false;
         }
       }
-      const hasSource = Boolean(
-        img.src || img.dataset.src || img.getAttribute("data-src") || img.getAttribute("data-original") || img.getAttribute("data-lazy-src") || img.getAttribute("data-actual-src")
-      );
-      return hasSource;
+      return Boolean(bestUrl);
     }
     /**
      * Checks if an element is inside an excluded zone (sidebar, footer, recommendations, etc.)
@@ -2492,15 +2795,7 @@
      * Force-loads a single image by swapping lazy data-src attributes to active src
      */
     static forceTriggerImage(img) {
-      const realSrc = img.dataset.src || img.getAttribute("data-src") || img.getAttribute("data-original") || img.getAttribute("data-lazy-src") || img.getAttribute("data-actual-src");
-      if (realSrc && img.src !== realSrc) {
-        img.src = realSrc;
-      }
-      img.loading = "eager";
-      img.decoding = "async";
-      img.removeAttribute("data-src");
-      img.removeAttribute("data-lazy-src");
-      img.classList.remove("lazy", "lazyload", "loading");
+      MediaTargetResolver.promoteLazyAndSrcset(img);
     }
     /**
      * Force-loads ALL images in the chapter simultaneously without requiring manual scrolling
@@ -2889,7 +3184,53 @@
   };
 
   // src/content/image-compressor.ts
+  function resolveOverlayDimensions(ocrWidth, ocrHeight, fallbackWidth, fallbackHeight) {
+    return {
+      width: ocrWidth && ocrWidth > 0 ? ocrWidth : fallbackWidth || 800,
+      height: ocrHeight && ocrHeight > 0 ? ocrHeight : fallbackHeight || 1200
+    };
+  }
   var ImageCompressor = class {
+    /**
+     * Captures lossless PNG pixels for local Hybrid OCR without JPEG 8x8 ringing.
+     * Only scales down proportionally when naturalWidth exceeds maxWidth (default 2200px).
+     */
+    static captureForOcr(img, maxWidth = 2200) {
+      const naturalWidth = img.naturalWidth || img.width || 800;
+      const naturalHeight = img.naturalHeight || img.height || 1200;
+      let targetWidth = naturalWidth;
+      let targetHeight = naturalHeight;
+      if (naturalWidth > maxWidth) {
+        const scale = maxWidth / naturalWidth;
+        targetWidth = maxWidth;
+        targetHeight = Math.round(naturalHeight * scale);
+      }
+      try {
+        if (typeof document !== "undefined") {
+          const canvas = document.createElement("canvas");
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+            return {
+              dataUrl: canvas.toDataURL("image/png"),
+              naturalWidth,
+              naturalHeight,
+              compressedWidth: targetWidth,
+              compressedHeight: targetHeight
+            };
+          }
+        }
+      } catch {
+      }
+      return {
+        naturalWidth,
+        naturalHeight,
+        compressedWidth: targetWidth,
+        compressedHeight: targetHeight
+      };
+    }
     /**
      * Captures and optimizes an image for Vision AI transmission.
      * Only scales down width if naturalWidth exceeds maxDim (1280px).
@@ -2986,12 +3327,12 @@
             `Trang #${task.index + 1}${totalKeys > 1 ? ` (Key #${estimatedKey}/${totalKeys})` : ""}: Vision AI \u0111ang nh\u1EADn di\u1EC7n v\xE0 d\u1ECBch...`
           );
         }
-        const compressed = ImageCompressor.compressForVision(img, 1280, 0.78);
+        const captured = isVision ? ImageCompressor.compressForVision(img, 1280, 0.78) : ImageCompressor.captureForOcr(img, 2200);
         const resp = await SafeMessenger.send({
           action: "OCR_IMAGE",
           imageUrl,
           chapterUrl: window.location.href,
-          dataUrl: compressed.dataUrl,
+          dataUrl: captured.dataUrl,
           naturalWidth,
           naturalHeight
         });
@@ -3002,8 +3343,12 @@
         if (resp?.success) {
           if (resp.cached || resp.isDirectTranslation) {
             if (resp.dialogues && resp.dialogues.length > 0) {
-              const renderW = img.naturalWidth || resp.naturalWidth || compressed.naturalWidth;
-              const renderH = img.naturalHeight || resp.naturalHeight || compressed.naturalHeight;
+              const { width: renderW, height: renderH } = resolveOverlayDimensions(
+                resp.naturalWidth,
+                resp.naturalHeight,
+                img.naturalWidth || captured.compressedWidth,
+                img.naturalHeight || captured.compressedHeight
+              );
               OverlayRenderer.renderDialogues(
                 wrapper,
                 resp.dialogues,
@@ -3043,8 +3388,8 @@
               index: task.index,
               img: task.img,
               dialogues: resp.dialogues,
-              naturalWidth: resp.naturalWidth || compressed.naturalWidth,
-              naturalHeight: resp.naturalHeight || compressed.naturalHeight
+              naturalWidth: resp.naturalWidth || captured.compressedWidth,
+              naturalHeight: resp.naturalHeight || captured.compressedHeight
             });
           }
         } else {
@@ -3129,8 +3474,12 @@
           return;
         }
         if (resp?.success && Array.isArray(resp.dialogues)) {
-          const renderW = img.naturalWidth || task.naturalWidth;
-          const renderH = img.naturalHeight || task.naturalHeight;
+          const { width: renderW, height: renderH } = resolveOverlayDimensions(
+            task.naturalWidth,
+            task.naturalHeight,
+            img.naturalWidth,
+            img.naturalHeight
+          );
           OverlayRenderer.renderDialogues(
             wrapper,
             resp.dialogues,
@@ -3269,11 +3618,17 @@
           if (cached && Array.isArray(cached.dialogues) && cached.dialogues.length > 0) {
             const wrapper = img.parentElement;
             if (wrapper) {
+              const { width: renderW, height: renderH } = resolveOverlayDimensions(
+                cached.naturalWidth,
+                cached.naturalHeight,
+                img.naturalWidth || 800,
+                img.naturalHeight || 1200
+              );
               OverlayRenderer.renderDialogues(
                 wrapper,
                 cached.dialogues,
-                img.naturalWidth || cached.naturalWidth || 800,
-                img.naturalHeight || cached.naturalHeight || 1200,
+                renderW,
+                renderH,
                 bubbleTheme
               );
               img.dataset.slateStatus = "translated";
@@ -3291,6 +3646,315 @@
     }
   };
 
+  // src/content/spa-shield.ts
+  var SpaOverlayShield = class {
+    constructor(onRecycledImage) {
+      this.onRecycledImage = onRecycledImage;
+    }
+    observers = /* @__PURE__ */ new WeakMap();
+    trackedUrls = /* @__PURE__ */ new WeakMap();
+    watch(img) {
+      if (this.observers.has(img)) return;
+      const initial = MediaTargetResolver.extractBestImageUrl(img) || img.src || "";
+      this.trackedUrls.set(img, initial);
+      const observer = new MutationObserver(() => {
+        const nextUrl = MediaTargetResolver.extractBestImageUrl(img) || img.src || "";
+        if (!nextUrl || nextUrl.startsWith("data:image/svg")) return;
+        const prevUrl = this.trackedUrls.get(img) || "";
+        if (prevUrl && nextUrl !== prevUrl) {
+          this.trackedUrls.set(img, nextUrl);
+          const wrapper = img.parentElement;
+          if (wrapper?.classList.contains("speedyslate-wrapper")) {
+            wrapper.querySelectorAll(".speedyslate-bubble, .speedyslate-erase-patch, .speedyslate-clean-canvas").forEach((el) => el.remove());
+          }
+          delete img.dataset.slateStatus;
+          this.onRecycledImage(img);
+        } else if (!prevUrl) {
+          this.trackedUrls.set(img, nextUrl);
+        }
+      });
+      observer.observe(img, {
+        attributes: true,
+        attributeFilter: ["src", "srcset", "data-src", "data-original", "data-lazy-src"]
+      });
+      this.observers.set(img, observer);
+    }
+  };
+
+  // src/content/chapter-scanner.ts
+  var ChapterScanner = class {
+    constructor(hooks) {
+      this.hooks = hooks;
+      this.spaShield = new SpaOverlayShield((img) => {
+        this.hooks.completedImages.delete(img);
+        const idx = this.hooks.images.indexOf(img);
+        if (idx !== -1) {
+          if (img.parentElement) PageBadgeManager.updateBadge(img.parentElement, idx, "idle");
+          this.hooks.onImageRecycled?.(idx, img);
+        }
+      });
+    }
+    mutationObserver = null;
+    intersectionObserver = null;
+    observeInterval = null;
+    spaShield;
+    isDetecting = false;
+    start() {
+      this.detectImages();
+      this.setupMutationObserver();
+      this.setupIntersectionObserver();
+    }
+    stop() {
+      if (this.mutationObserver) {
+        this.mutationObserver.disconnect();
+        this.mutationObserver = null;
+      }
+      if (this.intersectionObserver) {
+        this.intersectionObserver.disconnect();
+        this.intersectionObserver = null;
+      }
+      if (this.observeInterval) {
+        clearInterval(this.observeInterval);
+        this.observeInterval = null;
+      }
+    }
+    detectImages() {
+      if (this.isDetecting) return;
+      this.isDetecting = true;
+      try {
+        const rawImages = ToonheyAdapter.getChapterImages();
+        let newFound = 0;
+        for (const img of rawImages) {
+          if (!this.hooks.images.includes(img)) {
+            ToonheyAdapter.wrapImage(img);
+            this.spaShield.watch(img);
+            this.hooks.images.push(img);
+            const index = this.hooks.images.length - 1;
+            if (img.parentElement) {
+              PageBadgeManager.ensureBadge(img.parentElement, index);
+            }
+            newFound++;
+          }
+        }
+        if (newFound > 0) {
+          this.hooks.images.sort(
+            (a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
+          );
+          this.hooks.images.forEach((img, idx) => {
+            if (img.parentElement) {
+              PageBadgeManager.ensureBadge(img.parentElement, idx);
+            }
+          });
+          this.hooks.onNewImagesDetected(this.hooks.images.length);
+        }
+      } finally {
+        this.isDetecting = false;
+      }
+    }
+    setupMutationObserver() {
+      let debounceTimer = null;
+      this.mutationObserver = new MutationObserver(() => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          this.detectImages();
+        }, 300);
+      });
+      this.mutationObserver.observe(document.body || document.documentElement, {
+        childList: true,
+        subtree: true
+      });
+    }
+    setupIntersectionObserver() {
+      this.intersectionObserver = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            const img = entry.target;
+            const index = this.hooks.images.indexOf(img);
+            if (index !== -1 && !this.hooks.completedImages.has(img) && !img.dataset.slateStatus && this.hooks.isTranslating()) {
+              this.hooks.onImageVisible(index, img);
+            }
+          }
+        },
+        { root: null, rootMargin: "0px 0px 800px 0px", threshold: 0.01 }
+      );
+      this.observeInterval = setInterval(() => {
+        this.hooks.images.forEach((img) => this.intersectionObserver?.observe(img));
+      }, 2e3);
+    }
+  };
+
+  // src/content/screen-crop.ts
+  function isScreenCropShortcut(e) {
+    const tgt = e.target;
+    const tag = (tgt?.tagName || "").toUpperCase();
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tgt?.isContentEditable) {
+      return false;
+    }
+    return e.shiftKey && (e.altKey || e.ctrlKey) && e.code === "KeyX";
+  }
+  function scaleViewportCropToBitmap(rect, dpr, maxW, maxH) {
+    const scale = dpr > 0 ? dpr : 1;
+    const sx = Math.max(0, Math.min(maxW - 1, Math.round(rect.x * scale)));
+    const sy = Math.max(0, Math.min(maxH - 1, Math.round(rect.y * scale)));
+    const sw = Math.max(1, Math.min(maxW - sx, Math.round(rect.width * scale)));
+    const sh = Math.max(1, Math.min(maxH - sy, Math.round(rect.height * scale)));
+    return { sx, sy, sw, sh };
+  }
+  var ScreenCropOverlay = class {
+    constructor(getTheme, onLog) {
+      this.getTheme = getTheme;
+      this.onLog = onLog;
+    }
+    activeMask = null;
+    startSelection() {
+      if (this.activeMask || typeof document === "undefined") return;
+      const mask = document.createElement("div");
+      Object.assign(mask.style, {
+        position: "fixed",
+        inset: "0",
+        zIndex: "2147483646",
+        cursor: "crosshair",
+        background: "rgba(0, 0, 0, 0.25)",
+        userSelect: "none"
+      });
+      const box = document.createElement("div");
+      Object.assign(box.style, {
+        position: "fixed",
+        border: "2px dashed #E52E3D",
+        background: "rgba(229, 46, 61, 0.12)",
+        display: "none",
+        pointerEvents: "none"
+      });
+      mask.appendChild(box);
+      document.body.appendChild(mask);
+      this.activeMask = mask;
+      let startX = 0;
+      let startY = 0;
+      let dragging = false;
+      const cleanup = () => {
+        window.removeEventListener("keydown", onKey, true);
+        mask.remove();
+        this.activeMask = null;
+      };
+      const onKey = (ke) => {
+        if (ke.key === "Escape") cleanup();
+      };
+      window.addEventListener("keydown", onKey, true);
+      mask.addEventListener("mousedown", (e) => {
+        dragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        Object.assign(box.style, {
+          display: "block",
+          left: `${startX}px`,
+          top: `${startY}px`,
+          width: "0px",
+          height: "0px"
+        });
+      });
+      mask.addEventListener("mousemove", (e) => {
+        if (!dragging) return;
+        const x = Math.min(startX, e.clientX);
+        const y = Math.min(startY, e.clientY);
+        const w = Math.abs(e.clientX - startX);
+        const h = Math.abs(e.clientY - startY);
+        Object.assign(box.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` });
+      });
+      mask.addEventListener("mouseup", async (e) => {
+        if (!dragging) return;
+        dragging = false;
+        const rect = {
+          x: Math.min(startX, e.clientX),
+          y: Math.min(startY, e.clientY),
+          width: Math.abs(e.clientX - startX),
+          height: Math.abs(e.clientY - startY)
+        };
+        cleanup();
+        if (rect.width < 24 || rect.height < 24) return;
+        await this.captureAndTranslate(rect);
+      });
+    }
+    async captureAndTranslate(rect) {
+      this.onLog?.("\u0110ang ch\u1EE5p v\xF9ng ch\u1ECDn v\xE0 nh\u1EADn di\u1EC7n tho\u1EA1i...");
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      const cap = await SafeMessenger.send({ action: "CAPTURE_VISIBLE_TAB" });
+      if (!cap?.success || !cap.dataUrl) {
+        this.onLog?.(cap?.error || "Kh\xF4ng th\u1EC3 ch\u1EE5p v\xF9ng m\xE0n h\xECnh", true);
+        return;
+      }
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("Kh\xF4ng th\u1EC3 \u0111\u1ECDc \u1EA3nh ch\u1EE5p m\xE0n h\xECnh"));
+        img.src = cap.dataUrl;
+      });
+      const { sx, sy, sw, sh } = scaleViewportCropToBitmap(
+        rect,
+        window.devicePixelRatio || 1,
+        img.naturalWidth,
+        img.naturalHeight
+      );
+      const canvas = document.createElement("canvas");
+      canvas.width = sw;
+      canvas.height = sh;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+      const cropDataUrl = canvas.toDataURL("image/png");
+      const resp = await SafeMessenger.send({
+        action: "TRANSLATE_IMAGE",
+        dataUrl: cropDataUrl,
+        chapterUrl: window.location.href
+      });
+      if (!resp?.success || !Array.isArray(resp.dialogues) || resp.dialogues.length === 0) {
+        this.onLog?.(resp?.error || "Kh\xF4ng t\xECm th\u1EA5y ch\u1EEF tho\u1EA1i trong v\xF9ng \u0111\xE3 ch\u1ECDn", !resp?.success);
+        return;
+      }
+      const holder = document.createElement("div");
+      holder.className = "speedyslate-crop-result";
+      Object.assign(holder.style, {
+        position: "absolute",
+        left: `${window.scrollX + rect.x}px`,
+        top: `${window.scrollY + rect.y}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        zIndex: "2147483640",
+        outline: "1px solid rgba(229, 46, 61, 0.55)",
+        borderRadius: "4px"
+      });
+      const closeBtn = document.createElement("button");
+      closeBtn.textContent = "\xD7";
+      closeBtn.title = "\u0110\xF3ng v\xF9ng d\u1ECBch";
+      Object.assign(closeBtn.style, {
+        position: "absolute",
+        top: "-12px",
+        right: "-12px",
+        width: "24px",
+        height: "24px",
+        borderRadius: "50%",
+        border: "none",
+        background: "#111111",
+        color: "#FFFFFF",
+        cursor: "pointer",
+        zIndex: "60",
+        fontWeight: "bold",
+        lineHeight: "24px"
+      });
+      closeBtn.onclick = () => holder.remove();
+      document.body.appendChild(holder);
+      OverlayRenderer.renderDialogues(
+        holder,
+        resp.dialogues,
+        resp.naturalWidth || sw,
+        resp.naturalHeight || sh,
+        this.getTheme()
+      );
+      holder.appendChild(closeBtn);
+      this.onLog?.(`\u0110\xE3 d\u1ECBch ${resp.dialogues.length} c\xE2u tho\u1EA1i trong v\xF9ng ch\u1ECDn`);
+    }
+  };
+
   // src/content/index.ts
   var SpeedySlateContentApp = class {
     settings;
@@ -3298,10 +3962,12 @@
     ocrQueue;
     translationQueue;
     taskProcessor;
+    scanner;
+    screenCrop;
+    cropKeyListener = null;
     images = [];
     completedImages = /* @__PURE__ */ new Set();
     isModelReady = false;
-    mutationObserver = null;
     isStarted = false;
     async init() {
       try {
@@ -3374,13 +4040,13 @@
           await SafeMessenger.send({ action: "CLEAR_ALL_CACHE" });
           this.resetPageTranslations();
           this.hud?.log("\u0110\xE3 d\u1ECDn s\u1EA1ch to\xE0n b\u1ED9 cache");
-        }
+        },
+        onStartScreenCrop: () => this.screenCrop?.startSelection()
       });
     }
     async start() {
       if (this.isStarted) return;
       this.isStarted = true;
-      console.log("[SpeedySlate] Khoi chay tren trang:", window.location.href);
       try {
         this.settings = await StorageService.getSettings();
       } catch {
@@ -3409,9 +4075,41 @@
         onTaskFinished: () => this.checkAndHandleCompletion(),
         onContextInvalidated: () => this.handleContextInvalidated()
       });
-      this.detectImages();
-      this.setupMutationObserver();
-      this.setupIntersectionObserver();
+      this.scanner = new ChapterScanner({
+        images: this.images,
+        completedImages: this.completedImages,
+        isTranslating: () => this.hud?.getState() === "translating",
+        onNewImagesDetected: (totalCount) => {
+          this.hud?.updateStatus(this.completedImages.size, totalCount);
+          this.hud?.log(`Da phat hien ${totalCount} trang truyen`);
+          if (this.hud?.getState() === "translating") {
+            this.enqueueAllImages();
+          } else {
+            this.restoreCachedTranslations();
+          }
+        },
+        onImageVisible: (index, img) => this.ocrQueue.enqueue({ index, img }),
+        onImageRecycled: (index, img) => {
+          this.hud?.updateStatus(this.completedImages.size, this.images.length);
+          if (this.hud?.getState() === "translating") {
+            this.ocrQueue.enqueue({ index, img });
+          } else {
+            this.restoreCachedTranslations();
+          }
+        }
+      });
+      this.scanner.start();
+      this.screenCrop = new ScreenCropOverlay(
+        () => this.settings?.bubbleTheme || "auto",
+        (msg, isErr) => this.hud?.log(msg, isErr)
+      );
+      this.cropKeyListener = (e) => {
+        if (isScreenCropShortcut(e)) {
+          e.preventDefault();
+          this.screenCrop.startSelection();
+        }
+      };
+      window.addEventListener("keydown", this.cropKeyListener, true);
       await this.restoreCachedTranslations();
       await this.checkModelStatusFromBackground(false);
       if (this.completedImages.size < this.images.length) {
@@ -3487,48 +4185,11 @@
           this.isModelReady = false;
           this.hud?.log("Chua tai model OCR. Mo popup tien ich de tai (~10MB)", true);
           if (showBannerIfMissing) {
-            this.showModelMissingBanner();
+            ModelMissingBanner.show();
           }
         }
       } catch (err) {
         this.hud?.log(`Loi kiem tra model: ${err.message}`, true);
-      }
-    }
-    isDetecting = false;
-    detectImages() {
-      if (this.isDetecting) return;
-      this.isDetecting = true;
-      try {
-        const rawImages = ToonheyAdapter.getChapterImages();
-        let newFound = 0;
-        for (const img of rawImages) {
-          if (!this.images.includes(img)) {
-            ToonheyAdapter.wrapImage(img);
-            this.images.push(img);
-            const index = this.images.length - 1;
-            if (img.parentElement) {
-              PageBadgeManager.ensureBadge(img.parentElement, index);
-            }
-            newFound++;
-          }
-        }
-        if (newFound > 0) {
-          this.images.sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
-          this.images.forEach((img, idx) => {
-            if (img.parentElement) {
-              PageBadgeManager.ensureBadge(img.parentElement, idx);
-            }
-          });
-          this.hud?.updateStatus(this.completedImages.size, this.images.length);
-          this.hud?.log(`Da phat hien ${this.images.length} trang truyen`);
-          if (this.hud?.getState() === "translating") {
-            this.enqueueAllImages();
-          } else {
-            this.restoreCachedTranslations();
-          }
-        }
-      } finally {
-        this.isDetecting = false;
       }
     }
     async restoreCachedTranslations() {
@@ -3553,45 +4214,14 @@
       this.ocrQueue?.clear();
       this.translationQueue?.pause();
       this.translationQueue?.clear();
-      if (this.mutationObserver) {
-        this.mutationObserver.disconnect();
-        this.mutationObserver = null;
+      this.scanner?.stop();
+      if (this.cropKeyListener) {
+        window.removeEventListener("keydown", this.cropKeyListener, true);
+        this.cropKeyListener = null;
       }
       this.resetPageTranslations();
       this.hud?.destroy();
       this.hud = null;
-    }
-    setupMutationObserver() {
-      let debounceTimer = null;
-      this.mutationObserver = new MutationObserver(() => {
-        if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          this.detectImages();
-        }, 300);
-      });
-      this.mutationObserver.observe(document.body || document.documentElement, {
-        childList: true,
-        subtree: true
-      });
-    }
-    setupIntersectionObserver() {
-      const observer = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              const img = entry.target;
-              const index = this.images.indexOf(img);
-              if (index !== -1 && !this.completedImages.has(img) && !img.dataset.slateStatus && this.hud?.getState() === "translating") {
-                this.ocrQueue.enqueue({ index, img });
-              }
-            }
-          });
-        },
-        { root: null, rootMargin: "0px 0px 800px 0px", threshold: 0.01 }
-      );
-      setInterval(() => {
-        this.images.forEach((img) => observer.observe(img));
-      }, 2e3);
     }
     enqueueAllImages() {
       for (let i = 0; i < this.images.length; i++) {
@@ -3608,10 +4238,6 @@
         this.checkAndHandleCompletion();
       }
     }
-    /**
-     * Checks if all detected images have completed or all queues are empty,
-     * automatically stops the translation workflow to prevent infinite loops / rate limit errors.
-     */
     checkAndHandleCompletion() {
       const currentState = this.hud?.getState();
       if (currentState !== "translating" && currentState !== "completed") return;
@@ -3631,9 +4257,6 @@
         }
       }
     }
-    /**
-     * Gracefully stops translation, pauses queues, clears session flag, and updates HUD state
-     */
     finishTranslating() {
       this.ocrQueue?.pause();
       this.translationQueue?.pause();
@@ -3649,9 +4272,6 @@
       this.hud?.log(
         isDone ? `\u0110\xE3 ho\xE0n t\u1EA5t ti\u1EBFn tr\xECnh d\u1ECBch (${completedCount}/${totalCount} trang)` : `Ti\u1EBFn tr\xECnh d\u1ECBch \u0111\xE3 d\u1EEBng (${completedCount}/${totalCount} trang)`
       );
-    }
-    showModelMissingBanner() {
-      ModelMissingBanner.show();
     }
   };
   window.addEventListener("error", (e) => {

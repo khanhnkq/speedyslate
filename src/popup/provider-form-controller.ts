@@ -3,8 +3,30 @@ import { API_PRESETS } from '../shared/presets';
 import { ExtensionSettings, ProviderType } from '../shared/types';
 import { ApiKeyRotator } from '../services/translation/api-key-rotator';
 
+export function computeProviderFieldVisibility(type: ProviderType): {
+  showBaseUrl: boolean;
+  showModel: boolean;
+  showApiKey: boolean;
+  showFreeNotice: boolean;
+} {
+  if (type === 'google_free') {
+    return { showBaseUrl: false, showModel: false, showApiKey: false, showFreeNotice: true };
+  }
+  const requiresKey = API_PRESETS[type]?.requiresApiKey ?? true;
+  return {
+    showBaseUrl: true,
+    showModel: true,
+    showApiKey: requiresKey,
+    showFreeNotice: false
+  };
+}
+
 export class ProviderFormController {
   private providerSelect = document.getElementById('provider-select') as HTMLSelectElement;
+  private groupBaseUrl = document.getElementById('group-base-url') as HTMLElement | null;
+  private groupModelName = document.getElementById('group-model-name') as HTMLElement | null;
+  private groupApiKey = document.getElementById('group-api-key') as HTMLElement | null;
+  private freeNotice = document.getElementById('google-free-notice') as HTMLElement | null;
   private baseUrlInput = document.getElementById('input-base-url') as HTMLInputElement;
   private modelPresetSelect = document.getElementById('select-model-preset') as HTMLSelectElement;
   private customModelInput = document.getElementById('input-custom-model') as HTMLInputElement;
@@ -43,7 +65,7 @@ export class ProviderFormController {
 
       let suffix = '';
       if (!info.requiresApiKey) {
-        suffix = t === 'ollama' ? ' (Offline)' : ' (Free)';
+        suffix = t === 'ollama' ? ' (Offline)' : t === 'google_free' ? ' (Miễn phí - 0 Key)' : '';
       } else if (keyCount > 0) {
         suffix = ` (${keyCount} key${keyCount > 1 ? 's' : ''})`;
       }
@@ -100,6 +122,12 @@ export class ProviderFormController {
     }
     this.customModelInput.value = currentModel;
     this.rateLimitInput.value = String(settings.rateLimitDelayMs ?? preset.defaultDelayMs ?? 1200);
+
+    const vis = computeProviderFieldVisibility(type);
+    if (this.groupBaseUrl) this.groupBaseUrl.style.display = vis.showBaseUrl ? '' : 'none';
+    if (this.groupModelName) this.groupModelName.style.display = vis.showModel ? '' : 'none';
+    if (this.groupApiKey) this.groupApiKey.style.display = vis.showApiKey ? '' : 'none';
+    if (this.freeNotice) this.freeNotice.style.display = vis.showFreeNotice ? 'flex' : 'none';
   }
 
   private updateApiKeyCount(): void {

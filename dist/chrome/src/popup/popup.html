@@ -165,6 +165,11 @@
             <select id="provider-select" class="form-select"></select>
           </div>
 
+          <div id="google-free-notice" class="vision-notice-card" style="display: none; margin-bottom: 10px;">
+            <i class="ti ti-circle-check"></i>
+            <span>Miễn phí 100% — Không cần nhập API Key hay cấu hình Model, dùng ngay với chế độ Hybrid OCR.</span>
+          </div>
+
           <div class="form-group" id="group-base-url">
             <label class="form-label" for="input-base-url">
               <i class="ti ti-link"></i> BASE URL
@@ -172,7 +177,7 @@
             <input type="text" id="input-base-url" class="form-input" placeholder="https://api.groq.com/openai/v1" />
           </div>
 
-          <div class="form-group">
+          <div class="form-group" id="group-model-name">
             <label class="form-label" for="select-model-preset">
               <i class="ti ti-brain"></i> MODEL NAME
             </label>

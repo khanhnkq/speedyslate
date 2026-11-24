@@ -101,7 +101,7 @@ export const API_PRESETS: Record<ProviderType, {
     defaultDelayMs: 0
   },
   google_free: {
-    name: 'Google Translate (Free 0-Key)',
+    name: 'Google Translate',
     baseUrl: 'https://translate.googleapis.com',
     defaultModel: 'gtx-free',
     suggestedModels: ['gtx-free'],

@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { TextAutoFitter } from '../../src/content/overlay/text-auto-fitter';
+import { ComicFontLoader } from '../../src/content/overlay/comic-font-loader';
+
+describe('ComicFontLoader non-extension page safety', () => {
+  it('resolves null URL cleanly without throwing when chrome.runtime.getURL is absent (e.g. test-harness)', () => {
+    expect(ComicFontLoader.resolveAssetUrl('fonts/PatrickHand-vi.woff2', {})).toBeNull();
+    expect(
+      ComicFontLoader.resolveAssetUrl('fonts/PatrickHand-vi.woff2', {
+        chrome: { runtime: { getURL: (p: string) => `chrome-extension://abc/${p}` } }
+      })
+    ).toBe('chrome-extension://abc/fonts/PatrickHand-vi.woff2');
+  });
+});
 
 describe('TextAutoFitter.fitDialogue elliptical chord wrapping', () => {
   const monoMeasure = (s: string, px: number) => s.length * px * 0.6;

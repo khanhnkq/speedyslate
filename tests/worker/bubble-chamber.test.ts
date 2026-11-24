@@ -54,4 +54,27 @@ describe('BubbleChamberExtractor', () => {
     );
     expect(leak).toBeNull();
   });
+
+  it('stops at faint anti-aliased grey borders (luma 218 on 250 paper) and never merges into an adjacent bubble', () => {
+    const w = 260, h = 160;
+    const buf = new Uint8ClampedArray(w * h * 4).fill(218); // light-grey gutter between two bubbles
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        buf.set([218, 218, 218, 255], (y * w + x) * 4);
+        const inLeftBubble = ((x - 60) / 42) ** 2 + ((y - 80) / 55) ** 2 <= 1;
+        const inRightBubble = ((x - 185) / 45) ** 2 + ((y - 80) / 55) ** 2 <= 1;
+        if (inLeftBubble || inRightBubble) {
+          buf.set([250, 250, 250, 255], (y * w + x) * 4);
+        }
+      }
+    }
+    const res = BubbleChamberExtractor.extractChamber(
+      { data: buf, width: w, height: h },
+      0,
+      0,
+      { x: 173, y: 45, width: 24, height: 70 }
+    );
+    expect(res).not.toBeNull();
+    expect(res!.chamberBox.x).toBeGreaterThanOrEqual(135); // never crosses gutter into left bubble (x <= 102)
+  });
 });

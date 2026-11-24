@@ -63,10 +63,10 @@ export class BubbleChamberExtractor {
 
     const paper = new Uint8Array(total);
     if (isDarkBubble) {
-      const thresh = Math.min(105, medL + 40);
+      const thresh = Math.min(85, medL + 22);
       for (let i = 0; i < total; i++) if (lumas[i] <= thresh) paper[i] = 1;
     } else {
-      const thresh = Math.max(125, medL - 40);
+      const thresh = Math.max(155, medL - 22);
       for (let i = 0; i < total; i++) if (lumas[i] >= thresh) paper[i] = 1;
     }
 
@@ -159,6 +159,15 @@ export class BubbleChamberExtractor {
     const cw = cx1 - cx0 + 1;
     const ch = cy1 - cy0 + 1;
     const fillRatio = area / (cw * ch);
+
+    // Symmetry guard: reject asymmetric leaks into neighboring bubbles/gutters
+    const textCx = (tx0 + tx1) * 0.5;
+    const textCy = (ty0 + ty1) * 0.5;
+    const chamCx = (cx0 + cx1) * 0.5;
+    const chamCy = (cy0 + cy1) * 0.5;
+    if (Math.abs(chamCx - textCx) > cw * 0.3 || Math.abs(chamCy - textCy) > ch * 0.3) {
+      return null;
+    }
 
     // Ensure textBox remains enclosed inside the discovered chamber bounds
     const outX0 = Math.min(cx0, tx0);

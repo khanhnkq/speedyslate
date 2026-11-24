@@ -32,13 +32,17 @@ export class BubbleGeometry {
     let widthPct: number;
     let heightPct: number;
 
+    const rawAspect = item.box.height / Math.max(1, item.box.width);
+    const needsChamberExpansion =
+      Boolean(item.chamberBox) && (item.isVertical === true || rawAspect >= 1.4 || item.box.width < 65);
+
     if (item.normBox) {
       // Vision AI normalized 0-1000 scale -> direct percentage (0% - 100%)
       topPct = item.normBox.ymin / 10;
       leftPct = item.normBox.xmin / 10;
       widthPct = Math.max(1, (item.normBox.xmax - item.normBox.xmin) / 10);
       heightPct = Math.max(1, (item.normBox.ymax - item.normBox.ymin) / 10);
-    } else if (item.chamberBox) {
+    } else if (needsChamberExpansion && item.chamberBox) {
       // Smart Bubble Fit: use actual detected paper chamber with safe interior inset
       const insetX = item.chamberBox.width * 0.06;
       const insetY = item.chamberBox.height * 0.05;

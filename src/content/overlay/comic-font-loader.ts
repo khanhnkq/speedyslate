@@ -1,18 +1,33 @@
-import browser from 'webextension-polyfill';
-
 const STYLE_ID = 'speedyslate-comic-font-face';
 
 /**
  * ComicFontLoader: Injects bundled local SIL-OFL Patrick Hand WOFF2 subsets
- * (Vietnamese + Latin-Ext + Latin) once per page. 100% local & AMO-compliant.
+ * (Vietnamese + Latin-Ext + Latin) once per page. Avoids top-level
+ * `webextension-polyfill` import so standalone test-harness pages also work.
  */
 export class ComicFontLoader {
+  public static resolveAssetUrl(path: string, g: any = globalThis): string | null {
+    const getUrl = g?.browser?.runtime?.getURL ?? g?.chrome?.runtime?.getURL;
+    if (typeof getUrl === 'function') {
+      try {
+        return getUrl(path);
+      } catch {
+        return null;
+      }
+    }
+    if (g?.location?.pathname?.includes('/test-harness/')) {
+      return `/public/${path}`;
+    }
+    return null;
+  }
+
   public static ensureLoaded(): void {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID)) return;
     try {
-      const viUrl = browser.runtime.getURL('fonts/PatrickHand-vi.woff2');
-      const extUrl = browser.runtime.getURL('fonts/PatrickHand-latin-ext.woff2');
-      const latUrl = browser.runtime.getURL('fonts/PatrickHand-latin.woff2');
+      const viUrl = this.resolveAssetUrl('fonts/PatrickHand-vi.woff2');
+      const extUrl = this.resolveAssetUrl('fonts/PatrickHand-latin-ext.woff2');
+      const latUrl = this.resolveAssetUrl('fonts/PatrickHand-latin.woff2');
+      if (!viUrl || !extUrl || !latUrl) return;
 
       const style = document.createElement('style');
       style.id = STYLE_ID;

@@ -1,5 +1,6 @@
 import { BoundingBox, DialogueItem, DialogueKind } from '../shared/types';
 import { VerticalText } from './vertical-text';
+import { OcrNoiseFilter } from './ocr-noise-filter';
 
 /**
  * Aggregates individual text lines into unified dialogue bubbles
@@ -20,11 +21,13 @@ export class BubbleAggregator {
     imageHeight: number
   ): DialogueItem[] {
     if (items.length === 0) return items;
-    if (items.length === 1) return [this.enrichSingleItem(items[0])];
+    const filtered = OcrNoiseFilter.filterRawLines(items, imageWidth, imageHeight);
+    if (filtered.length === 0) return [];
+    if (filtered.length === 1) return [this.enrichSingleItem(filtered[0])];
 
     // Vertical CJK columns follow a separate grouping path (columns, not stacked lines)
-    const horizontalItems = items.filter((d) => d.isVertical !== true);
-    const verticalItems = items.filter((d) => d.isVertical === true);
+    const horizontalItems = filtered.filter((d) => d.isVertical !== true);
+    const verticalItems = filtered.filter((d) => d.isVertical === true);
 
     const groups: DialogueItem[][] = [
       ...this.groupHorizontalLines(horizontalItems),

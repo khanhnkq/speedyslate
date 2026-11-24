@@ -62,16 +62,19 @@ export default defineConfig(({ mode }) => {
             console.log(`[Vite] Copied manifest.${target}.json -> dist/${target}/manifest.json`);
           }
 
-          // 3. Copy icons
+          // 3. Copy runtime manifest icons only (keep .zip lean without 1024px/store artwork)
           const iconsSrcDir = resolve(__dirname, 'public/icons');
           const iconsDestDir = resolve(outDir, 'icons');
           if (fs.existsSync(iconsSrcDir)) {
             fs.mkdirSync(iconsDestDir, { recursive: true });
-            const files = fs.readdirSync(iconsSrcDir);
-            for (const file of files) {
-              fs.copyFileSync(resolve(iconsSrcDir, file), resolve(iconsDestDir, file));
+            const runtimeIcons = ['icon16.png', 'icon32.png', 'icon48.png', 'icon128.png'];
+            for (const file of runtimeIcons) {
+              const srcFile = resolve(iconsSrcDir, file);
+              if (fs.existsSync(srcFile)) {
+                fs.copyFileSync(srcFile, resolve(iconsDestDir, file));
+              }
             }
-            console.log(`[Vite] Copied icons -> dist/${target}/icons`);
+            console.log(`[Vite] Copied runtime icons -> dist/${target}/icons`);
           }
 
           // 4. Copy ONNX Runtime WebAssembly and glue script files (AMO compliance: local wasm only)

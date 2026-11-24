@@ -56,4 +56,26 @@ describe('GitHub Pages Landing Page anti-slop, zero-emoji & zero-dot audit', () 
     }
     expect(violations).toEqual([]);
   });
+
+  it('provides complete English and Vietnamese translations for every data-i18n key including Hero comic bubbles and privacy.html', () => {
+    const indexHtml = fs.readFileSync(path.join(ROOT, 'site/index.html'), 'utf8');
+    const privacyHtml = fs.readFileSync(path.join(ROOT, 'site/privacy.html'), 'utf8');
+    const mainTs = fs.readFileSync(path.join(ROOT, 'site/scripts/main.ts'), 'utf8');
+
+    expect(indexHtml).toContain('data-set-lang="en"');
+    expect(indexHtml).toContain('data-set-lang="vi"');
+    expect(privacyHtml).toContain('data-set-lang="en"');
+    expect(indexHtml).toContain('data-i18n="comicB1L1"');
+
+    const keys = new Set<string>();
+    for (const html of [indexHtml, privacyHtml]) {
+      for (const m of html.matchAll(/data-i18n(?:-html)?=["']([^"']+)["']/g)) {
+        keys.add(m[1]);
+      }
+    }
+    expect(keys.size).toBeGreaterThanOrEqual(45);
+    for (const k of keys) {
+      expect(mainTs, `missing i18n key: ${k}`).toContain(`${k}:`);
+    }
+  });
 });

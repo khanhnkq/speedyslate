@@ -32,8 +32,11 @@
         </nav>
 
         <div class="nav-actions">
-          <button type="button" id="btn-lang" class="lang-btn" aria-label="Switch language">VI / EN</button>
-          <a href="#install" class="btn btn-primary nav-cta" data-i18n="ctaPrimary">Add to Chrome</a>
+          <div class="lang-switch" role="group" aria-label="Language switcher">
+            <button type="button" class="lang-opt is-active" data-set-lang="vi">VI</button>
+            <button type="button" class="lang-opt" data-set-lang="en">EN</button>
+          </div>
+          <a href="#install" class="btn btn-primary nav-cta" data-i18n="ctaPrimary">Thêm vào Chrome</a>
         </div>
       </div>
     </header>
@@ -59,13 +62,13 @@
           <div class="motion-stage" id="hero-stage" data-mode="motion" style="--split-pct: 52%;">
             <div class="stage-topbar">
               <div class="stage-steps" id="stage-steps">
-                <span class="step-pill is-active" data-step="0">01 DETECT</span>
-                <span class="step-pill" data-step="1">02 INPAINT</span>
-                <span class="step-pill" data-step="2">03 TYPESET</span>
+                <span class="step-pill is-active" data-step="0" data-i18n="stepDetect">01 QUÉT OCR</span>
+                <span class="step-pill" data-step="1" data-i18n="stepInpaint">02 XÓA CHỮ</span>
+                <span class="step-pill" data-step="2" data-i18n="stepTypeset">03 DÀN TRANG</span>
               </div>
               <div class="mode-switch" role="tablist" aria-label="Demo mode">
-                <button type="button" class="mode-btn is-active" data-set-mode="motion">AUTO MOTION</button>
-                <button type="button" class="mode-btn" data-set-mode="split">SPLIT SCRUB</button>
+                <button type="button" class="mode-btn is-active" data-set-mode="motion" data-i18n="modeAuto">CHẠY TỰ ĐỘNG</button>
+                <button type="button" class="mode-btn" data-set-mode="split" data-i18n="modeSplit">KÉO SO SÁNH</button>
               </div>
             </div>
 
@@ -151,18 +154,18 @@
 
                 <!-- Translated Typeset Layer -->
                 <g class="vn-glyphs" font-family="'SpeedySlateComic', sans-serif" font-weight="700" fill="#111217" text-anchor="middle">
-                  <text x="104" y="88" font-size="17.5">Khoan đã!</text>
-                  <text x="104" y="109" font-size="17.5">Phía trước có</text>
-                  <text x="104" y="130" font-size="17.5">bẫy phục kích!</text>
+                  <text x="104" y="88" font-size="17" data-i18n="comicB1L1">Khoan đã!</text>
+                  <text x="104" y="109" font-size="17" data-i18n="comicB1L2">Phía trước có</text>
+                  <text x="104" y="130" font-size="17" data-i18n="comicB1L3">bẫy phục kích!</text>
 
-                  <text x="394" y="98" font-size="18">Mở khiên chắn</text>
-                  <text x="394" y="121" font-size="18">ngay lập tức!</text>
+                  <text x="394" y="98" font-size="17.5" data-i18n="comicB2L1">Mở khiên chắn</text>
+                  <text x="394" y="121" font-size="17.5" data-i18n="comicB2L2">ngay lập tức!</text>
 
-                  <text x="149" y="344" font-size="16.5">Đêm thứ 7 tại Khu 09 —</text>
-                  <text x="149" y="368" font-size="16.5">tín hiệu đã được giải mã.</text>
+                  <text x="149" y="344" font-size="16" data-i18n="comicB3L1">Đêm thứ 7 tại Khu 09 —</text>
+                  <text x="149" y="368" font-size="16" data-i18n="comicB3L2">tín hiệu đã được giải mã.</text>
 
-                  <text x="372" y="428" font-size="18.5">Tốt lắm, chuẩn bị</text>
-                  <text x="372" y="452" font-size="18.5">đột kích thôi!</text>
+                  <text x="372" y="428" font-size="18" data-i18n="comicB4L1">Tốt lắm, chuẩn bị</text>
+                  <text x="372" y="452" font-size="18" data-i18n="comicB4L2">đột kích thôi!</text>
                 </g>
               </svg>
 
@@ -194,15 +197,15 @@
                   <rect x="42" y="314" width="214" height="72" rx="4" fill="#FFFFFF" stroke="#111217" stroke-width="3.2" />
                   <ellipse cx="372" cy="436" rx="84" ry="64" fill="#FFFFFF" stroke="#111217" stroke-width="3.5" />
                   <g font-family="'SpeedySlateComic', sans-serif" font-weight="700" fill="#111217" text-anchor="middle">
-                    <text x="104" y="88" font-size="17.5">Khoan đã!</text>
-                    <text x="104" y="109" font-size="17.5">Phía trước có</text>
-                    <text x="104" y="130" font-size="17.5">bẫy phục kích!</text>
-                    <text x="394" y="98" font-size="18">Mở khiên chắn</text>
-                    <text x="394" y="121" font-size="18">ngay lập tức!</text>
-                    <text x="149" y="344" font-size="16.5">Đêm thứ 7 tại Khu 09 —</text>
-                    <text x="149" y="368" font-size="16.5">tín hiệu đã được giải mã.</text>
-                    <text x="372" y="428" font-size="18.5">Tốt lắm, chuẩn bị</text>
-                    <text x="372" y="452" font-size="18.5">đột kích thôi!</text>
+                    <text x="104" y="88" font-size="17" data-i18n="comicB1L1">Khoan đã!</text>
+                    <text x="104" y="109" font-size="17" data-i18n="comicB1L2">Phía trước có</text>
+                    <text x="104" y="130" font-size="17" data-i18n="comicB1L3">bẫy phục kích!</text>
+                    <text x="394" y="98" font-size="17.5" data-i18n="comicB2L1">Mở khiên chắn</text>
+                    <text x="394" y="121" font-size="17.5" data-i18n="comicB2L2">ngay lập tức!</text>
+                    <text x="149" y="344" font-size="16" data-i18n="comicB3L1">Đêm thứ 7 tại Khu 09 —</text>
+                    <text x="149" y="368" font-size="16" data-i18n="comicB3L2">tín hiệu đã được giải mã.</text>
+                    <text x="372" y="428" font-size="18" data-i18n="comicB4L1">Tốt lắm, chuẩn bị</text>
+                    <text x="372" y="452" font-size="18" data-i18n="comicB4L2">đột kích thôi!</text>
                   </g>
                 </svg>
               </div>
@@ -317,7 +320,7 @@
                   Mọi bóng thoại được khóa cứng bằng định danh b0..bN ở tầng JSON Schema và tự động sắp thứ tự đọc Phải-sang-Trái cho Manga Nhật hoặc Trái-sang-Phải cho Webtoon Hàn.
                 </p>
               </div>
-              <div class="code-strip">{"b0": "Khoan đã!", "b1": "Mở khiên chắn ngay!"}</div>
+              <div class="code-strip" data-i18n="b2Code">{"b0": "Khoan đã!", "b1": "Mở khiên chắn ngay!"}</div>
             </article>
 
             <article class="bento-cell bento-4 bento-elev">
@@ -392,10 +395,10 @@
 
     <footer class="site-footer">
       <div class="container footer-inner">
-        <span>SpeedySlate Open-Source Project (MIT License)</span>
+        <span data-i18n="footerCopy">Dự án mã nguồn mở SpeedySlate (Giấy phép MIT)</span>
         <div style="display: flex; gap: 20px;">
-          <a href="./privacy.html">Privacy Policy</a>
-          <a href="https://github.com/khanhnkq/speedyslate" target="_blank" rel="noopener">GitHub Repository</a>
+          <a href="./privacy.html" data-i18n="navPrivacy">Quyền riêng tư</a>
+          <a href="https://github.com/khanhnkq/speedyslate" target="_blank" rel="noopener" data-i18n="footerRepo">Mã nguồn GitHub</a>
         </div>
       </div>
     </footer>

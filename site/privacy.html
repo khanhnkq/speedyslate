@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="vi">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -16,54 +16,60 @@
           <span>SPEEDYSLATE</span>
         </a>
         <div class="nav-actions">
-          <a href="./" class="btn btn-ghost nav-cta">Back to Home</a>
+          <div class="lang-switch" role="group" aria-label="Language switcher">
+            <button type="button" class="lang-opt is-active" data-set-lang="vi">VI</button>
+            <button type="button" class="lang-opt" data-set-lang="en">EN</button>
+          </div>
+          <a href="./" class="btn btn-ghost nav-cta" data-i18n="privBack">Về trang chủ</a>
         </div>
       </div>
     </header>
 
     <main class="container" style="max-width: 820px; padding: 64px 28px 96px;">
-      <div class="eyebrow-tag">PRIVACY POLICY</div>
-      <h1 class="sec-h2" style="margin-top: 16px;">SpeedySlate Browser Extension Privacy Policy</h1>
-      <p style="margin-top: 10px; color: var(--ink-muted); font-family: var(--font-mono); font-size: 12px;">
-        Last updated: November 24, 2026
+      <div class="eyebrow-tag" data-i18n="privBadge">CHÍNH SÁCH QUYỀN RIÊNG TƯ</div>
+      <h1 class="sec-h2" style="margin-top: 16px;" data-i18n="privPageTitle">Chính sách Quyền riêng tư của Tiện ích SpeedySlate</h1>
+      <p style="margin-top: 10px; color: var(--ink-muted); font-family: var(--font-mono); font-size: 12px;" data-i18n="privUpdated">
+        Cập nhật lần cuối: 24/11/2026
       </p>
 
       <div style="margin-top: 36px; display: grid; gap: 28px; color: var(--ink-secondary); font-size: 15px;">
         <section style="padding-top: 20px; border-top: 1px solid var(--line-hair);">
-          <h2 style="color: var(--ink-primary); font-family: var(--font-display); font-size: 19px; margin-bottom: 8px;">1. Zero Developer Data Collection</h2>
-          <p>
-            SpeedySlate operates entirely client-side inside your web browser. The developer does not operate any analytics, telemetry, tracking pixels, user accounts, or proxy servers. Your browsing history, enabled website list, and API keys never leave your device except to communicate directly with the translation API provider you explicitly configure.
+          <h2 style="color: var(--ink-primary); font-family: var(--font-display); font-size: 19px; margin-bottom: 8px;" data-i18n="p1Head">1. Không thu thập dữ liệu người dùng</h2>
+          <p data-i18n="p1Body">
+            SpeedySlate vận hành hoàn toàn phía trình duyệt của bạn. Nhà phát triển không sử dụng công cụ theo dõi, không lưu tài khoản và không vận hành máy chủ trung gian. Lịch sử đọc, danh sách tên miền đã bật và khóa API không bao giờ rời khỏi thiết bị của bạn ngoài việc gửi trực tiếp tới nhà cung cấp AI mà bạn tự cấu hình.
           </p>
         </section>
 
         <section style="padding-top: 20px; border-top: 1px solid var(--line-hair);">
-          <h2 style="color: var(--ink-primary); font-family: var(--font-display); font-size: 19px; margin-bottom: 8px;">2. Local Optical Character Recognition (OCR)</h2>
-          <p>
-            In Hybrid OCR mode, comic and webtoon images on websites you explicitly enable are processed locally on your device using WebGPU or WebAssembly ONNX Runtime models cached in your browser's IndexedDB. Raw images are not uploaded to any developer server.
+          <h2 style="color: var(--ink-primary); font-family: var(--font-display); font-size: 19px; margin-bottom: 8px;" data-i18n="p2Head">2. Nhận diện chữ quang học cục bộ (Local OCR)</h2>
+          <p data-i18n="p2Body">
+            Ở chế độ Hybrid OCR, hình ảnh truyện tranh trên các trang web bạn chủ động bật được xử lý ngay trên máy bằng ONNX Runtime WebGPU/WASM lưu trong IndexedDB. Hình ảnh gốc không bao giờ bị tải lên máy chủ của nhà phát triển.
           </p>
         </section>
 
         <section style="padding-top: 20px; border-top: 1px solid var(--line-hair);">
-          <h2 style="color: var(--ink-primary); font-family: var(--font-display); font-size: 19px; margin-bottom: 8px;">3. Third-Party Translation API Requests</h2>
-          <p>
-            Extracted dialogue text (or compressed panel slices when Multimodal Vision mode is selected by the user) is sent directly from your browser to the translation endpoint you choose—such as Google Gemini, Groq, DeepSeek, OpenRouter, OpenAI, Google Translate, or your own local Ollama instance—governed by that provider's respective privacy terms.
+          <h2 style="color: var(--ink-primary); font-family: var(--font-display); font-size: 19px; margin-bottom: 8px;" data-i18n="p3Head">3. Kết nối trực tiếp tới API Dịch thuật bên thứ ba</h2>
+          <p data-i18n="p3Body">
+            Văn bản thoại trích xuất (hoặc ảnh nén khi bạn chủ động chọn chế độ Multimodal Vision) được gửi thẳng từ trình duyệt tới dịch vụ bạn chọn như Google Gemini, Groq, DeepSeek, OpenRouter, OpenAI, Google Translate hoặc máy chủ Ollama nội bộ của riêng bạn.
           </p>
         </section>
 
         <section style="padding-top: 20px; border-top: 1px solid var(--line-hair);">
-          <h2 style="color: var(--ink-primary); font-family: var(--font-display); font-size: 19px; margin-bottom: 8px;">4. Local Browser Storage &amp; Permissions</h2>
-          <p>
-            SpeedySlate uses local browser storage solely to save your extension settings, user-added domain list, custom glossary, cached translations, and downloaded ONNX OCR weights. You can clear all cached data at any time with a single click inside the extension's System tab or by uninstalling the extension.
+          <h2 style="color: var(--ink-primary); font-family: var(--font-display); font-size: 19px; margin-bottom: 8px;" data-i18n="p4Head">4. Bộ nhớ cục bộ và Quyền truy cập</h2>
+          <p data-i18n="p4Body">
+            Tiện ích chỉ dùng bộ nhớ cục bộ của trình duyệt để lưu cấu hình, danh sách trang web riêng, từ điển Glossary, bộ nhớ đệm bản dịch và trọng số mô hình OCR. Bạn có thể xóa toàn bộ bộ nhớ đệm bất cứ lúc nào trong thẻ Hệ thống hoặc gỡ cài đặt tiện ích.
           </p>
         </section>
 
         <section style="padding-top: 20px; border-top: 1px solid var(--line-hair);">
-          <h2 style="color: var(--ink-primary); font-family: var(--font-display); font-size: 19px; margin-bottom: 8px;">5. Chrome Web Store Limited Use Disclosure</h2>
-          <p>
-            The use of information received from Google APIs and website content permissions adheres strictly to the Chrome Web Store User Data Policy, including the Limited Use requirements.
+          <h2 style="color: var(--ink-primary); font-family: var(--font-display); font-size: 19px; margin-bottom: 8px;" data-i18n="p5Head">5. Cam kết Chính sách Sử dụng Giới hạn của Chrome Web Store</h2>
+          <p data-i18n="p5Body">
+            Việc sử dụng quyền nội dung trang web tuân thủ nghiêm ngặt Chính sách Dữ liệu Người dùng của Chrome Web Store, bao gồm đầy đủ các yêu cầu về Sử dụng Giới hạn (Limited Use).
           </p>
         </section>
       </div>
     </main>
+
+    <script type="module" src="./scripts/main.ts"></script>
   </body>
 </html>

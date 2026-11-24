@@ -9,6 +9,7 @@ import { LineSegmenter } from './line-segmenter';
 import { EraseMasker } from './erase-masker';
 import { BubbleFiller } from './bubble-filler';
 import { BubbleAggregator } from './bubble-aggregator';
+import { BubbleChamberExtractor } from './bubble-chamber';
 
 // Configure ONNX Runtime Web for Dedicated Worker environment
 // wasmPaths must be local — AMO Compliance: No remote code execution
@@ -358,6 +359,27 @@ function attachErasePatches(canvas: OffscreenCanvas, items: DialogueItem[], text
     const bubbles = BubbleAggregator.aggregateDialogues(items, canvas.width, canvas.height);
     const boxToItem = new Map(items.map((it) => [it.box, it]));
     for (const b of bubbles) {
+      // Search window generous enough horizontally to capture oval CJK chambers
+      const padX = Math.max(24, Math.min(180, Math.round(Math.max(b.box.width * 1.6, b.box.height * 0.85))));
+      const padY = Math.max(16, Math.min(120, Math.round(b.box.height * 0.45)));
+      const cx = Math.max(0, b.box.x - padX);
+      const cy = Math.max(0, b.box.y - padY);
+      const cw = Math.min(canvas.width - cx, b.box.width + padX * 2);
+      const ch = Math.min(canvas.height - cy, b.box.height + padY * 2);
+      if (b.kind === 'dialogue' && cw >= 20 && ch >= 20) {
+        const cImg = ctx.getImageData(cx, cy, cw, ch);
+        const chamber = BubbleChamberExtractor.extractChamber(cImg, cx, cy, b.box);
+        if (chamber) {
+          for (const lb of b.lineBoxes || []) {
+            const member = boxToItem.get(lb);
+            if (member) {
+              member.chamberBox = chamber.chamberBox;
+              member.isOvalChamber = chamber.isOval;
+            }
+          }
+        }
+      }
+
       const bx = Math.max(0, b.box.x - 8);
       const by = Math.max(0, b.box.y - 8);
       const bw = Math.min(canvas.width - bx, b.box.width + 16);

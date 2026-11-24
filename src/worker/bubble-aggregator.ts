@@ -314,6 +314,12 @@ export class BubbleAggregator {
       : linePatches;
     if (erasePatches.length > 0) bubble.erasePatches = erasePatches;
 
+    const memberWithChamber = group.find((d) => d.chamberBox !== undefined);
+    if (memberWithChamber?.chamberBox) {
+      bubble.chamberBox = memberWithChamber.chamberBox;
+      bubble.isOvalChamber = memberWithChamber.isOvalChamber;
+    }
+
     if (isVertical) bubble.isVertical = true;
 
     return bubble;

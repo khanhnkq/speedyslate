@@ -38,6 +38,27 @@ export class BubbleGeometry {
       leftPct = item.normBox.xmin / 10;
       widthPct = Math.max(1, (item.normBox.xmax - item.normBox.xmin) / 10);
       heightPct = Math.max(1, (item.normBox.ymax - item.normBox.ymin) / 10);
+    } else if (item.chamberBox) {
+      // Smart Bubble Fit: use actual detected paper chamber with safe interior inset
+      const insetX = item.chamberBox.width * 0.06;
+      const insetY = item.chamberBox.height * 0.05;
+      const safeX = item.chamberBox.x + insetX;
+      const safeY = item.chamberBox.y + insetY;
+      const safeW = Math.max(16, item.chamberBox.width - insetX * 2);
+      const safeH = Math.max(16, item.chamberBox.height - insetY * 2);
+      topPct = (safeY / Math.max(1, naturalHeight)) * 100;
+      leftPct = (safeX / Math.max(1, naturalWidth)) * 100;
+      widthPct = (safeW / Math.max(1, naturalWidth)) * 100;
+      heightPct = Math.min(28, (safeH / Math.max(1, naturalHeight)) * 100);
+      return {
+        topPct: Math.max(0.5, topPct),
+        leftPct: Math.max(0.5, leftPct),
+        widthPct: Math.min(99 - leftPct, widthPct),
+        heightPct,
+        pixelWidth: (widthPct / 100) * naturalWidth,
+        pixelHeight: (heightPct / 100) * naturalHeight,
+        aspectRatio: safeH / Math.max(1, safeW)
+      };
     } else {
       // Hybrid OCR pixel coordinates -> percentage of natural image dimensions
       topPct = (item.box.y / Math.max(1, naturalHeight)) * 100;

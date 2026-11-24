@@ -1,15 +1,9 @@
 import { ExtensionSettings } from './types';
 
 /**
- * Hardcoded default supported webtoon & manga platforms
+ * Default pre-enabled websites (empty by default so users manage their own private domain list locally)
  */
-export const DEFAULT_ALLOWED_SITES = [
-  'toonhey.com',
-  'toonily.com',
-  'toonily.net',
-  'toonily.me',
-  'nhentai.net'
-];
+export const DEFAULT_ALLOWED_SITES: string[] = [];
 
 /**
  * SiteMatcher: Handles URL & hostname normalization and matching logic.

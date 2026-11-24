@@ -145,7 +145,7 @@ TASK:
 
 CRITICAL NEGATIVE CONSTRAINTS:
 - NEVER translate sound effects (SFX / onomatopoeia like "BOOM", "SWOOSH", "RUSTLE", "HAAA..."). Ignore them completely!
-- Never translate scanlation credits, website URLs (e.g. toonhey.com), group plugs, or chapter/page numbers.`;
+- Never translate scanlation credits, website URLs (e.g. manga-scans.org), group plugs, or chapter/page numbers.`;
 
     const requestBody = {
       system_instruction: {

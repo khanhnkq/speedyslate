@@ -1,5 +1,6 @@
-import { ToonheyAdapter } from './toonhey-adapter';
+import { ComicPanelAdapter } from './panel-adapter';
 import { SpaOverlayShield } from './spa-shield';
+import { SafeMessenger } from './safe-messenger';
 
 export interface ChapterScannerHooks {
   images: HTMLImageElement[];
@@ -57,19 +58,29 @@ export class ChapterScanner {
     if (this.isDetecting) return;
     this.isDetecting = true;
     try {
-      const rawImages = ToonheyAdapter.getChapterImages();
+      const rawImages = ComicPanelAdapter.getChapterImages();
       let newFound = 0;
+      const newUrls: string[] = [];
 
       for (const img of rawImages) {
         if (!this.hooks.images.includes(img)) {
-          ToonheyAdapter.wrapImage(img);
+          ComicPanelAdapter.wrapImage(img);
           this.spaShield.watch(img);
           this.hooks.images.push(img);
+          const candidateUrl = img.currentSrc || img.src || img.getAttribute('data-src') || '';
+          if (candidateUrl && !candidateUrl.startsWith('data:')) newUrls.push(candidateUrl);
           newFound++;
         }
       }
 
       if (newFound > 0) {
+        if (newUrls.length > 0 && typeof window !== 'undefined') {
+          SafeMessenger.send({
+            action: 'ENSURE_IMAGE_CDNS',
+            chapterUrl: window.location.href,
+            imageUrls: newUrls
+          }).catch(() => {});
+        }
         this.hooks.images.sort((a, b) =>
           a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
         );

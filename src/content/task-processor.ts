@@ -2,8 +2,9 @@ import { BubbleTheme, ExtensionSettings } from '../shared/types';
 import { FloatingHud } from './hud/hud';
 import { OverlayRenderer } from './overlay/overlay-renderer';
 import { OrderedTaskQueue, OcrTask, TranslationTask } from './priority-queue';
-import { ToonheyAdapter } from './toonhey-adapter';
+import { ComicPanelAdapter } from './panel-adapter';
 import { ImageCompressor, resolveOverlayDimensions } from './image-compressor';
+import { MediaTargetResolver } from './media-target';
 import { DebugLogger } from '../shared/debug-logger';
 import { SafeMessenger } from './safe-messenger';
 
@@ -40,11 +41,11 @@ export class TaskProcessor {
       return;
     }
 
-    const wrapper = ToonheyAdapter.wrapImage(img);
+    const wrapper = ComicPanelAdapter.wrapImage(img);
     if (!wrapper) return;
 
     // Trigger lazy loading first
-    ToonheyAdapter.forceTriggerImage(img);
+    ComicPanelAdapter.forceTriggerImage(img);
 
     const settings = this.ctx.getSettings();
     const isVision = settings?.translationMode === 'vision_ai';
@@ -60,13 +61,13 @@ export class TaskProcessor {
         });
       }
 
-      // Determine real image URL (strictly ignore SVG/data-url placeholders)
-      const rawSrc = img.dataset.src || img.getAttribute('data-src') || img.src;
-      let imageUrl = (rawSrc && !rawSrc.startsWith('data:image/svg')) ? rawSrc : img.src;
-      if (imageUrl.startsWith('//')) {
-        imageUrl = window.location.protocol + imageUrl;
-      } else if (imageUrl.startsWith('/')) {
-        imageUrl = window.location.origin + imageUrl;
+      // Determine real image URL via universal MediaTargetResolver
+      const rawSrc = MediaTargetResolver.extractBestImageUrl(img) || img.src;
+      let imageUrl = rawSrc;
+      try {
+        imageUrl = new URL(rawSrc, window.location.href).href;
+      } catch {
+        // keep rawSrc
       }
 
       const naturalWidth = img.naturalWidth || img.width || 800;
@@ -178,7 +179,7 @@ export class TaskProcessor {
       return;
     }
 
-    const wrapper = ToonheyAdapter.wrapImage(img);
+    const wrapper = ComicPanelAdapter.wrapImage(img);
     if (!wrapper) return;
 
     const settings = this.ctx.getSettings();

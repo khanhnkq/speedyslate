@@ -29,7 +29,7 @@ Nâng độ chính xác nhận diện, làm sạch vùng xóa text (màu nền t
 - [ ] **T10. Glossary + rolling context**: `settings.glossary` (tên→cách dịch) + 5 cặp thoại gần nhất của chương làm context đại từ nhân xưng. `types.ts`, `storage.ts`, `prompt-builder.ts`, `translation-db.ts`. → Verify: tên nhân vật nhất quán giữa các trang.
 
 ### Phase 4 — Verify
-- [ ] **T11.** `npm run type-check` + `npm run build:chrome` + `npm run build:firefox`; test tay 1 trang toonhey strip dài + 1 trang manga RAW.
+- [ ] **T11.** `npm run type-check` + `npm run build:chrome` + `npm run build:firefox`; test tay 1 trang webtoon strip dài + 1 trang manga RAW.
 
 ## Done When
 - Rec batch chạy ≥ 3× nhanh hơn; chữ nền đen & text dọc nhận diện đúng; overlay trùng màu bubble thật; SFX/glossary hoạt động theo setting; build 2 nền tảng pass.

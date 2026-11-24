@@ -143,6 +143,26 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
         }
       }
 
+      case 'ENSURE_IMAGE_CDNS': {
+        const { chapterUrl, imageUrls } = msg;
+        if (chapterUrl && Array.isArray(imageUrls)) {
+          const seenHosts = new Set<string>();
+          for (const rawUrl of imageUrls) {
+            try {
+              const abs = new URL(rawUrl, chapterUrl).href;
+              const host = new URL(abs).hostname;
+              if (host && !seenHosts.has(host)) {
+                seenHosts.add(host);
+                await DnrManager.ensureRefererForDomain(chapterUrl, abs);
+              }
+            } catch {
+              // ignore malformed URLs
+            }
+          }
+        }
+        return { success: true };
+      }
+
       case 'CAPTURE_VISIBLE_TAB': {
         try {
           const dataUrl = await browser.tabs.captureVisibleTab(undefined, { format: 'png' });

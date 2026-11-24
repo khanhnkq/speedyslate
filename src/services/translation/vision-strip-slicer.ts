@@ -28,7 +28,7 @@ export class VisionStripSlicer {
   ): Promise<DialogueItem[]> {
     if (!provider.translateImage) return [];
 
-    // 1. Fast path: standard comic page (Toonhey, manga, or single panel)
+    // 1. Fast path: standard comic page (manga page or single panel)
     if (naturalHeight <= maxSliceHeight + 200) {
       return ApiRateLimiter.throttle(minDelayMs, () =>
         provider.translateImage!(base64Data, mimeType, targetLang, naturalWidth, naturalHeight, sourceLang)

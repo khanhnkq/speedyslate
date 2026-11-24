@@ -1,7 +1,7 @@
 # 🚀 Kế Hoạch & Tài Liệu Kỹ Thuật: SpeedySlate
 *(Phiên Bản: Đa Luồng Tuần Tự Từ Trên Xuống Dưới + Cache URL Không Dịch Lại + Dọn DB Nhanh)*
 
-> **Mục tiêu**: Extension dịch truyện siêu nhẹ (Ultra-lightweight) trên **Chrome** và **Firefox**, chuyên biệt cho webtoon dạng cuộn như **toonhey.com**.
+> **Mục tiêu**: Extension dịch truyện siêu nhẹ (Ultra-lightweight) trên **Chrome** và **Firefox**, chuyên biệt cho Manga & Webtoon dạng cuộn dọc.
 > **Tuân thủ quy chuẩn**:
 > - Clean Code & SOLID principles.
 > - **1 file không quá 500 dòng** (Hiện tại tối đa 279 dòng).
@@ -70,7 +70,7 @@ speedyslate/
 │   │   ├── paddle-rec.ts      # 173 dòng
 │   │   └── ocr.worker.ts      # 120 dòng (Web Worker ngầm)
 │   ├── content/
-│   │   ├── toonhey-adapter.ts # 59 dòng
+│   │   ├── panel-adapter.ts   # 59 dòng
 │   │   ├── priority-queue.ts  # 86 dòng (Hàng đợi tuần tự đa luồng)
 │   │   ├── scroller.ts        # 103 dòng (Auto-scroll & Spacebar)
 │   │   ├── observer.ts        # 75 dòng (IntersectionObserver prefetch)

@@ -1,17 +1,17 @@
 import { MediaTargetResolver } from './media-target';
 
 /**
- * Adapter specifically crafted for toonhey.com and similar vertical webtoon readers
- * Robustly extracts 100% of current episode panels while filtering out 100% of recommendation thumbnails
+ * Adapter crafted for vertical webtoon, Madara CMS, and single-page gallery readers.
+ * Robustly extracts 100% of current episode panels while filtering out 100% of recommendation thumbnails.
  * Following Single Responsibility Principle (SRP)
  */
-export class ToonheyAdapter {
+export class ComicPanelAdapter {
   private static readonly CONTAINER_SELECTORS = [
-    '#image-container',     // nHentai reader
+    '#image-container',     // Single-page gallery reader
     '.image-container',
-    '#reader-area',         // WordPress Manga / Toonhey
+    '#reader-area',         // Vertical webtoon / WordPress Manga
     '#readerarea',
-    '.reading-content',     // Toonily & Madara WordPress theme
+    '.reading-content',     // Madara WordPress theme
     '#reader-container',
     '.reader-container',
     '.chapter-images',
@@ -45,9 +45,9 @@ export class ToonheyAdapter {
     '.related',
     '.related-manga',
     '.related-posts',
-    '.related-container', // nHentai related galleries
+    '.related-container', // Related gallery grid
     '#related-container',
-    '#caption',           // nHentai page caption
+    '#caption',           // Page caption block
     '#pagination',
     '.pagination',
     '#trending',
@@ -73,7 +73,7 @@ export class ToonheyAdapter {
     for (const selector of this.CONTAINER_SELECTORS) {
       const container = document.querySelector(selector);
       if (container && !this.isInsideExcludedZone(container)) {
-        // In WordPress Manga / Madara readers (Toonily, etc.), genuine panels have .wp-manga-chapter-img
+        // In WordPress Manga / Madara readers, genuine panels carry .wp-manga-chapter-img
         const madaraImgs = Array.from(container.querySelectorAll<HTMLImageElement>('img.wp-manga-chapter-img'))
           .filter((img) => this.isGenuineComicPanel(img));
         if (madaraImgs.length >= 1) {
@@ -82,7 +82,7 @@ export class ToonheyAdapter {
 
         const imgs = Array.from(container.querySelectorAll<HTMLImageElement>('img'));
         const validComicPanels = imgs.filter((img) => this.isGenuineComicPanel(img));
-        // Inside dedicated reader containers, even 1 image (e.g. nHentai single-page mode) is a valid panel!
+        // Inside dedicated reader containers, even 1 image (single-page gallery mode) is a valid panel!
         if (validComicPanels.length >= 1) {
           return validComicPanels.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
         }
@@ -145,7 +145,7 @@ export class ToonheyAdapter {
     }
 
     // 2. CRITICAL: Distinguish comic panels vs recommendation thumbnails wrapped in anchors
-    // On single-page readers (e.g. nHentai /g/123/1/), clicking the panel navigates to next page (/g/123/2/)
+    // On single-page gallery readers (e.g. /g/123/1/), clicking the panel navigates to next page (/g/123/2/)
     const anchor = img.closest('a');
     if (anchor && anchor.href) {
       const anchorHref = anchor.href.toLowerCase();
@@ -178,6 +178,7 @@ export class ToonheyAdapter {
     const src = bestUrl.toLowerCase();
     const className = (img.className || '').toLowerCase();
     const id = (img.id || '').toLowerCase();
+    const alt = (img.alt || '').toLowerCase();
 
     const ignoredKeywords = [
       'logo', 'avatar', 'icon', 'emoji', 'badge', 'button', 'social',
@@ -187,7 +188,7 @@ export class ToonheyAdapter {
     ];
 
     for (const kw of ignoredKeywords) {
-      if (src.includes(kw) || className.includes(kw) || id.includes(kw)) {
+      if (src.includes(kw) || className.includes(kw) || id.includes(kw) || alt === kw) {
         return false;
       }
     }

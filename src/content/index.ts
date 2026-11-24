@@ -4,7 +4,7 @@ import { BubbleTheme, ExtensionSettings } from '../shared/types';
 import { FloatingHud } from './hud/hud';
 import { OverlayRenderer } from './overlay/overlay-renderer';
 import { OrderedTaskQueue, OcrTask, TranslationTask } from './priority-queue';
-import { ToonheyAdapter } from './toonhey-adapter';
+import { ComicPanelAdapter } from './panel-adapter';
 import { ModelMissingBanner } from './missing-banner';
 import { DebugLogger } from '../shared/debug-logger';
 import { SafeMessenger } from './safe-messenger';
@@ -247,7 +247,7 @@ class SpeedySlateContentApp {
     } catch {}
 
     this.hud?.log(`Bat dau dich chuong (${this.images.length} trang)...`);
-    ToonheyAdapter.forceLoadAll(this.images);
+    ComicPanelAdapter.forceLoadAll(this.images);
     this.enqueueAllImages();
     this.ocrQueue.resume();
     this.translationQueue.resume();

@@ -6,7 +6,7 @@ const KANA_ONLY_RE = /^[\u3040-\u309F\u30A0-\u30FFー・\s]+$/;
 const HAS_KANJI_RE = /[\u4E00-\u9FFF]/;
 
 const FULL_WATERMARK_RE =
-  /^(?:read\s+(?:first|free|more|manga|comics?)?\s*(?:at|on)\b.*|(?:join\s+(?:our\s+)?)?discord\.gg\/\S+|patreon\.com\/\S+|(?:https?:\/\/)?(?:www\.)?(?:toonhey|colamanga|baozimh|asuracomic|asurascans|reaperscans|mangadex|bato|newtoki)\.[a-z]{2,}\S*)$/i;
+  /^(?:read\s+(?:first|free|more|manga|comics?)?\s*(?:at|on)\b.*|(?:join\s+(?:our\s+)?)?discord\.gg\/\S+|patreon\.com\/\S+|(?:https?:\/\/)?(?:www\.)?[a-z0-9-]{3,}\.(?:com|net|org|xyz|gg|me|io|cc|tv|to)(?:\/\S*)?)$/i;
 
 const TRAILING_DOMAIN_RE =
   /\s*(?:https?:\/\/)?(?:www\.)?[a-z0-9-]{3,}\.(?:com|net|org|xyz|gg|me|io|cc|tv|to)(?:\/\S*)?\s*$/i;

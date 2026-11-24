@@ -2686,17 +2686,17 @@
     }
   };
 
-  // src/content/toonhey-adapter.ts
-  var ToonheyAdapter = class {
+  // src/content/panel-adapter.ts
+  var ComicPanelAdapter = class {
     static CONTAINER_SELECTORS = [
       "#image-container",
-      // nHentai reader
+      // Single-page gallery reader
       ".image-container",
       "#reader-area",
-      // WordPress Manga / Toonhey
+      // Vertical webtoon / WordPress Manga
       "#readerarea",
       ".reading-content",
-      // Toonily & Madara WordPress theme
+      // Madara WordPress theme
       "#reader-container",
       ".reader-container",
       ".chapter-images",
@@ -2730,10 +2730,10 @@
       ".related-manga",
       ".related-posts",
       ".related-container",
-      // nHentai related galleries
+      // Related gallery grid
       "#related-container",
       "#caption",
-      // nHentai page caption
+      // Page caption block
       "#pagination",
       ".pagination",
       "#trending",
@@ -2825,6 +2825,7 @@
       const src = bestUrl.toLowerCase();
       const className = (img.className || "").toLowerCase();
       const id = (img.id || "").toLowerCase();
+      const alt = (img.alt || "").toLowerCase();
       const ignoredKeywords = [
         "logo",
         "avatar",
@@ -2851,7 +2852,7 @@
         "assets/999"
       ];
       for (const kw of ignoredKeywords) {
-        if (src.includes(kw) || className.includes(kw) || id.includes(kw)) {
+        if (src.includes(kw) || className.includes(kw) || id.includes(kw) || alt === kw) {
           return false;
         }
       }
@@ -3242,9 +3243,9 @@
       if (img.dataset.slateStatus && img.dataset.slateStatus !== "error") {
         return;
       }
-      const wrapper = ToonheyAdapter.wrapImage(img);
+      const wrapper = ComicPanelAdapter.wrapImage(img);
       if (!wrapper) return;
-      ToonheyAdapter.forceTriggerImage(img);
+      ComicPanelAdapter.forceTriggerImage(img);
       const settings = this.ctx.getSettings();
       const isVision = settings?.translationMode === "vision_ai";
       const totalKeys = this.getKeyCount();
@@ -3257,12 +3258,11 @@
             setTimeout(resolve, 3500);
           });
         }
-        const rawSrc = img.dataset.src || img.getAttribute("data-src") || img.src;
-        let imageUrl = rawSrc && !rawSrc.startsWith("data:image/svg") ? rawSrc : img.src;
-        if (imageUrl.startsWith("//")) {
-          imageUrl = window.location.protocol + imageUrl;
-        } else if (imageUrl.startsWith("/")) {
-          imageUrl = window.location.origin + imageUrl;
+        const rawSrc = MediaTargetResolver.extractBestImageUrl(img) || img.src;
+        let imageUrl = rawSrc;
+        try {
+          imageUrl = new URL(rawSrc, window.location.href).href;
+        } catch {
         }
         const naturalWidth = img.naturalWidth || img.width || 800;
         const naturalHeight = img.naturalHeight || img.height || 1200;
@@ -3358,7 +3358,7 @@
       if (img.dataset.slateStatus === "translated" || img.dataset.slateStatus === "translating") {
         return;
       }
-      const wrapper = ToonheyAdapter.wrapImage(img);
+      const wrapper = ComicPanelAdapter.wrapImage(img);
       if (!wrapper) return;
       const settings = this.ctx.getSettings();
       const totalKeys = this.getKeyCount();
@@ -3436,13 +3436,7 @@
   };
 
   // src/shared/site-matcher.ts
-  var DEFAULT_ALLOWED_SITES = [
-    "toonhey.com",
-    "toonily.com",
-    "toonily.net",
-    "toonily.me",
-    "nhentai.net"
-  ];
+  var DEFAULT_ALLOWED_SITES = [];
   var SiteMatcher = class {
     /**
      * Normalizes arbitrary input string (URL, path, wildcard) into clean domain
@@ -3613,17 +3607,28 @@
       if (this.isDetecting) return;
       this.isDetecting = true;
       try {
-        const rawImages = ToonheyAdapter.getChapterImages();
+        const rawImages = ComicPanelAdapter.getChapterImages();
         let newFound = 0;
+        const newUrls = [];
         for (const img of rawImages) {
           if (!this.hooks.images.includes(img)) {
-            ToonheyAdapter.wrapImage(img);
+            ComicPanelAdapter.wrapImage(img);
             this.spaShield.watch(img);
             this.hooks.images.push(img);
+            const candidateUrl = img.currentSrc || img.src || img.getAttribute("data-src") || "";
+            if (candidateUrl && !candidateUrl.startsWith("data:")) newUrls.push(candidateUrl);
             newFound++;
           }
         }
         if (newFound > 0) {
+          if (newUrls.length > 0 && typeof window !== "undefined") {
+            SafeMessenger.send({
+              action: "ENSURE_IMAGE_CDNS",
+              chapterUrl: window.location.href,
+              imageUrls: newUrls
+            }).catch(() => {
+            });
+          }
           this.hooks.images.sort(
             (a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
           );
@@ -4051,7 +4056,7 @@
       } catch {
       }
       this.hud?.log(`Bat dau dich chuong (${this.images.length} trang)...`);
-      ToonheyAdapter.forceLoadAll(this.images);
+      ComicPanelAdapter.forceLoadAll(this.images);
       this.enqueueAllImages();
       this.ocrQueue.resume();
       this.translationQueue.resume();

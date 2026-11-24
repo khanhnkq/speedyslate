@@ -115,6 +115,18 @@ export class SitesTabController {
 
     this.siteListContainer.innerHTML = '';
 
+    if (totalCount === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'site-list-item';
+      empty.innerHTML = `
+        <div class="site-item-info">
+          <span class="site-item-domain" style="color: var(--text-dim); font-weight: 400;">Chưa có trang web nào trong danh sách riêng.</span>
+        </div>
+      `;
+      this.siteListContainer.appendChild(empty);
+      return;
+    }
+
     // 1. Render default websites
     for (const site of DEFAULT_ALLOWED_SITES) {
       const row = document.createElement('div');

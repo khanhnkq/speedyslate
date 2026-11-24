@@ -2,27 +2,19 @@ import browser from 'webextension-polyfill';
 import { StorageService } from '../shared/storage';
 import { TranslationCacheDb } from '../shared/translation-db';
 import { ModelDbService } from '../shared/model-db';
-import { DialogueItem } from '../shared/types';
-import { API_PRESETS, OCR_MODEL_PRESETS } from '../shared/presets';
+import { OCR_MODEL_PRESETS } from '../shared/presets';
 import { TranslationProviderFactory } from '../services/translation/provider-factory';
-import { ApiRateLimiter } from '../services/translation/rate-limiter';
 import { ocrWorkerClient } from './ocr-worker-client';
 import { ImageFetcher } from './image-fetcher';
 import { DnrManager } from './dnr-rules';
-import { VisionStripSlicer } from '../services/translation/vision-strip-slicer';
-import { MultiProviderRotator } from '../services/translation/multi-provider-rotator';
 import { DebugLogger } from '../shared/debug-logger';
-
-import { buildTranslateCtx, rememberChapterPairs } from './chapter-memory';
 import { encodeErasePatches } from '../shared/erase-codec';
 import { ServiceWorkerKeepAlive } from './keep-alive';
+import { handleOcrImage, handleTranslateDialogues, handleTranslateImage } from './ocr-handlers';
 
 // Initialize DeclarativeNetRequest rules for anti-hotlinking & CORS
 DnrManager.init().catch(() => {});
 
-// ---------------------------------------------------------------------------
-// Global error catching for Background Service Worker / Event Page
-// ---------------------------------------------------------------------------
 if (typeof self !== 'undefined') {
   self.addEventListener('error', (event: any) => {
     DebugLogger.error('Background:GlobalError', event.message || String(event), event.error);
@@ -32,11 +24,6 @@ if (typeof self !== 'undefined') {
   });
 }
 
-// NOTE: ONNX Runtime (onnxruntime-web) MUST NOT be imported here.
-// Chrome MV3 Service Workers forbid dynamic import() which ONNX uses internally.
-// All ONNX inference runs inside Dedicated Web Worker / Offscreen Document.
-// ---------------------------------------------------------------------------
-
 async function handleBackgroundMessage(msg: any): Promise<any> {
   ServiceWorkerKeepAlive.start();
   try {
@@ -44,15 +31,9 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
       case 'PING':
         return { success: true, message: 'SpeedySlate Background Ready' };
 
-      // ── Status: which backend is the OCR worker running on ──────────────
-      case 'GET_OCR_STATUS': {
-        return {
-          success: true,
-          backend: ocrWorkerClient.activeBackend ?? 'idle'
-        };
-      }
+      case 'GET_OCR_STATUS':
+        return { success: true, backend: ocrWorkerClient.activeBackend ?? 'idle' };
 
-      // ── Pre-warm OCR backend if model is ready ──────────────────────────
       case 'WARMUP_OCR': {
         const settings = await StorageService.getSettings();
         const modelId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'comic-manga-manhwa';
@@ -60,13 +41,9 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
         if (modelStatus.status === 'ready') {
           await ocrWorkerClient.ensureModelLoaded(modelId, settings.useWebGpu ?? true);
         }
-        return {
-          success: true,
-          backend: ocrWorkerClient.activeBackend ?? 'idle'
-        };
+        return { success: true, backend: ocrWorkerClient.activeBackend ?? 'idle' };
       }
 
-      // ── Setting changed: reset model so next OCR picks up new backend ───
       case 'SET_WEBGPU': {
         await ocrWorkerClient.resetForBackendChange();
         const settings = await StorageService.getSettings();
@@ -75,10 +52,7 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
         if (modelStatus.status === 'ready') {
           await ocrWorkerClient.ensureModelLoaded(modelId, settings.useWebGpu ?? true);
         }
-        return {
-          success: true,
-          backend: ocrWorkerClient.activeBackend ?? 'idle'
-        };
+        return { success: true, backend: ocrWorkerClient.activeBackend ?? 'idle' };
       }
 
       case 'CHECK_MODEL_STATUS': {
@@ -89,10 +63,9 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
       }
 
       case 'DELETE_MODEL': {
-        const { modelId } = msg;
-        if (modelId) {
-          await ModelDbService.deleteModel(modelId);
-          if (ocrWorkerClient.currentModelId === modelId) {
+        if (msg.modelId) {
+          await ModelDbService.deleteModel(msg.modelId);
+          if (ocrWorkerClient.currentModelId === msg.modelId) {
             await ocrWorkerClient.resetForBackendChange();
           }
         }
@@ -118,10 +91,9 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
       }
 
       case 'GET_CHAPTER_TRANSLATIONS': {
-        const { imageUrls } = msg;
         const results: Record<string, any> = {};
-        if (Array.isArray(imageUrls)) {
-          for (const url of imageUrls) {
+        if (Array.isArray(msg.imageUrls)) {
+          for (const url of msg.imageUrls) {
             const cached = await TranslationCacheDb.getTranslation(url);
             if (cached) results[url] = cached;
           }
@@ -137,269 +109,14 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
         return { success: true };
       }
 
-      case 'OCR_IMAGE': {
-        const { imageUrl, dataUrl } = msg;
+      case 'OCR_IMAGE':
+        return await handleOcrImage(msg);
 
-        // 1. Check IndexedDB cache first (only return if non-empty valid dialogues exist)
-        if (imageUrl) {
-          const cached = await TranslationCacheDb.getTranslation(imageUrl);
-          if (cached && Array.isArray(cached.dialogues) && cached.dialogues.length > 0) {
-            return {
-              success: true,
-              cached: true,
-              dialogues: cached.dialogues,
-              naturalWidth: cached.naturalWidth,
-              naturalHeight: cached.naturalHeight
-            };
-          }
-        }
+      case 'TRANSLATE_DIALOGUES':
+        return await handleTranslateDialogues(msg);
 
-        const settings = await StorageService.getSettings();
-
-        // 2. Multimodal Vision AI Mode (Direct End-to-End Image Translation)
-        if (settings.translationMode === 'vision_ai') {
-          try {
-            const provider = TranslationProviderFactory.createProvider(settings);
-            if (!provider.translateImage) {
-              return {
-                success: false,
-                error: `Nhà cung cấp ${settings.activeProvider} chưa hỗ trợ Multimodal Vision AI.`
-              };
-            }
-
-            const { base64Data, mimeType } = await ImageFetcher.getBase64Data(dataUrl, imageUrl, msg.chapterUrl);
-            const targetLang = settings.targetLanguage || 'Tiếng Việt';
-            const sourceLang = settings.sourceLanguage || 'auto';
-            const width = msg.naturalWidth || msg.width || 800;
-            const height = msg.naturalHeight || msg.height || 1200;
-
-            const totalKeys = MultiProviderRotator.countTotalKeys(settings);
-            const minDelayMs = MultiProviderRotator.computeEffectiveDelay(settings);
-
-            // Automatically slice tall continuous webtoon strips (>2200px) in background
-            const dialogues = await VisionStripSlicer.processStrip(
-              base64Data,
-              mimeType,
-              width,
-              height,
-              provider,
-              targetLang,
-              minDelayMs,
-              sourceLang
-            );
-
-            // Save to Cache DB
-            if (imageUrl && dialogues.length > 0) {
-              await TranslationCacheDb.saveTranslation(
-                imageUrl,
-                msg.chapterUrl || '',
-                dialogues,
-                width,
-                height
-              );
-            }
-
-            return {
-              success: true,
-              cached: false,
-              isDirectTranslation: true,
-              dialogues,
-              naturalWidth: width,
-              naturalHeight: height,
-              keyIndex: (provider as any).lastKeyIndex || 1,
-              totalKeys: totalKeys
-            };
-          } catch (err: any) {
-            DebugLogger.error('Background:VisionAI', err.message, err);
-            return { success: false, error: err.message || 'Lỗi nhận diện Vision AI' };
-          }
-        }
-
-        // 3. Hybrid OCR Mode: Load OCR model via Dedicated Worker / Offscreen
-        const modelId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'comic-manga-manhwa';
-        try {
-          await ocrWorkerClient.ensureModelLoaded(modelId, settings.useWebGpu ?? true);
-        } catch (err: any) {
-          return { success: false, error: err.message };
-        }
-
-        // 4. Ensure image dataUrl is resolved via background if tainted/missing
-        let ocrDataUrl = dataUrl;
-        if (!ocrDataUrl && imageUrl && !imageUrl.startsWith('data:image/svg')) {
-          try {
-            const { base64Data, mimeType } = await ImageFetcher.getBase64Data(undefined, imageUrl, msg.chapterUrl);
-            ocrDataUrl = `data:${mimeType};base64,${base64Data}`;
-          } catch (e: any) {
-            DebugLogger.warn('Background:OCR', `Không thể tải trước ảnh: ${e.message}`);
-          }
-        }
-
-        // 5. Run PaddleOCR / Comic-Det in Web Worker
-        try {
-          const { dialogues, width, height } = await ocrWorkerClient.runOcr({
-            dataUrl: ocrDataUrl,
-            imageUrl
-          });
-          return { success: true, cached: false, dialogues, naturalWidth: width, naturalHeight: height };
-        } catch (err: any) {
-          return { success: false, error: err.message || 'Lỗi nhận diện OCR' };
-        }
-      }
-
-      case 'TRANSLATE_DIALOGUES': {
-        const { imageUrl, chapterUrl, dialogues, naturalWidth, naturalHeight } = msg;
-        if (!Array.isArray(dialogues) || dialogues.length === 0) {
-          return { success: true, dialogues: [] };
-        }
-
-        const settings = await StorageService.getSettings();
-        const texts = dialogues.map((d: DialogueItem) => d.originalText);
-        const provider = TranslationProviderFactory.createProvider(settings);
-        const targetLang = settings.targetLanguage || 'Tiếng Việt';
-        const sourceLang = settings.sourceLanguage || 'auto';
-
-        const totalKeys = MultiProviderRotator.countTotalKeys(settings);
-        const minDelayMs = MultiProviderRotator.computeEffectiveDelay(settings);
-
-        const translations = await ApiRateLimiter.throttle(minDelayMs, () =>
-          provider.translateDialogues(
-            texts,
-            targetLang,
-            sourceLang,
-            buildTranslateCtx(settings, dialogues, chapterUrl || imageUrl)
-          )
-        );
-
-        const validDialogues: DialogueItem[] = [];
-        dialogues.forEach((d: DialogueItem, i: number) => {
-          const trans = translations[i];
-          if (typeof trans === 'string') {
-            const clean = trans.trim();
-            // If AI returned empty string, it's watermark/junk -> omit from comic bubbles!
-            if (clean.length > 0) {
-              d.translatedText = clean;
-              validDialogues.push(d);
-            }
-          } else if (d.originalText && d.originalText.trim().length > 0) {
-            d.translatedText = d.originalText.trim();
-            validDialogues.push(d);
-          }
-        });
-        rememberChapterPairs(chapterUrl || imageUrl, validDialogues);
-
-        // Save to cache DB
-        if (imageUrl) {
-          await TranslationCacheDb.saveTranslation(
-            imageUrl,
-            chapterUrl || '',
-            validDialogues,
-            naturalWidth || 800,
-            naturalHeight || 1200
-          );
-        }
-
-        return {
-          success: true,
-          dialogues: validDialogues,
-          keyIndex: (provider as any).lastKeyIndex || 1,
-          totalKeys: totalKeys
-        };
-      }
-
-      case 'TRANSLATE_IMAGE': {
-        const { imageUrl, chapterUrl, dataUrl } = msg;
-
-        // 1. Cache check
-        if (imageUrl) {
-          const cached = await TranslationCacheDb.getTranslation(imageUrl);
-          if (cached && cached.dialogues?.length > 0) {
-            return {
-              success: true,
-              cached: true,
-              dialogues: cached.dialogues,
-              naturalWidth: cached.naturalWidth,
-              naturalHeight: cached.naturalHeight
-            };
-          }
-        }
-
-        // 2. Load model via Worker
-        const settings = await StorageService.getSettings();
-        const modelId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'comic-manga-manhwa';
-        try {
-          await ocrWorkerClient.ensureModelLoaded(modelId, settings.useWebGpu ?? true);
-        } catch (err: any) {
-          return { success: false, error: err.message };
-        }
-
-        // 3. Run OCR
-        let dialogues: DialogueItem[];
-        let width: number;
-        let height: number;
-        try {
-          const res = await ocrWorkerClient.runOcr({ dataUrl, imageUrl });
-          dialogues = res.dialogues;
-          width = res.width;
-          height = res.height;
-        } catch (err: any) {
-          return { success: false, error: err.message || 'Lỗi nhận diện OCR' };
-        }
-
-        if (dialogues.length === 0) {
-          return { success: true, cached: false, dialogues: [], naturalWidth: width, naturalHeight: height };
-        }
-
-        // 4. Translate dialogues
-        const texts = dialogues.map((d) => d.originalText);
-        const provider = TranslationProviderFactory.createProvider(settings);
-        const targetLang = settings.targetLanguage || 'Tiếng Việt';
-        const sourceLang = settings.sourceLanguage || 'auto';
-
-        const minDelayMs =
-          settings.rateLimitDelayMs !== undefined
-            ? settings.rateLimitDelayMs
-            : (API_PRESETS[settings.activeProvider]?.defaultDelayMs ?? 1200);
-
-        const translations = await ApiRateLimiter.throttle(minDelayMs, () =>
-          provider.translateDialogues(
-            texts,
-            targetLang,
-            sourceLang,
-            buildTranslateCtx(settings, dialogues, chapterUrl || imageUrl)
-          )
-        );
-
-        const validDialogues: DialogueItem[] = [];
-        dialogues.forEach((d, i) => {
-          const trans = translations[i];
-          if (typeof trans === 'string') {
-            const clean = trans.trim();
-            if (clean.length > 0) {
-              d.translatedText = clean;
-              validDialogues.push(d);
-            }
-          } else if (d.originalText && d.originalText.trim().length > 0) {
-            d.translatedText = d.originalText.trim();
-            validDialogues.push(d);
-          }
-        });
-        rememberChapterPairs(chapterUrl || imageUrl, validDialogues);
-
-        // 5. Save cache
-        if (imageUrl) {
-          await TranslationCacheDb.saveTranslation(imageUrl, chapterUrl || '', validDialogues, width, height);
-        }
-
-        return {
-          success: true,
-          cached: false,
-          dialogues: validDialogues,
-          naturalWidth: width,
-          naturalHeight: height,
-          keyIndex: (provider as any).lastKeyIndex || 1,
-          totalKeys: (provider as any).keyCount || 1
-        };
-      }
+      case 'TRANSLATE_IMAGE':
+        return await handleTranslateImage(msg);
 
       case 'TEST_CONNECTION': {
         const settings = await StorageService.getSettings();
@@ -439,14 +156,7 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
   }
 }
 
-/**
- * Timeout helper to resolve message before Chrome terminates port (at ~30s).
- */
-function withMessageTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-  timeoutResult: T
-): Promise<T> {
+function withMessageTimeout<T>(promise: Promise<T>, ms: number, timeoutResult: T): Promise<T> {
   let timer: any;
   const timeoutPromise = new Promise<T>((resolve) => {
     timer = setTimeout(() => {
@@ -464,16 +174,12 @@ function withMessageTimeout<T>(
   ]);
 }
 
-// Listen for messages targeted to Background
-// CRITICAL (chrome-extensions rule): return undefined synchronously if targeted to OFFSCREEN_OCR!
 browser.runtime.onMessage.addListener((rawMsg: any) => {
   if (rawMsg?.target === 'OFFSCREEN_OCR') {
     return undefined;
   }
   return withMessageTimeout(
     handleBackgroundMessage(rawMsg).then((res) => {
-      // Pixel patches can't survive runtime.sendMessage JSON serialization —
-      // encode to base64 once, here, at the single response exit point.
       if (Array.isArray(res?.dialogues)) {
         encodeErasePatches(res.dialogues);
       }
@@ -485,4 +191,3 @@ browser.runtime.onMessage.addListener((rawMsg: any) => {
 });
 
 console.log('[SpeedySlate] Background Service Initialized (Hybrid Worker/Offscreen)');
-

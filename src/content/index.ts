@@ -12,6 +12,7 @@ import { SafeMessenger } from './safe-messenger';
 import { TaskProcessor } from './task-processor';
 import { SiteMatcher } from '../shared/site-matcher';
 import { CacheRestorer } from './cache-restorer';
+import { ChapterScanner } from './chapter-scanner';
 
 class SpeedySlateContentApp {
   private settings!: ExtensionSettings;
@@ -19,10 +20,10 @@ class SpeedySlateContentApp {
   private ocrQueue!: OrderedTaskQueue<OcrTask>;
   private translationQueue!: OrderedTaskQueue<TranslationTask>;
   private taskProcessor!: TaskProcessor;
+  private scanner!: ChapterScanner;
   private images: HTMLImageElement[] = [];
   private completedImages = new Set<HTMLImageElement>();
   private isModelReady: boolean = false;
-  private mutationObserver: MutationObserver | null = null;
   private isStarted = false;
 
   public async init(): Promise<void> {
@@ -108,18 +109,14 @@ class SpeedySlateContentApp {
   public async start(): Promise<void> {
     if (this.isStarted) return;
     this.isStarted = true;
-    console.log('[SpeedySlate] Khoi chay tren trang:', window.location.href);
 
     try {
       this.settings = await StorageService.getSettings();
-    } catch {
-      // Dung cau hinh mac dinh
-    }
+    } catch {}
 
     this.initHud();
     this.hud?.log('SpeedySlate dang khoi tao...');
 
-    // 2. Khoi tao 2 hang doi tach biet: OCR Producer (cuc bo) & Translation Consumer (API)
     this.ocrQueue = new OrderedTaskQueue<OcrTask>(
       async (task) => this.taskProcessor.processOcrTask(task),
       1,
@@ -145,15 +142,24 @@ class SpeedySlateContentApp {
       onContextInvalidated: () => this.handleContextInvalidated()
     });
 
-    // 3. Quet toan bo anh trong chuong va theo doi DOM
-    this.detectImages();
-    this.setupMutationObserver();
-    this.setupIntersectionObserver();
+    this.scanner = new ChapterScanner({
+      images: this.images,
+      completedImages: this.completedImages,
+      isTranslating: () => this.hud?.getState() === 'translating',
+      onNewImagesDetected: (totalCount) => {
+        this.hud?.updateStatus(this.completedImages.size, totalCount);
+        this.hud?.log(`Da phat hien ${totalCount} trang truyen`);
+        if (this.hud?.getState() === 'translating') {
+          this.enqueueAllImages();
+        } else {
+          this.restoreCachedTranslations();
+        }
+      },
+      onImageVisible: (index, img) => this.ocrQueue.enqueue({ index, img })
+    });
+    this.scanner.start();
 
-    // 4. Tu dong khoi phuc ban dich tu Cache IndexedDB ngay lap tuc (0ms)
     await this.restoreCachedTranslations();
-
-    // 5. Kiem tra trang thai Model OCR tu Background
     await this.checkModelStatusFromBackground(false);
 
     if (this.completedImages.size < this.images.length) {
@@ -165,11 +171,12 @@ class SpeedySlateContentApp {
         }
       } catch {}
     }
-
   }
 
   private resetPageTranslations(): void {
-    document.querySelectorAll('.speedyslate-bubble, .speedyslate-erase-patch, .speedyslate-clean-canvas').forEach((el) => el.remove());
+    document
+      .querySelectorAll('.speedyslate-bubble, .speedyslate-erase-patch, .speedyslate-clean-canvas')
+      .forEach((el) => el.remove());
     this.images.forEach((img, idx) => {
       delete img.dataset.slateStatus;
       if (img.parentElement) {
@@ -196,9 +203,7 @@ class SpeedySlateContentApp {
   private async handleStartTranslating(): Promise<void> {
     try {
       this.settings = await StorageService.getSettings();
-    } catch {
-      // Giu nguyen settings hien tai
-    }
+    } catch {}
 
     if (!this.isModelReady) {
       await this.checkModelStatusFromBackground(true);
@@ -208,7 +213,6 @@ class SpeedySlateContentApp {
       }
     }
 
-    // Reset failed images so retrying works
     for (const img of this.images) {
       if (img.dataset.slateStatus === 'error') {
         delete img.dataset.slateStatus;
@@ -221,14 +225,8 @@ class SpeedySlateContentApp {
     } catch {}
 
     this.hud?.log(`Bat dau dich chuong (${this.images.length} trang)...`);
-
-    // Kich hoat nap toan bo anh ngay tai cho
     ToonheyAdapter.forceLoadAll(this.images);
-
-    // Nap toan bo anh chua dich vao hang doi OCR
     this.enqueueAllImages();
-
-    // Kich hoat chay dong thoi ca 2 hang doi
     this.ocrQueue.resume();
     this.translationQueue.resume();
   }
@@ -243,53 +241,11 @@ class SpeedySlateContentApp {
         this.isModelReady = false;
         this.hud?.log('Chua tai model OCR. Mo popup tien ich de tai (~10MB)', true);
         if (showBannerIfMissing) {
-          this.showModelMissingBanner();
+          ModelMissingBanner.show();
         }
       }
     } catch (err: any) {
       this.hud?.log(`Loi kiem tra model: ${err.message}`, true);
-    }
-  }
-
-  private isDetecting = false;
-
-  private detectImages(): void {
-    if (this.isDetecting) return;
-    this.isDetecting = true;
-    try {
-      const rawImages = ToonheyAdapter.getChapterImages();
-      let newFound = 0;
-
-      for (const img of rawImages) {
-        if (!this.images.includes(img)) {
-          ToonheyAdapter.wrapImage(img);
-          this.images.push(img);
-          const index = this.images.length - 1;
-          if (img.parentElement) {
-            PageBadgeManager.ensureBadge(img.parentElement, index);
-          }
-          newFound++;
-        }
-      }
-
-      if (newFound > 0) {
-        this.images.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
-        this.images.forEach((img, idx) => {
-          if (img.parentElement) {
-            PageBadgeManager.ensureBadge(img.parentElement, idx);
-          }
-        });
-        this.hud?.updateStatus(this.completedImages.size, this.images.length);
-        this.hud?.log(`Da phat hien ${this.images.length} trang truyen`);
-
-        if (this.hud?.getState() === 'translating') {
-          this.enqueueAllImages();
-        } else {
-          this.restoreCachedTranslations();
-        }
-      }
-    } finally {
-      this.isDetecting = false;
     }
   }
 
@@ -316,62 +272,16 @@ class SpeedySlateContentApp {
     this.ocrQueue?.clear();
     this.translationQueue?.pause();
     this.translationQueue?.clear();
-    if (this.mutationObserver) {
-      this.mutationObserver.disconnect();
-      this.mutationObserver = null;
-    }
+    this.scanner?.stop();
     this.resetPageTranslations();
     this.hud?.destroy();
     this.hud = null;
   }
 
-  private setupMutationObserver(): void {
-    let debounceTimer: any = null;
-    this.mutationObserver = new MutationObserver(() => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        this.detectImages();
-      }, 300);
-    });
-    this.mutationObserver.observe(document.body || document.documentElement, {
-      childList: true,
-      subtree: true
-    });
-  }
-
-  private setupIntersectionObserver(): void {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const img = entry.target as HTMLImageElement;
-            const index = this.images.indexOf(img);
-            if (
-              index !== -1 &&
-              !this.completedImages.has(img) &&
-              !img.dataset.slateStatus &&
-              this.hud?.getState() === 'translating'
-            ) {
-              this.ocrQueue.enqueue({ index, img });
-            }
-          }
-        });
-      },
-      { root: null, rootMargin: '0px 0px 800px 0px', threshold: 0.01 }
-    );
-
-    setInterval(() => {
-      this.images.forEach((img) => observer.observe(img));
-    }, 2000);
-  }
-
   private enqueueAllImages(): void {
     for (let i = 0; i < this.images.length; i++) {
       const img = this.images[i];
-      if (
-        !this.completedImages.has(img) &&
-        (!img.dataset.slateStatus || img.dataset.slateStatus === 'error')
-      ) {
+      if (!this.completedImages.has(img) && (!img.dataset.slateStatus || img.dataset.slateStatus === 'error')) {
         this.ocrQueue.enqueue({ index: i, img });
       }
     }
@@ -385,23 +295,17 @@ class SpeedySlateContentApp {
     }
   }
 
-  /**
-   * Checks if all detected images have completed or all queues are empty,
-   * automatically stops the translation workflow to prevent infinite loops / rate limit errors.
-   */
   private checkAndHandleCompletion(): void {
     const currentState = this.hud?.getState();
     if (currentState !== 'translating' && currentState !== 'completed') return;
     const total = this.images.length;
     if (total === 0) return;
 
-    // Condition 1: All images successfully finished
     if (this.completedImages.size >= total) {
       this.finishTranslating();
       return;
     }
 
-    // Condition 2: Both OCR and Translation queues are empty and all images have finished their attempt
     const queuesEmpty = (this.ocrQueue?.size() ?? 0) === 0 && (this.translationQueue?.size() ?? 0) === 0;
     if (queuesEmpty) {
       const allProcessed = this.images.every(
@@ -417,9 +321,6 @@ class SpeedySlateContentApp {
     }
   }
 
-  /**
-   * Gracefully stops translation, pauses queues, clears session flag, and updates HUD state
-   */
   private finishTranslating(): void {
     this.ocrQueue?.pause();
     this.translationQueue?.pause();
@@ -430,7 +331,6 @@ class SpeedySlateContentApp {
 
     const completedCount = this.completedImages.size;
     const totalCount = this.images.length;
-
     const isDone = completedCount > 0 && completedCount >= totalCount;
     this.hud?.setState(isDone ? 'completed' : 'idle');
     this.hud?.updateStatus(completedCount, totalCount);
@@ -440,13 +340,8 @@ class SpeedySlateContentApp {
         : `Tiến trình dịch đã dừng (${completedCount}/${totalCount} trang)`
     );
   }
-
-  private showModelMissingBanner(): void {
-    ModelMissingBanner.show();
-  }
 }
 
-// Global error handlers
 window.addEventListener('error', (e) => {
   if (e.message?.includes('Extension context invalidated')) return;
   if (e.message?.includes('SpeedySlate') || e.message?.includes('OCR') || e.filename?.includes('content')) {
@@ -461,7 +356,6 @@ window.addEventListener('unhandledrejection', (e) => {
   }
 });
 
-// Khởi chạy ngay lập tức
 const app = new SpeedySlateContentApp();
 app.init().catch((err) => {
   console.error('[SpeedySlate] Lỗi khởi động:', err);

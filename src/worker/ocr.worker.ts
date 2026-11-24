@@ -348,7 +348,8 @@ function attachErasePatches(canvas: OffscreenCanvas, items: DialogueItem[], text
     if (srcW < 4 || srcH < 4) continue;
     try {
       const img = ctx.getImageData(srcX, srcY, srcW, srcH);
-      const patch = EraseMasker.buildPatch(img, srcX, srcY, item.bgColor, textMap, canvas.width);
+      const localQuad = item.box.quad?.map(([qx, qy]) => [qx - srcX, qy - srcY] as [number, number]);
+      const patch = EraseMasker.buildPatch(img, srcX, srcY, item.bgColor, textMap, canvas.width, localQuad);
       if (patch) item.erasePatch = patch;
     } catch {
       // patch is best-effort — rendering falls back to box styling

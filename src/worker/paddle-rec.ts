@@ -4,6 +4,7 @@ import { ImageUtils } from './image-utils';
 import { ColorSampler } from './color-sampler';
 import { VerticalText } from './vertical-text';
 import { RecBatcher } from './rec-batcher';
+import { PolygonDeskew, Quad4 } from './polygon-deskew';
 
 interface PreparedCrop {
   index: number;
@@ -126,20 +127,34 @@ export class PaddleRecEngine {
     // 2. Build the native-res crop and clean it: Otsu-separate the minority
     // (text) class, then repaint all background pixels with their mean color
     // so screentone/art noise never reaches the rec model.
-    const nativeCanvas = new OffscreenCanvas(srcW, srcH);
-    const nativeCtx = nativeCanvas.getContext('2d');
+    let nativeCanvas = new OffscreenCanvas(srcW, srcH);
+    let nativeCtx = nativeCanvas.getContext('2d');
     if (!nativeCtx) return null;
     nativeCtx.drawImage(sourceCanvas, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
-    const nativeData = nativeCtx.getImageData(0, 0, srcW, srcH);
-    if (srcW >= 16 && srcH >= 12) {
+    let nativeData = nativeCtx.getImageData(0, 0, srcW, srcH);
+
+    // Perspective deskew for tilted comic lettering (>= 4 deg)
+    if (box.quad && box.quad.length === 4 && PolygonDeskew.shouldWarp(box.angleDeg)) {
+      const localQuad: Quad4 = box.quad.map(([qx, qy]) => [qx - srcX, qy - srcY]) as Quad4;
+      const warped = PolygonDeskew.warpQuadToHorizontal(nativeData, localQuad);
+      if (warped) {
+        nativeCanvas = new OffscreenCanvas(warped.width, warped.height);
+        nativeCtx = nativeCanvas.getContext('2d');
+        if (!nativeCtx) return null;
+        nativeData = new ImageData(new Uint8ClampedArray(warped.data), warped.width, warped.height);
+        nativeCtx.putImageData(nativeData, 0, 0);
+      }
+    }
+
+    if (nativeData.width >= 16 && nativeData.height >= 12) {
       PaddleRecEngine.cleanCropToMask(nativeData);
       nativeCtx.putImageData(nativeData, 0, 0);
     }
 
     // 3. Vertical CJK columns are rotated CCW so the rec model reads them left-to-right
     const isVertical = VerticalText.isVerticalCandidate(box, this.isCjkModel);
-    let cropW = srcW;
-    let cropH = srcH;
+    let cropW = nativeData.width;
+    let cropH = nativeData.height;
     let rotatedCanvas: OffscreenCanvas | null = null;
     if (isVertical) {
       const rotated = VerticalText.rotateCropCCW(nativeData);
@@ -165,7 +180,7 @@ export class PaddleRecEngine {
     if (rotatedCanvas) {
       cropCtx.drawImage(rotatedCanvas, 0, 0, cropW, cropH, 0, 0, targetW, this.targetH);
     } else {
-      cropCtx.drawImage(nativeCanvas, 0, 0, srcW, srcH, 0, 0, targetW, this.targetH);
+      cropCtx.drawImage(nativeCanvas, 0, 0, cropW, cropH, 0, 0, targetW, this.targetH);
     }
 
     const imageData = cropCtx.getImageData(0, 0, targetW, this.targetH);

@@ -1,6 +1,7 @@
 import * as ort from 'onnxruntime-web';
 import { BoundingBox } from '../shared/types';
 import { ImageUtils } from './image-utils';
+import { PolygonDeskew, Quad4 } from './polygon-deskew';
 
 import { ITextDetector } from './detector-interface';
 
@@ -80,28 +81,48 @@ export class PaddleDetEngine implements ITextDetector {
     for (const b of rawBoxes) {
       if (b.confidence && b.confidence < this.boxThresh) continue;
 
-      // True DBNet unclip expansion: dist = (Area * unclipRatio) / Perimeter
-      const area = b.width * b.height;
-      const perimeter = 2 * (b.width + b.height);
-      const unclipDist = Math.max(3, Math.min(18, (area * this.unclipRatio) / Math.max(1, perimeter)));
+      let origX: number, origY: number, origW: number, origH: number;
+      let scaledQuad: [number, number][] | undefined;
 
-      const cx = b.x + b.width / 2;
-      const cy = b.y + b.height / 2;
-      const expW = b.width + unclipDist * 2;
-      const expH = b.height + unclipDist * 2;
+      if (b.quad && PolygonDeskew.shouldWarp(b.angleDeg)) {
+        const origRawQuad: Quad4 = b.quad.map(([qx, qy]) => [qx / ratioW, qy / ratioH]) as Quad4;
+        const expandedQuad = PolygonDeskew.unclipQuad(origRawQuad, this.unclipRatio);
+        scaledQuad = expandedQuad.map(([qx, qy]) => [
+          Math.max(0, Math.min(originalWidth - 1, Math.round(qx))),
+          Math.max(0, Math.min(originalHeight - 1, Math.round(qy)))
+        ]);
+        const xs = scaledQuad.map((p) => p[0]);
+        const ys = scaledQuad.map((p) => p[1]);
+        origX = Math.min(...xs);
+        origY = Math.min(...ys);
+        origW = Math.max(...xs) - origX;
+        origH = Math.max(...ys) - origY;
+      } else {
+        const area = b.width * b.height;
+        const perimeter = 2 * (b.width + b.height);
+        const unclipDist = Math.max(3, Math.min(18, (area * this.unclipRatio) / Math.max(1, perimeter)));
 
-      const origX = Math.round((cx - expW / 2) / ratioW);
-      const origY = Math.round((cy - expH / 2) / ratioH);
-      const origW = Math.round(expW / ratioW);
-      const origH = Math.round(expH / ratioH);
+        const cx = b.x + b.width / 2;
+        const cy = b.y + b.height / 2;
+        const expW = b.width + unclipDist * 2;
+        const expH = b.height + unclipDist * 2;
 
-      // clampBox returns a fresh box without `kind` — re-attach it
+        origX = Math.round((cx - expW / 2) / ratioW);
+        origY = Math.round((cy - expH / 2) / ratioH);
+        origW = Math.round(expW / ratioW);
+        origH = Math.round(expH / ratioH);
+      }
+
       const clamped = ImageUtils.clampBox(
         { x: origX, y: origY, width: origW, height: origH, confidence: b.confidence },
         originalWidth,
         originalHeight
       );
       clamped.kind = b.kind;
+      if (scaledQuad) {
+        clamped.quad = scaledQuad;
+        clamped.angleDeg = b.angleDeg;
+      }
 
       // Filter tiny noise while preserving wide shout bubbles and dialogues
       // Only filter out true full-image outer frame borders
@@ -144,6 +165,9 @@ export class PaddleDetEngine implements ITextDetector {
         for (let j = i + 1; j < merged.length; j++) {
           if (used.has(j)) continue;
           const other = merged[j];
+          if (PolygonDeskew.shouldWarp(cur.angleDeg) || PolygonDeskew.shouldWarp(other.angleDeg)) {
+            continue;
+          }
 
           // Check vertical alignment (same text line with italic tolerance)
           const topA = cur.y;
@@ -219,6 +243,7 @@ export class PaddleDetEngine implements ITextDetector {
         let maxY = y;
         let scoreSum = 0;
         let pixelCount = 0;
+        const boundaryPts: [number, number][] = [];
 
         const queue: number[] = [idx];
         visited[idx] = 1;
@@ -244,11 +269,17 @@ export class PaddleDetEngine implements ITextDetector {
             cx < width - 1 ? cy * width + (cx + 1) : -1
           ];
 
+          let isBoundary = false;
           for (const n of neighbors) {
-            if (n >= 0 && !visited[n] && predData[n] >= this.thresh) {
+            if (n < 0 || predData[n] < this.thresh) {
+              isBoundary = true;
+            } else if (!visited[n]) {
               visited[n] = 1;
               queue.push(n);
             }
+          }
+          if (isBoundary && boundaryPts.length < 512) {
+            boundaryPts.push([cx, cy]);
           }
         }
 
@@ -256,14 +287,22 @@ export class PaddleDetEngine implements ITextDetector {
         const boxH = maxY - minY + 1;
 
         if (boxW >= 5 && boxH >= 5 && pixelCount >= 6) {
-          boxes.push({
+          const entry: BoundingBox = {
             x: minX,
             y: minY,
             width: boxW,
             height: boxH,
             confidence: scoreSum / pixelCount,
             kind: 'dialogue'
-          });
+          };
+          if (boundaryPts.length >= 8) {
+            const { quad, angleDeg } = PolygonDeskew.minAreaQuad(boundaryPts);
+            if (PolygonDeskew.shouldWarp(angleDeg)) {
+              entry.quad = quad;
+              entry.angleDeg = angleDeg;
+            }
+          }
+          boxes.push(entry);
         }
       }
     }

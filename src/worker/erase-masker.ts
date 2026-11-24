@@ -1,6 +1,7 @@
 import { ErasePatch } from '../shared/types';
 import { filterMask, edgeFieldMask } from './erase-mask-utils';
 import { InpaintSolver } from './inpaint-solver';
+import { PolygonDeskew } from './polygon-deskew';
 
 export interface ErasePatchDbg extends ErasePatch {
   dbg?: { path: string; risky?: number; std?: number; guided?: boolean; tmMax?: number };
@@ -25,7 +26,8 @@ export class EraseMasker {
     y: number,
     bgHex?: string,
     textMap?: Float32Array,
-    textMapW?: number
+    textMapW?: number,
+    localQuad?: [number, number][]
   ): ErasePatchDbg | null {
     const w = img.width;
     const h = img.height;
@@ -157,6 +159,14 @@ export class EraseMasker {
         for (let i = 0; i < total; i++) {
           raw[i] = inside[i] && Math.abs(lumas[i] - localBg) > 25 ? 1 : 0;
           if (!inside[i]) otsuRaw[i] = 0;
+        }
+      }
+    }
+    if (localQuad && localQuad.length === 4) {
+      for (let i = 0; i < total; i++) {
+        if (!PolygonDeskew.pointInQuad(i % w, (i / w) | 0, localQuad)) {
+          raw[i] = 0;
+          otsuRaw[i] = 0;
         }
       }
     }

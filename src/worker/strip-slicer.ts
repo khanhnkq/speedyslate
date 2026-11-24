@@ -116,7 +116,13 @@ export class StripSlicer {
           width: box.width,
           height: box.height,
           confidence: box.confidence,
-          kind: box.kind
+          kind: box.kind,
+          ...(box.quad
+            ? {
+                quad: box.quad.map(([qx, qy]) => [qx, slice.startY + qy] as [number, number]),
+                angleDeg: box.angleDeg
+              }
+            : {})
         };
 
         // If in overlap region with preceding slice, deduplicate

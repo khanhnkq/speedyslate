@@ -12,6 +12,8 @@ export interface BoundingBox {
   height: number; // Pixel height
   confidence?: number;
   kind?: DialogueKind;
+  quad?: [number, number][]; // Optional 4-point rotated polygon [TL, TR, BR, BL]
+  angleDeg?: number;         // Detected baseline tilt angle in degrees (-45..45)
 }
 
 /** Pixel-level erase patch: RGBA data where alpha>0 marks repainted ink pixels. */

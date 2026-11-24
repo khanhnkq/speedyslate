@@ -14,7 +14,7 @@ export class ImageUtils {
   public static calculateDetResize(
     width: number,
     height: number,
-    maxLongSide: number = 1280
+    maxLongSide: number = 1920
   ): { targetW: number; targetH: number; ratioW: number; ratioH: number } {
     const longSide = Math.max(width, height);
     let ratio = longSide > maxLongSide ? maxLongSide / longSide : 1.0;

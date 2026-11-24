@@ -1,7 +1,42 @@
 import { describe, expect, it } from 'vitest';
 import { EraseMasker } from '../../src/worker/erase-masker';
+import { BubbleFiller } from '../../src/worker/bubble-filler';
 
-describe('EraseMasker curved bubble border protection', () => {
+describe('EraseMasker & BubbleFiller border-gap protection', () => {
+  it('aborts whole-bubble flood when bubble outline has an open gap leading into screentone dots', () => {
+    const w = 120;
+    const h = 120;
+    const data = new Uint8ClampedArray(w * h * 4);
+    // Fill outside with halftone screentone: white (250) with dark dots every 3px
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const isDot = x % 3 === 0 && y % 3 === 0;
+        const v = isDot ? 40 : 250;
+        data.set([v, v, v, 255], (y * w + x) * 4);
+      }
+    }
+    // Draw bubble interior (white 252) + black border (15), WITH A 14px OPEN GAP on bottom-right!
+    for (let y = 20; y <= 95; y++) {
+      for (let x = 30; x <= 85; x++) {
+        const onBorder = x === 30 || x === 85 || y === 20 || y === 95;
+        const inOpenGap = x === 85 && y >= 72 && y <= 86;
+        const v = onBorder && !inOpenGap ? 15 : 252;
+        data.set([v, v, v, 255], (y * w + x) * 4);
+      }
+    }
+
+    const patch = BubbleFiller.buildBubblePatch(
+      { data, width: w, height: h } as ImageData,
+      0,
+      0,
+      [{ x: 38, y: 35, width: 40, height: 50 }]
+    );
+    // Must either reject (null) so per-line glyph erase handles it, or never paint outside x > 85!
+    if (patch !== null) {
+      const out = patch.pixels as Uint8ClampedArray;
+      expect(out[(78 * w + 92) * 4 + 3]).toBe(0);
+    }
+  });
   it('never paints rectangular corners outside a curved bubble border onto grey screentone (luma 195)', () => {
     const w = 100;
     const h = 44;

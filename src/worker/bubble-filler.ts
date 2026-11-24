@@ -60,15 +60,32 @@ export class BubbleFiller {
     coreSamples.sort((a, b) => a - b);
     const med = coreSamples.length > 0 ? coreSamples[coreSamples.length >> 1] : 240;
 
-    // Ink = decisive deviation from the dominant interior tone (55 steps stops
-    // at even anti-aliased thin bubble borders so flood never leaks outward).
+    // Ink = decisive deviation from the dominant interior tone.
     const ink = new Uint8Array(total);
     for (let i = 0; i < total; i++) {
-      if (Math.abs(lumas[i] - med) > 55) ink[i] = 1;
+      if (Math.abs(lumas[i] - med) > 45) ink[i] = 1;
     }
 
-    // Interior flood — seeds are the non-ink pixels of the centre band,
-    // robust to a glyph sitting dead-centre.
+    // 1px morphological barrier dilation welds 2-3px halftone screentone dots
+    // into an impenetrable wall so flood-fill cannot weave between dots outside
+    // a broken/dashed speech-bubble outline!
+    const barrier = new Uint8Array(total);
+    for (let yy = 0; yy < h; yy++) {
+      for (let xx = 0; xx < w; xx++) {
+        const i = yy * w + xx;
+        if (!ink[i]) continue;
+        for (let dy = -1; dy <= 1; dy++) {
+          const ny = yy + dy;
+          if (ny < 0 || ny >= h) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = xx + dx;
+            if (nx >= 0 && nx < w) barrier[ny * w + nx] = 1;
+          }
+        }
+      }
+    }
+
+    // Interior flood — seeds are the non-barrier pixels of the centre band.
     const interior = new Uint8Array(total);
     const queue = new Int32Array(total);
     let qh = 0;
@@ -80,23 +97,26 @@ export class BubbleFiller {
     for (let yy = iy0; yy < iy1; yy++) {
       for (let xx = ix0; xx < ix1; xx++) {
         const i = yy * w + xx;
-        if (!ink[i] && !interior[i]) {
+        if (!barrier[i] && !interior[i]) {
           interior[i] = 1;
           queue[qt++] = i;
         }
       }
     }
+    let touchesCropEdge = 0;
     while (qh < qt) {
       const i = queue[qh++];
       const xx = i % w;
       const yy = (i / w) | 0;
-      if (xx > 0 && !ink[i - 1] && !interior[i - 1]) { interior[i - 1] = 1; queue[qt++] = i - 1; }
-      if (xx < w - 1 && !ink[i + 1] && !interior[i + 1]) { interior[i + 1] = 1; queue[qt++] = i + 1; }
-      if (yy > 0 && !ink[i - w] && !interior[i - w]) { interior[i - w] = 1; queue[qt++] = i - w; }
-      if (yy < h - 1 && !ink[i + w] && !interior[i + w]) { interior[i + w] = 1; queue[qt++] = i + w; }
+      if (xx === 0 || xx === w - 1 || yy === 0 || yy === h - 1) touchesCropEdge++;
+      if (xx > 0 && !barrier[i - 1] && !interior[i - 1]) { interior[i - 1] = 1; queue[qt++] = i - 1; }
+      if (xx < w - 1 && !barrier[i + 1] && !interior[i + 1]) { interior[i + 1] = 1; queue[qt++] = i + 1; }
+      if (yy > 0 && !barrier[i - w] && !interior[i - w]) { interior[i - w] = 1; queue[qt++] = i - w; }
+      if (yy < h - 1 && !barrier[i + w] && !interior[i + w]) { interior[i + w] = 1; queue[qt++] = i + w; }
     }
     const interiorArea = qt;
-    if (interiorArea < total * 0.08) return null;
+    // Open/broken border guard: a closed bubble never floods out to the crop boundary
+    if (interiorArea < total * 0.08 || touchesCropEdge > 2) return null;
 
     // Outside flood — boundary seeds over non-interior pixels. Whatever
     // stays unmarked is interior or an enclosed hole → the paint zone.
@@ -165,12 +185,24 @@ export class BubbleFiller {
     // art fields in and the share explodes.
     let paintArea = 0;
     let paintInk = 0;
+    let openClipContacts = 0;
     for (let i = 0; i < total; i++) {
       if (outside[i] || !clip[i]) continue;
       paintArea++;
       if (ink[i]) paintInk++;
+      const xx = i % w;
+      const yy = (i / w) | 0;
+      if (
+        (xx > 0 && !clip[i - 1] && !outside[i - 1]) ||
+        (xx < w - 1 && !clip[i + 1] && !outside[i + 1]) ||
+        (yy > 0 && !clip[i - w] && !outside[i - w]) ||
+        (yy < h - 1 && !clip[i + w] && !outside[i + w])
+      ) {
+        openClipContacts++;
+      }
     }
-    if (paintArea < total * 0.05 || paintInk > paintArea * 0.4) return null;
+    // If interior hit the artificial clip wall (>4px), the bubble border had an open gap -> abort!
+    if (paintArea < total * 0.05 || paintInk > paintArea * 0.4 || openClipContacts > 4) return null;
 
     const out = new Uint8ClampedArray(total * 4);
     const r = accR / n;

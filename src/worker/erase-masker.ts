@@ -145,8 +145,31 @@ export class EraseMasker {
     const isBgLight = localBg > 127;
 
     // 3. Identify continuous bubble/panel border strokes connected to the outer crop boundary
-    // (where `tm < 0.25`) so borders entering from outside are NEVER erased!
-    const borderShield = EraseMasker.detectOuterBorderStrokes(lumas, tm, localBg, w, h, innerRect);
+    // AND build a horizontal wall-bounded `inside` mask so trailing letters inside a bubble
+    // are caught without ever crossing a vertical bubble border!
+    const { shield: borderShield, wallLeft, wallRight } = EraseMasker.detectOuterBorderStrokes(
+      lumas,
+      tm,
+      localBg,
+      w,
+      h,
+      innerRect
+    );
+
+    if (innerRect) {
+      inside.fill(0);
+      const effX0 = Math.max(wallLeft + 1, Math.max(1, rx0 - 5));
+      const effX1 = Math.min(wallRight, Math.min(w - 1, rx1 + 6));
+      if (effX1 > effX0) {
+        for (let yy = ry0; yy < ry1; yy++) {
+          inside.fill(1, yy * w + effX0, yy * w + effX1);
+        }
+      } else {
+        for (let yy = ry0; yy < ry1; yy++) {
+          inside.fill(1, yy * w + rx0, yy * w + rx1);
+        }
+      }
+    }
 
     // 4. Extract raw glyph strokes strictly inside `inside` and outside `borderShield`
     const raw = new Uint8Array(total);
@@ -165,34 +188,60 @@ export class EraseMasker {
     // fringes AND artist white/black halos (`fuchidori`), blocked by `borderShield`
     const dilRadius = Math.max(3, InpaintSolver.computeDilationRadius(boxH));
     const dil = EraseMasker.dilateDisk(mask, w, h, dilRadius);
-    for (let i = 0; i < total; i++) {
-      if (borderShield[i]) dil[i] = 0;
+    // Clip `dil` strictly inside [wallLeft+1 .. wallRight-1] when walls are present
+    for (let yy = 0; yy < h; yy++) {
+      for (let xx = 0; xx < w; xx++) {
+        const i = yy * w + xx;
+        if (borderShield[i] || xx <= wallLeft || xx >= wallRight) {
+          dil[i] = 0;
+        }
+      }
     }
     if (!EraseMasker.hasAny(dil)) return null;
 
     // 6. Check immediate surround ring (`dil + 3px`) for uniform flat paper:
-    // on clean bubble paper (`stddev < 14`), flat median paper fill is 100% spotless;
-    // on textured screentone/gradients, Telea FMM (`radius = 4`) diffuses seamlessly!
+    // filter out border/neighbor-line ink outliers (`|luma - localBg| <= 35`) so
+    // lines near a bubble wall still get spotless uniform paper fill instead of grey Telea streaks!
     const ringOuter = EraseMasker.dilateDisk(dil, w, h, 3);
     const ringL: number[] = [];
     for (let i = 0; i < total; i++) {
-      if (ringOuter[i] && !dil[i] && !borderShield[i]) ringL.push(lumas[i]);
+      const xx = i % w;
+      if (
+        ringOuter[i] &&
+        !dil[i] &&
+        !borderShield[i] &&
+        xx > wallLeft &&
+        xx < wallRight &&
+        Math.abs(lumas[i] - localBg) <= 38
+      ) {
+        ringL.push(lumas[i]);
+      }
     }
-    if (ringL.length >= 16) {
+    if (ringL.length >= 12) {
       ringL.sort((a, b) => a - b);
       const med = ringL[(ringL.length / 2) | 0];
       let nS = 0, accR = 0, accG = 0, accB = 0, sumL = 0, sumSq = 0;
       for (let i = 0; i < total; i++) {
-        if (!ringOuter[i] || dil[i] || borderShield[i] || Math.abs(lumas[i] - med) > 25) continue;
+        const xx = i % w;
+        if (
+          !ringOuter[i] ||
+          dil[i] ||
+          borderShield[i] ||
+          xx <= wallLeft ||
+          xx >= wallRight ||
+          Math.abs(lumas[i] - med) > 22
+        ) {
+          continue;
+        }
         const p = i * 4;
         accR += data[p]; accG += data[p + 1]; accB += data[p + 2];
         sumL += lumas[i]; sumSq += lumas[i] * lumas[i];
         nS++;
       }
-      if (nS >= 16) {
+      if (nS >= 12) {
         const mean = sumL / nS;
         const stddev = Math.sqrt(Math.max(0, sumSq / nS - mean * mean));
-        if (stddev < 14 && nS >= ringL.length * 0.72) {
+        if (stddev < 14) {
           const out = new Uint8ClampedArray(total * 4);
           const r = accR / nS, g = accG / nS, b = accB / nS;
           for (let i = 0; i < total; i++) {
@@ -228,30 +277,35 @@ export class EraseMasker {
     w: number,
     h: number,
     innerRect?: InnerTextRect
-  ): Uint8Array {
+  ): { shield: Uint8Array; wallLeft: number; wallRight: number } {
     const total = w * h;
     const shield = new Uint8Array(total);
     const q = new Int32Array(total);
     let qh = 0, qt = 0;
 
-    // When `innerRect` is known, identify which columns `x` actually carry a
-    // border stroke in the clean top/bottom context margin outside the text line;
-    // inside `innerRect`, `shield` may only stay within +-3px of those border
-    // columns so letters like 'me,' touching the wall are never shielded!
+    let wallLeft = -1;
+    let wallRight = w;
     const borderColAllowed = new Uint8Array(w);
     if (innerRect) {
+      const midX = (innerRect.x0 + innerRect.x1) >> 1;
       for (let xx = 0; xx < w; xx++) {
-        let marginDark = false;
-        for (let yy = 0; yy < innerRect.y0 && !marginDark; yy++) {
-          if (Math.abs(lumas[yy * w + xx] - localBg) > 55) marginDark = true;
+        let topDark = false;
+        let botDark = false;
+        for (let yy = 0; yy < innerRect.y0 && !topDark; yy++) {
+          if (Math.abs(lumas[yy * w + xx] - localBg) > 55) topDark = true;
         }
-        for (let yy = innerRect.y1; yy < h && !marginDark; yy++) {
-          if (Math.abs(lumas[yy * w + xx] - localBg) > 55) marginDark = true;
+        for (let yy = innerRect.y1; yy < h && !botDark; yy++) {
+          if (Math.abs(lumas[yy * w + xx] - localBg) > 55) botDark = true;
         }
-        if (marginDark) {
-          for (let dx = -3; dx <= 3; dx++) {
+        if (topDark || botDark) {
+          for (let dx = -2; dx <= 2; dx++) {
             if (xx + dx >= 0 && xx + dx < w) borderColAllowed[xx + dx] = 1;
           }
+        }
+        // True vertical bubble wall = dark in BOTH top AND bottom context bands
+        if (topDark && botDark) {
+          if (xx < midX && xx <= innerRect.x0 + 4 && xx > wallLeft) wallLeft = xx;
+          if (xx > midX && xx >= innerRect.x1 - 4 && xx < wallRight) wallRight = xx;
         }
       }
     } else {
@@ -297,7 +351,7 @@ export class EraseMasker {
       if (yy > 0) seed(idx - w);
       if (yy < h - 1) seed(idx + w);
     }
-    return shield;
+    return { shield, wallLeft, wallRight };
   }
 
   private static dilateDisk(src: Uint8Array, w: number, h: number, radius: number): Uint8Array {

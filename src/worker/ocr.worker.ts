@@ -343,12 +343,11 @@ function attachErasePatches(canvas: OffscreenCanvas, items: DialogueItem[], text
     try {
       const img = ctx.getImageData(srcX, srcY, srcW, srcH);
       const localQuad = item.box.quad?.map(([qx, qy]) => [qx - srcX, qy - srcY] as [number, number]);
-      const extraX = Math.min(8, Math.max(5, Math.round(item.box.height * 0.35)));
       const innerRect = {
-        x0: Math.max(2, item.box.x - srcX - extraX),
-        y0: Math.max(2, item.box.y - srcY - 2),
-        x1: Math.min(srcW - 2, item.box.x - srcX + item.box.width + extraX),
-        y1: Math.min(srcH - 2, item.box.y - srcY + item.box.height + 2)
+        x0: item.box.x - srcX,
+        y0: item.box.y - srcY,
+        x1: item.box.x - srcX + item.box.width,
+        y1: item.box.y - srcY + item.box.height
       };
       const patch = EraseMasker.buildPatch(
         img,

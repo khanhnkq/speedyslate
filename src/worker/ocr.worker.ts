@@ -271,7 +271,18 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
             const fullPageImg = ctx.getImageData(0, 0, width, height);
             const gapBoxes = ChamberGapScanner.recoverMissedLines(fullPageImg, boxes);
             if (gapBoxes.length > 0) {
-              boxes.push(...gapBoxes);
+              for (const gb of gapBoxes) {
+                boxes.push(gb);
+                const x0 = Math.max(0, gb.x + 5);
+                const x1 = Math.min(width - 1, gb.x + gb.width - 6);
+                const y0 = Math.max(0, gb.y + 3);
+                const y1 = Math.min(height - 1, gb.y + gb.height - 4);
+                for (let yy = y0; yy <= y1; yy++) {
+                  for (let xx = x0; xx <= x1; xx++) {
+                    if (textMap[yy * width + xx] < 0.85) textMap[yy * width + xx] = 0.85;
+                  }
+                }
+              }
             }
             boxes.sort((a, b) => a.y - b.y);
             const detMs = performance.now() - tDet;

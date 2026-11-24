@@ -288,24 +288,20 @@ export class EraseMasker {
     const borderColAllowed = new Uint8Array(w);
     if (innerRect) {
       const midX = (innerRect.x0 + innerRect.x1) >> 1;
+      // Check ONLY the 2px inter-line whitespace gap immediately above (`y0-2`)
+      // and below (`y1+1`) the text line: neighbouring text lines are pure paper
+      // there, whereas a true bubble outline crosses straight through both gaps!
+      const gapTopY = Math.max(0, innerRect.y0 - 2);
+      const gapBotY = Math.min(h - 1, innerRect.y1 + 1);
       for (let xx = 0; xx < w; xx++) {
-        let topDark = false;
-        let botDark = false;
-        for (let yy = 0; yy < innerRect.y0 && !topDark; yy++) {
-          if (Math.abs(lumas[yy * w + xx] - localBg) > 55) topDark = true;
-        }
-        for (let yy = innerRect.y1; yy < h && !botDark; yy++) {
-          if (Math.abs(lumas[yy * w + xx] - localBg) > 55) botDark = true;
-        }
-        if (topDark || botDark) {
-          for (let dx = -2; dx <= 2; dx++) {
+        const topDark = Math.abs(lumas[gapTopY * w + xx] - localBg) > 55;
+        const botDark = Math.abs(lumas[gapBotY * w + xx] - localBg) > 55;
+        if (topDark && botDark) {
+          for (let dx = -1; dx <= 1; dx++) {
             if (xx + dx >= 0 && xx + dx < w) borderColAllowed[xx + dx] = 1;
           }
-        }
-        // True vertical bubble wall = dark in BOTH top AND bottom context bands
-        if (topDark && botDark) {
-          if (xx < midX && xx <= innerRect.x0 + 4 && xx > wallLeft) wallLeft = xx;
-          if (xx > midX && xx >= innerRect.x1 - 4 && xx < wallRight) wallRight = xx;
+          if (xx < midX && xx <= innerRect.x0 + 3 && xx > wallLeft) wallLeft = xx;
+          if (xx > midX && xx >= innerRect.x1 - 3 && xx < wallRight) wallRight = xx;
         }
       }
     } else {

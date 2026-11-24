@@ -349,12 +349,11 @@ export class EraseMasker {
         // conduct to the crop edge and survive.
         const edgeTex = edgeFieldMask(lumas, med, wide, w, h, 0);
         for (let i = 0; i < total; i++) {
-          // Uniform surround proven by ring stats + low collateral risk:
-          // repaint the WHOLE crop, not just `wide` — interior specks
-          // between lines sat beyond the mask+7 paint bound and survived.
-          // Keep only near-black px (dev>90) that are MEMBERS of an
-          // edge-connected field outside the glyph-adjacent ring.
-          if (edgeTex[i] && Math.abs(lumas[i] - med) > 90) continue;
+          // Strictly paint ONLY the dilated glyph+AA halo (`wide`), NEVER the
+          // full rectangular crop — rectangular corners poke outside curved or
+          // spiky speech-bubble outlines onto grey screentones!
+          if (!wide[i]) continue;
+          if (edgeTex[i] && Math.abs(lumas[i] - med) > 45) continue;
           const p = i * 4;
           out[p] = accR / nS; out[p + 1] = accG / nS; out[p + 2] = accB / nS; out[p + 3] = 255;
         }

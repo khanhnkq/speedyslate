@@ -3,6 +3,7 @@ import { BubbleGeometry } from './bubble-geometry';
 import { TextAutoFitter } from './text-auto-fitter';
 import { OverlayStyler } from './overlay-styler';
 import { ErasePatcher } from './erase-patcher';
+import { ComicFontLoader } from './comic-font-loader';
 
 /**
  * OverlayRenderer: Coordinates the rendering and lifecycle of comic overlays.
@@ -20,6 +21,8 @@ export class OverlayRenderer {
     naturalHeight: number,
     theme: BubbleTheme = 'auto'
   ): void {
+    ComicFontLoader.ensureLoaded();
+
     // 1. Remove previous bubbles, patches and clean canvases if any
     const existing = wrapper.querySelectorAll(
       '.speedyslate-bubble, .speedyslate-erase-patch, .speedyslate-clean-canvas'
@@ -41,16 +44,16 @@ export class OverlayRenderer {
       // 2. Calculate calibrated coordinates covering the original text
       const coords = BubbleGeometry.computeCoordinates(item, naturalWidth, naturalHeight);
 
-      // 3. Calculate optimal font size dynamically based on available area and
-      // text length. Ellipse overlays offer ~78% of the rect's usable area, so
-      // the fitted text budget is scaled down to keep glyphs off the curve.
-      const useEllipse = item.kind === undefined || item.kind === 'dialogue';
-      const fitScale = useEllipse ? 0.85 : 1;
-      const fontSize = TextAutoFitter.computeOptimalFontSize(
-        coords.pixelWidth * fitScale,
-        coords.pixelHeight * fitScale,
-        item.translatedText
+      // 3. Fit font size + chord-aware line breaks for elliptical vs rectangular bubbles
+      const useEllipse =
+        item.isOvalChamber ?? (item.kind === undefined || item.kind === 'dialogue');
+      const fitted = TextAutoFitter.fitDialogue(
+        coords.pixelWidth,
+        coords.pixelHeight,
+        item.translatedText,
+        { elliptical: useEllipse }
       );
+      const fontSize = fitted.fontSize;
 
       // 4. Determine dark/light mode and the true sampled bubble colour
       const isDark = theme === 'dark' || (theme === 'auto' && item.isDarkBackground);
@@ -101,7 +104,7 @@ export class OverlayRenderer {
         item.kind
       );
 
-      bubble.textContent = item.translatedText;
+      bubble.textContent = fitted.lines.length > 0 ? fitted.lines.join('\n') : item.translatedText;
 
       // 8. Peek original comic art only if holding Alt key (prevents accidental opacity loss during reading)
       bubble.addEventListener('mouseenter', (e: MouseEvent) => {

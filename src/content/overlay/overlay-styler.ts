@@ -53,6 +53,8 @@ export class OverlayStyler {
     const textColor = OverlayStyler.textColorFor(
       bgColor ?? (isDark ? '#111111' : '#ffffff')
     );
+    const needsStrokeHalo = Boolean(transparentBg && (kind === 'free' || kind === 'sfx'));
+    const haloColor = textColor === '#ffffff' ? '#111111' : '#ffffff';
 
     // Speech bubbles erase as an ellipse so the overlay keeps the original
     // balloon silhouette and never pokes past its curved border. Rectangular
@@ -88,7 +90,9 @@ export class OverlayStyler {
       outline: 'none',
       boxShadow: 'none',
       filter: 'none',
-      textShadow: 'none',
+      textShadow: needsStrokeHalo ? `0 1px 2px rgba(0,0,0,0.38)` : 'none',
+      webkitTextStroke: needsStrokeHalo ? `3px ${haloColor}` : '0px transparent',
+      paintOrder: needsStrokeHalo ? 'stroke fill' : 'normal',
       borderRadius,
       boxSizing: 'border-box',
       padding: '3px 6px',
@@ -97,10 +101,10 @@ export class OverlayStyler {
       alignItems: 'center',
       justifyContent: 'center',
       textAlign: 'center',
-      // High-readability comic font stack with full Vietnamese diacritic support
-      fontFamily: "'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
-      fontWeight: 'bold',
-      lineHeight: '1.25',
+      // Bundled Vietnamese comic font with clean UI fallback
+      fontFamily: "'SpeedySlateComic', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
+      fontWeight: '600',
+      lineHeight: '1.24',
       letterSpacing: '-0.01em',
       fontSize: `${fontSize}px`,
       zIndex: '50',

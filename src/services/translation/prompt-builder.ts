@@ -1,9 +1,16 @@
 import { DialogueKind, DialogueTranslateContext } from '../../shared/types';
+import { KeyedDialogueEntry, KeyedJson } from './keyed-json';
 
 export interface BuiltDialoguePrompt {
   systemPrompt: string;
   userPayload: string;
-  /** original item index -> payload index, or -1 when filtered out (e.g. sfx). */
+  keys: string[];
+  /**
+   * original item index ->
+   *   >= 0 : index into `keys` (`b0..bN`)
+   *   -1   : filtered out (e.g. skipped SFX -> "")
+   *   -2   : deterministic passthrough (punctuation/ellipsis -> keep original text)
+   */
   sendMap: number[];
 }
 
@@ -14,15 +21,11 @@ export interface DialoguePromptItem {
 }
 
 /**
- * Builds the shared rich-context prompt for dialogue translation:
- * OCR confidence flags, dialogue-kind tags, glossary terms and rolling
- * chapter context. SRP: prompt text lives here only — providers just send it.
+ * Builds the shared rich-context Keyed JSON prompt for dialogue translation:
+ * OCR confidence flags, dialogue-kind tags, glossary terms, rolling chapter context,
+ * and deterministic punctuation passthrough.
  */
 export class PromptBuilder {
-  /**
-   * Parse "Term = Translation" lines from a settings textarea.
-   * Blank lines and lines starting with '#' are ignored.
-   */
   public static parseGlossary(raw?: string): [string, string][] {
     if (!raw) return [];
     const pairs: [string, string][] = [];
@@ -38,13 +41,6 @@ export class PromptBuilder {
     return pairs;
   }
 
-  /**
-   * Build system prompt + compact JSON payload [{t, c?, k?}].
-   * `c` (confidence) is emitted only when < 0.6 so the model knows the OCR
-   * line may be unreliable; `k` is emitted only for non-dialogue kinds.
-   * When ctx.translateSfx === false, sfx items are dropped from the payload
-   * and marked -1 in sendMap so callers can map results back to "".
-   */
   public static buildDialogue(
     items: DialoguePromptItem[],
     targetLang: string,
@@ -55,93 +51,116 @@ export class PromptBuilder {
       translateSfx?: boolean;
     }
   ): BuiltDialoguePrompt {
-    const srcDesc = !sourceLang || sourceLang === 'auto'
-      ? 'the original comic language (auto-detect)'
-      : sourceLang;
+    const srcDesc =
+      !sourceLang || sourceLang === 'auto'
+        ? 'the original comic language (auto-detect)'
+        : sourceLang;
 
     const skipSfx = ctx?.translateSfx === false;
     const sendMap: number[] = [];
-    const payload: { t: string; c?: number; k?: DialogueKind }[] = [];
+    const entries: KeyedDialogueEntry[] = [];
 
     items.forEach((item, origIdx) => {
       if (skipSfx && item.kind === 'sfx') {
         sendMap[origIdx] = -1;
         return;
       }
-      const entry: { t: string; c?: number; k?: DialogueKind } = { t: item.text };
+      if (KeyedJson.isPassthroughOnly(item.text)) {
+        sendMap[origIdx] = -2;
+        return;
+      }
+      const entry: KeyedDialogueEntry = { t: item.text };
       if (item.confidence !== undefined && item.confidence < 0.6) {
         entry.c = Math.round(item.confidence * 100) / 100;
       }
       if (item.kind && item.kind !== 'dialogue') {
         entry.k = item.kind;
       }
-      sendMap[origIdx] = payload.length;
-      payload.push(entry);
+      sendMap[origIdx] = entries.length;
+      entries.push(entry);
     });
 
+    const { keys, payloadJson } = KeyedJson.buildKeyedPayload(entries);
     const extras: string[] = [];
 
-    if (payload.some((p) => p.c !== undefined)) {
+    if (entries.some((p) => p.c !== undefined)) {
       extras.push(
-        '5. OCR CONFIDENCE: some entries include field "c" = OCR confidence (0-1). ' +
-        'A low "c" means the OCR reading may be unreliable — silently fix obvious ' +
-        'typos/misreads using surrounding context before translating.'
+        '5. OCR CONFIDENCE: entries with "c" < 0.6 may contain OCR typos — infer and fix obvious misreads from context before translating.'
       );
     }
-    if (payload.some((p) => p.k === 'sfx')) {
+    if (entries.some((p) => p.k === 'sfx')) {
       extras.push(
-        '6. SOUND EFFECTS: entries with "k":"sfx" are onomatopoeia. Translate them ' +
-        'as short expressive sound-effect words in the target language.'
+        '6. SOUND EFFECTS: entries with "k":"sfx" are onomatopoeia. Translate them as short expressive sound-effect words in the target language.'
       );
     }
     if (ctx?.glossaryPairs?.length) {
       const terms = ctx.glossaryPairs.map(([a, b]) => `"${a}" => "${b}"`).join(', ');
-      extras.push(
-        `GLOSSARY (apply verbatim, never improvise these terms): ${terms}.`
-      );
+      extras.push(`GLOSSARY (apply verbatim, never improvise these terms): ${terms}.`);
     }
     if (ctx?.chapterContext?.length) {
       const lines = ctx.chapterContext.map((p) => `  ${p}`).join('\n');
       extras.push(
-        'CHAPTER CONTEXT — recent original => translation pairs from this chapter. ' +
-        'Keep character names, pronouns and tone consistent with them:\n' + lines
+        'CHAPTER CONTEXT — recent original => translation pairs from this chapter. Keep character names, pronouns and tone consistent with them:\n' +
+          lines
       );
     }
 
+    const exampleKeys = keys.slice(0, 2);
+    const exampleJson = JSON.stringify(
+      Object.fromEntries(exampleKeys.map((k, idx) => [k, idx === 0 ? '...' : '...']))
+    );
+
     const systemPrompt = `You are an expert manga, manhwa, and comic translator.
-Translate the provided JSON array of OCR-extracted dialogue entries from ${srcDesc} into natural, contextual, expressive ${targetLang}.
-Each entry is an object {"t": original text, "c"?: ocr confidence, "k"?: kind}.
+Translate the provided Keyed JSON object of OCR-extracted comic lines from ${srcDesc} into natural, contextual, expressive ${targetLang}.
+Each input key ("b0", "b1", ...) maps to {"t": original text, "c"?: ocr confidence, "k"?: kind}.
 
 RULES FOR COMIC TRANSLATION:
-1. Translate dialogue, speech bubbles, inner monologues, and story narrations naturally, matching character emotion and comic context.
-   - If an OCR text line has minor typos or missing spaces (e.g. "WHAT'S GONC" -> "WHAT'S GOING"), automatically correct it using context and translate accurately.
-   - NEVER discard or omit valid character speech bubbles!
+1. Translate dialogue, speech bubbles, inner monologues, and narrations naturally, matching character emotion and comic context.
+   - Automatically correct minor OCR typos using surrounding context.
+   - NEVER merge two keys together and NEVER drop any input key!
 2. Brevity & Bubble Formatting:
    - Keep translations concise to fit inside comic bubbles.
-   - For longer sentences, you may insert a single newline character (\\n) at natural phrasing pauses to balance text across lines.
 3. FILTERING - ONLY OMIT TRUE JUNK & WATERMARKS:
-   - Scanlation credits, website URLs (e.g. "toonhey.com", "asura"), chapter numbers, or non-dialogue graphic noise: return empty string (""). Do NOT omit real character dialogue.
-${extras.length ? '\n' + extras.join('\n') : ''}`;
+   - Scanlation credits, website URLs, chapter numbers, or non-dialogue graphic noise: set that key's value to "" (empty string).
+4. STRICT KEYED JSON OUTPUT FORMAT:
+   - Return ONLY a valid JSON object with the EXACT same keys (${keys.join(', ')}) mapping each key directly to its translated string:
+   ${exampleJson}${extras.length ? '\n' + extras.join('\n') : ''}`;
 
-    return { systemPrompt, userPayload: JSON.stringify(payload), sendMap };
+    return { systemPrompt, userPayload: payloadJson, keys, sendMap };
   }
 
   /**
-   * Map a provider's payload-indexed results back to the original item order.
-   * Filtered items (sendMap === -1) and out-of-range results become "".
+   * Maps Keyed JSON results back to the original item order.
+   * Supports both `total: number` (legacy test callers) and `origTexts: string[]`
+   * (restoring passthrough `-2` strings and `undefined` missing keys).
    */
-  public static remapResults(results: string[], sendMap: number[], total: number): string[] {
+  public static remapResults(
+    results: (string | undefined)[],
+    sendMap: number[],
+    totalOrOrigTexts: number | string[]
+  ): string[] {
+    const origTexts: string[] | null = Array.isArray(totalOrOrigTexts) ? totalOrOrigTexts : null;
+    const total: number = Array.isArray(totalOrOrigTexts) ? totalOrOrigTexts.length : totalOrOrigTexts;
     const out = new Array<string>(total).fill('');
+
     for (let i = 0; i < total; i++) {
       const pi = sendMap[i];
-      if (pi >= 0 && pi < results.length) {
-        out[i] = results[pi];
+      if (pi === -1) {
+        out[i] = '';
+      } else if (pi === -2) {
+        out[i] = origTexts ? (origTexts[i] || '').trim() : '';
+      } else if (pi >= 0) {
+        const val = pi < results.length ? results[pi] : undefined;
+        if (val !== undefined) {
+          out[i] = val;
+        } else if (origTexts) {
+          out[i] = (origTexts[i] || '').trim();
+        }
       }
     }
     return out;
   }
 
-  /** Build prompt items from DialogueItem[] (or fall back to plain texts). */
   public static itemsFrom(
     texts: string[],
     ctx?: DialogueTranslateContext

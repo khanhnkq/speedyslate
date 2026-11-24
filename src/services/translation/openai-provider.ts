@@ -5,6 +5,7 @@ import { ApiKeyRotator } from './api-key-rotator';
 import { JsonExtractor } from './json-extractor';
 import { VisionBoxParser } from './vision-box-parser';
 import { PromptBuilder } from './prompt-builder';
+import { KeyedJson, MAX_DIALOGUE_BATCH_SIZE } from './keyed-json';
 import { OpenAIApiClient } from './openai-api-client';
 
 export class OpenAIProvider implements ITranslationProvider {
@@ -31,81 +32,52 @@ export class OpenAIProvider implements ITranslationProvider {
   ): Promise<string[]> {
     if (!texts.length) return [];
 
-    const rich = ctx?.items
-      ? PromptBuilder.buildDialogue(
-          PromptBuilder.itemsFrom(texts, ctx),
-          targetLang,
-          sourceLang,
-          {
-            glossaryPairs: PromptBuilder.parseGlossary(ctx.glossary),
-            chapterContext: ctx.chapterContext,
-            translateSfx: ctx.translateSfx
-          }
-        )
-      : null;
-    if (rich) {
-      rich.systemPrompt += `\n4. STRICT JSON OUTPUT FORMAT:
-   - Return ONLY a JSON object with a single key "translations" containing an array of strings with the EXACT same length and order as the input array.
-   {"translations": ["...", "", "..."]}`;
-    }
-    const srcDesc = (!sourceLang || sourceLang === 'auto') ? 'the original comic language (auto-detect)' : sourceLang;
-    const systemPrompt = rich?.systemPrompt ?? `You are an expert manga, manhwa, and comic translator from ${srcDesc} into ${targetLang}.
-Translate the provided JSON array of dialogue strings into natural, expressive comic speech in ${targetLang}.
+    const allPromptItems = PromptBuilder.itemsFrom(texts, ctx);
+    const glossaryPairs = PromptBuilder.parseGlossary(ctx?.glossary);
+    const itemChunks = KeyedJson.chunkArray(allPromptItems, MAX_DIALOGUE_BATCH_SIZE);
+    const textChunks = KeyedJson.chunkArray(texts, MAX_DIALOGUE_BATCH_SIZE);
+    const finalOutputs: string[] = [];
 
-RULES FOR TRANSLATION:
-1. Translate speech bubbles, inner thoughts, and narrator boxes naturally, keeping character tone, emotion, and brevity.
-   - If an OCR text line has minor typos or missing spaces (e.g. "WHAT'S GONC" -> "WHAT'S GOING"), automatically correct it using context and translate accurately.
-   - NEVER discard or omit valid character speech bubbles!
-2. Brevity & Bubble Formatting:
-   - Keep translations concise to fit nicely inside speech bubbles.
-   - For longer sentences, you may insert a single newline character (\\n) at natural pauses to balance text across lines.
-3. CRITICAL FILTERING - ONLY OMIT TRUE JUNK & WATERMARKS:
-   - Scanlation credits, website URLs, group plugs, Discord/Patreon links, chapter/page numbers, or single punctuation noise: return an EMPTY STRING ("") at that index! Do NOT omit real dialogue.
-4. STRICT JSON OUTPUT FORMAT:
-   - Return ONLY a JSON object with a single key "translations" containing an array of strings with the EXACT same length and order:
-   {"translations": ["CÓ CHUYỆN GÌ ĐANG XẢY RA TRONG ĐÓ THẾ?", "", "Hừ"]}`;
+    for (let c = 0; c < itemChunks.length; c++) {
+      const chunkTexts = textChunks[c];
+      const built = PromptBuilder.buildDialogue(itemChunks[c], targetLang, sourceLang, {
+        glossaryPairs,
+        chapterContext: ctx?.chapterContext,
+        translateSfx: ctx?.translateSfx
+      });
 
-    const data = await OpenAIApiClient.postChatCompletion({
-      baseUrl: this.baseUrl,
-      model: this.model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: rich ? rich.userPayload : JSON.stringify(texts) }
-      ],
-      keyRotator: this.keyRotator,
-      jsonObjectMode: true,
-      timeoutMs: 14000,
-      temperature: 0.3,
-      tag: 'OpenAI/Groq API',
-      onSuccess: (idx) => {
-        this.lastKeyIndex = idx;
+      if (built.keys.length === 0) {
+        finalOutputs.push(...PromptBuilder.remapResults([], built.sendMap, chunkTexts));
+        continue;
       }
-    });
 
-    const content = data?.choices?.[0]?.message?.content;
-    if (!content) {
-      throw new Error('API không trả về kết quả choices[0].message.content.');
-    }
+      const data = await OpenAIApiClient.postChatCompletion({
+        baseUrl: this.baseUrl,
+        model: this.model,
+        messages: [
+          { role: 'system', content: built.systemPrompt },
+          { role: 'user', content: built.userPayload }
+        ],
+        keyRotator: this.keyRotator,
+        jsonObjectMode: true,
+        timeoutMs: 14000,
+        temperature: 0.3,
+        tag: 'OpenAI/Groq API',
+        onSuccess: (idx) => {
+          this.lastKeyIndex = idx;
+        }
+      });
 
-    const toStrings = (arr: any[]): string[] => {
-      const strs = arr.map((item: any) => String(item ?? ''));
-      return rich ? PromptBuilder.remapResults(strs, rich.sendMap, texts.length) : strs;
-    };
-    const parsed = JsonExtractor.safeParse<any>(content, null);
-    if (Array.isArray(parsed)) {
-      return toStrings(parsed);
-    }
-    if (parsed && typeof parsed === 'object') {
-      if (Array.isArray(parsed.translations)) {
-        return toStrings(parsed.translations as any[]);
+      const content = data?.choices?.[0]?.message?.content;
+      if (!content) {
+        throw new Error('API không trả về kết quả choices[0].message.content.');
       }
-      const values = Object.values(parsed);
-      if (values.length === texts.length && values.every((v) => typeof v === 'string')) {
-        return values as string[];
-      }
+
+      const parsedValues = KeyedJson.parseKeyedResponse(content, built.keys);
+      finalOutputs.push(...PromptBuilder.remapResults(parsedValues, built.sendMap, chunkTexts));
     }
 
-    throw new Error('Không thể phân tích mảng câu dịch từ phản hồi API.');
+    return finalOutputs;
   }
 
   public async translateImage(

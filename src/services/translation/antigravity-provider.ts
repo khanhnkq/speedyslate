@@ -5,6 +5,8 @@ import { DebugLogger } from '../../shared/debug-logger';
 import { JsonExtractor } from './json-extractor';
 import { VisionBoxParser } from './vision-box-parser';
 import { InteractionsParser } from './interactions-parser';
+import { PromptBuilder } from './prompt-builder';
+import { KeyedJson, MAX_DIALOGUE_BATCH_SIZE } from './keyed-json';
 
 /**
  * AntigravityProvider: Implements translation via Google Gemini Interactions API
@@ -53,66 +55,54 @@ export class AntigravityProvider implements ITranslationProvider {
   /**
    * Hybrid OCR Mode: Translates OCR-extracted dialogue lines
    */
-  public async translateDialogues(texts: string[], targetLang: string, sourceLang?: string, _ctx?: DialogueTranslateContext): Promise<string[]> {
+  public async translateDialogues(
+    texts: string[],
+    targetLang: string,
+    sourceLang?: string,
+    ctx?: DialogueTranslateContext
+  ): Promise<string[]> {
     if (!texts.length) return [];
     if (!this.keyRotator.hasKeys()) {
       throw new Error('Chưa cấu hình Gemini API Key cho Antigravity. Vui lòng mở cài đặt extension.');
     }
 
-    const srcDesc = (!sourceLang || sourceLang === 'auto') ? 'original comic language (auto-detect)' : sourceLang;
-    const prompt = `You are an expert manga, manhwa, and comic translator.
-Translate the provided JSON array of OCR-extracted dialogue lines from ${srcDesc} into natural, contextual, expressive ${targetLang}.
-
-RULES FOR COMIC TRANSLATION:
-1. Translate dialogue, speech bubbles, inner monologues, and story narrations naturally, matching character emotion and comic context.
-   - If an OCR text line has minor typos or missing spaces (e.g. "WHAT'S GONC" -> "WHAT'S GOING"), automatically correct it using context.
-   - NEVER discard or omit valid character speech bubbles!
-2. Brevity & Bubble Formatting: Keep translations concise to fit inside comic speech bubbles.
-3. FILTERING: Scanlation credits, website URLs (e.g. "toonhey.com", "asura"), chapter numbers, or non-dialogue graphic noise: return empty string (""). Do NOT omit real character dialogue.
-4. STRICT OUTPUT FORMAT:
-Output MUST be a valid JSON array of strings with the EXACT same length and order as the input array.
-Return ONLY raw JSON, with NO surrounding explanation or conversational text:
-["text 1", "text 2"]
-
-INPUT TEXTS:
-${JSON.stringify(texts)}`;
-
-    const { agent, subModel } = this.parseModelConfig();
-    const requestBody: any = {
-      agent,
-      input: prompt,
-      environment: 'remote',
-      background: false
-    };
-
-    if (subModel) {
-      requestBody.agent_config = {
-        type: 'antigravity',
-        model: subModel
-      };
-    }
-
+    const allPromptItems = PromptBuilder.itemsFrom(texts, ctx);
+    const glossaryPairs = PromptBuilder.parseGlossary(ctx?.glossary);
+    const itemChunks = KeyedJson.chunkArray(allPromptItems, MAX_DIALOGUE_BATCH_SIZE);
+    const textChunks = KeyedJson.chunkArray(texts, MAX_DIALOGUE_BATCH_SIZE);
     const endpointPath = `${this.baseUrl}/interactions`;
-    const candidateText = await this.executeWithRetry(endpointPath, requestBody, 'Antigravity Agent');
+    const { agent, subModel } = this.parseModelConfig();
+    const finalOutputs: string[] = [];
 
-    const parsed = JsonExtractor.safeParse<any>(candidateText, null);
-    if (Array.isArray(parsed)) {
-      return parsed.map((item: any) => String(item ?? ''));
-    }
-    if (parsed && typeof parsed === 'object') {
-      const found = Object.values(parsed).find((v) => Array.isArray(v)) || Object.values(parsed);
-      if (Array.isArray(found) && found.length === texts.length) {
-        return (found as any[]).map((v: any) => String(v ?? ''));
+    for (let c = 0; c < itemChunks.length; c++) {
+      const chunkTexts = textChunks[c];
+      const built = PromptBuilder.buildDialogue(itemChunks[c], targetLang, sourceLang, {
+        glossaryPairs,
+        chapterContext: ctx?.chapterContext,
+        translateSfx: ctx?.translateSfx
+      });
+
+      if (built.keys.length === 0) {
+        finalOutputs.push(...PromptBuilder.remapResults([], built.sendMap, chunkTexts));
+        continue;
       }
+
+      const requestBody: any = {
+        agent,
+        input: `${built.systemPrompt}\n\nINPUT KEYED JSON:\n${built.userPayload}`,
+        environment: 'remote',
+        background: false
+      };
+      if (subModel) {
+        requestBody.agent_config = { type: 'antigravity', model: subModel };
+      }
+
+      const candidateText = await this.executeWithRetry(endpointPath, requestBody, 'Antigravity Agent');
+      const parsedValues = KeyedJson.parseKeyedResponse(candidateText, built.keys);
+      finalOutputs.push(...PromptBuilder.remapResults(parsedValues, built.sendMap, chunkTexts));
     }
 
-    // Line-by-line fallback
-    const lines = candidateText.split('\n').filter((l: string) => l.trim().length > 0);
-    if (lines.length === texts.length) {
-      return lines;
-    }
-
-    throw new Error('Không thể phân tích định dạng JSON kết quả từ Antigravity Agent.');
+    return finalOutputs;
   }
 
   /**

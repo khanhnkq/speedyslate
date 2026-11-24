@@ -1,6 +1,7 @@
 import { DialogueItem, DialogueTranslateContext } from '../../shared/types';
 import { ITranslationProvider } from './translation-provider.interface';
 import { PromptBuilder } from './prompt-builder';
+import { KeyedJson, MAX_DIALOGUE_BATCH_SIZE } from './keyed-json';
 import { ApiKeyRotator } from './api-key-rotator';
 import { DebugLogger } from '../../shared/debug-logger';
 import { JsonExtractor } from './json-extractor';
@@ -38,96 +39,70 @@ export class GeminiProvider implements ITranslationProvider {
       const antigravity = new AntigravityProvider(this.keyRotator.getRawKeys(), this.model, this.baseUrl);
       return antigravity.translateDialogues(texts, targetLang, sourceLang, ctx);
     }
-    const rich = ctx?.items
-      ? PromptBuilder.buildDialogue(
-          PromptBuilder.itemsFrom(texts, ctx),
-          targetLang,
-          sourceLang,
-          {
-            glossaryPairs: PromptBuilder.parseGlossary(ctx.glossary),
-            chapterContext: ctx.chapterContext,
-            translateSfx: ctx.translateSfx
-          }
-        )
-      : null;
-    const systemPrompt =
-      rich?.systemPrompt ??
-      `You are an expert manga, manhwa, and comic translator.
-Translate the provided JSON array of OCR-extracted dialogue lines from ${sourceLang && sourceLang !== 'auto' ? sourceLang : 'original comic language (auto-detect)'} into natural, contextual, expressive ${targetLang}.
 
-RULES FOR COMIC TRANSLATION:
-1. Translate dialogue, speech bubbles, inner monologues, and story narrations naturally, matching character emotion and comic context.
-   - If an OCR text line has minor typos or missing spaces (e.g. "WHAT'S GONC" -> "WHAT'S GOING", "ON IN THEREP" -> "ON IN THERE?"), automatically correct it using context and translate accurately.
-   - NEVER discard or omit valid character speech bubbles!
-2. Brevity & Bubble Formatting:
-   - Keep translations concise to fit inside comic bubbles.
-   - For longer sentences, you may insert a single newline character (\\n) at natural phrasing pauses to balance text across lines.
-3. FILTERING - ONLY OMIT TRUE JUNK & WATERMARKS:
-   - Scanlation credits, website URLs (e.g. "toonhey.com", "asura"), chapter numbers, or non-dialogue graphic noise: return empty string (""). Do NOT omit real character dialogue.`;
+    const allPromptItems = PromptBuilder.itemsFrom(texts, ctx);
+    const glossaryPairs = PromptBuilder.parseGlossary(ctx?.glossary);
+    const itemChunks = KeyedJson.chunkArray(allPromptItems, MAX_DIALOGUE_BATCH_SIZE);
+    const textChunks = KeyedJson.chunkArray(texts, MAX_DIALOGUE_BATCH_SIZE);
+    const finalOutputs: string[] = [];
 
-    const requestBody = {
-      system_instruction: {
-        parts: [{ text: systemPrompt }]
-      },
-      contents: [
-        {
-          parts: [{ text: rich ? rich.userPayload : JSON.stringify(texts) }]
-        }
-      ],
-      generationConfig: {
-        response_mime_type: 'application/json',
-        response_schema: {
-          type: 'ARRAY',
-          items: { type: 'STRING' }
-        },
-        temperature: 0.2
-      },
-      safetySettings: [
-        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-        { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
-      ]
-    };
+    for (let c = 0; c < itemChunks.length; c++) {
+      const chunkTexts = textChunks[c];
+      const built = PromptBuilder.buildDialogue(itemChunks[c], targetLang, sourceLang, {
+        glossaryPairs,
+        chapterContext: ctx?.chapterContext,
+        translateSfx: ctx?.translateSfx
+      });
 
-    const data = await GeminiApiClient.postGenerate({
-      baseUrl: this.baseUrl,
-      model: this.model,
-      requestBody,
-      keyRotator: this.keyRotator,
-      timeoutMs: 12000,
-      tag: 'Gemini API',
-      onSuccess: (idx) => { this.lastKeyIndex = idx; }
-    });
-    const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!candidateText) {
-      throw new Error('Gemini API không trả về nội dung hợp lệ.');
-    }
-
-    const toStrings = (arr: any[]): string[] => {
-      const strs = arr.map((item: any) => String(item ?? ''));
-      return rich ? PromptBuilder.remapResults(strs, rich.sendMap, texts.length) : strs;
-    };
-    const parsed = JsonExtractor.safeParse<any>(candidateText, null);
-    if (Array.isArray(parsed)) {
-      return toStrings(parsed);
-    }
-    if (parsed && typeof parsed === 'object') {
-      const expected = rich ? rich.sendMap.filter((i) => i >= 0).length : texts.length;
-      const found = Object.values(parsed).find((v) => Array.isArray(v)) || Object.values(parsed);
-      if (Array.isArray(found) && found.length === expected) {
-        return toStrings(found as any[]);
+      if (built.keys.length === 0) {
+        finalOutputs.push(...PromptBuilder.remapResults([], built.sendMap, chunkTexts));
+        continue;
       }
+
+      const requestBody = {
+        system_instruction: {
+          parts: [{ text: built.systemPrompt }]
+        },
+        contents: [
+          {
+            parts: [{ text: built.userPayload }]
+          }
+        ],
+        generationConfig: {
+          response_mime_type: 'application/json',
+          response_schema: KeyedJson.buildGeminiObjectSchema(built.keys),
+          temperature: 0.2
+        },
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
+        ]
+      };
+
+      const data = await GeminiApiClient.postGenerate({
+        baseUrl: this.baseUrl,
+        model: this.model,
+        requestBody,
+        keyRotator: this.keyRotator,
+        timeoutMs: 12000,
+        tag: 'Gemini API',
+        onSuccess: (idx) => {
+          this.lastKeyIndex = idx;
+        }
+      });
+      const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!candidateText) {
+        throw new Error('Gemini API không trả về nội dung hợp lệ.');
+      }
+
+      const parsedValues = KeyedJson.parseKeyedResponse(candidateText, built.keys);
+      finalOutputs.push(...PromptBuilder.remapResults(parsedValues, built.sendMap, chunkTexts));
     }
 
-    // Fallback: line-by-line parsing if json was completely broken
-    const lines = candidateText.split('\n').filter((l: string) => l.trim().length > 0);
-    if (lines.length === texts.length) {
-      return lines;
-    }
-
-    throw new Error('Không thể phân tích định dạng JSON kết quả từ Gemini.');
+    return finalOutputs;
   }
 
   /**

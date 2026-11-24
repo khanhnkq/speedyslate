@@ -42,10 +42,9 @@ describe('SiteMatcher clean zero-default allowlist & privacy audit', () => {
     const root = path.resolve(__dirname, '../..');
     const files = [
       ...walkFiles(path.join(root, 'src')),
-      ...walkFiles(path.join(root, 'docs')),
+      ...(fs.existsSync(path.join(root, 'docs')) ? walkFiles(path.join(root, 'docs')) : []),
       ...(fs.existsSync(path.join(root, 'dist/chrome')) ? walkFiles(path.join(root, 'dist/chrome')) : []),
       ...(fs.existsSync(path.join(root, 'dist/firefox')) ? walkFiles(path.join(root, 'dist/firefox')) : []),
-      path.join(root, 'test-harness/harness.ts'),
       path.join(root, 'AGENTS.md'),
       path.join(root, 'manifest.chrome.json'),
       path.join(root, 'manifest.firefox.json'),

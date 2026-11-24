@@ -14,9 +14,7 @@
     "package:firefox": "npm run build:firefox && python3 scripts/package.py firefox",
     "package": "npm run build && python3 scripts/package.py all",
     "type-check": "tsc --noEmit",
-    "test": "vitest run",
-    "build:harness": "esbuild test-harness/harness.ts --bundle --format=esm --target=es2022 --outfile=test-harness/harness.bundle.js",
-    "test:ocr": "npm run build:harness && python3 -m http.server 8642"
+    "test": "vitest run"
   },
   "keywords": [
     "webextension",

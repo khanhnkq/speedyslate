@@ -10,6 +10,7 @@ import { EraseMasker } from './erase-masker';
 import { BubbleFiller } from './bubble-filler';
 import { BubbleAggregator } from './bubble-aggregator';
 import { BubbleChamberExtractor } from './bubble-chamber';
+import { ChamberGapScanner } from './chamber-gap-scanner';
 
 // Configure ONNX Runtime Web for Dedicated Worker environment
 // wasmPaths must be local — AMO Compliance: No remote code execution
@@ -264,12 +265,27 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
             }
             boxes.length = 0;
             boxes.push(...lineBoxes);
+
+            // Recover unread lines tucked into top spikes or touching narrow side
+            // borders inside speech bubbles where partial lines were already found
+            const fullPageImg = ctx.getImageData(0, 0, width, height);
+            const gapBoxes = ChamberGapScanner.recoverMissedLines(fullPageImg, boxes);
+            if (gapBoxes.length > 0) {
+              boxes.push(...gapBoxes);
+            }
             boxes.sort((a, b) => a.y - b.y);
             const detMs = performance.now() - tDet;
 
             // 2. Text Recognition (runs serialized on recSession)
             const tRec = performance.now();
-            const dialogues = await recEngine.recognizeBoxes(canvas, boxes);
+            const rawDialogues = await recEngine.recognizeBoxes(canvas, boxes);
+            const dialogues = rawDialogues.filter((d) => {
+              const isFromGap = gapBoxes.some(
+                (gb) => Math.abs(gb.x - d.box.x) <= 2 && Math.abs(gb.y - d.box.y) <= 2
+              );
+              if (!isFromGap) return true;
+              return (d.originalText.match(/\p{L}/gu) || []).length >= 2;
+            });
             const recMs = performance.now() - tRec;
 
             // 3. Per-line erase patches: inpaint glyph pixels only, so the

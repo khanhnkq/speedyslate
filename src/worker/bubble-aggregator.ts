@@ -123,8 +123,13 @@ export class BubbleAggregator {
         for (let j = 0; j < sorted.length; j++) {
           if (used.has(j)) continue;
           const candidate = sorted[j];
-          if (Boolean(lastLine.isDarkBackground) !== Boolean(candidate.isDarkBackground)) continue;
           const candBox = candidate.box;
+          if (
+            Boolean(lastLine.isDarkBackground) !== Boolean(candidate.isDarkBackground) &&
+            (Math.max(lastBox.height, candBox.height) >= 28 || candBox.y - (lastBox.y + lastBox.height) > 14)
+          ) {
+            continue;
+          }
 
           // 1. Font-size / Line-height consistency (lines in the same bubble have similar font size)
           const hRatio = Math.min(lastBox.height, candBox.height) / Math.max(lastBox.height, candBox.height);
@@ -194,8 +199,13 @@ export class BubbleAggregator {
         for (let j = 0; j < sorted.length; j++) {
           if (used.has(j)) continue;
           const candidate = sorted[j];
-          if (Boolean(lastLine.isDarkBackground) !== Boolean(candidate.isDarkBackground)) continue;
           const candBox = candidate.box;
+          if (
+            Boolean(lastLine.isDarkBackground) !== Boolean(candidate.isDarkBackground) &&
+            (Math.max(lastBox.height, candBox.height) >= 28 || candBox.y - (lastBox.y + lastBox.height) > 14)
+          ) {
+            continue;
+          }
 
           // 1. Font-size / Column-width consistency (columns in the same bubble share font size)
           const wRatio = Math.min(lastBox.width, candBox.width) / Math.max(lastBox.width, candBox.width);

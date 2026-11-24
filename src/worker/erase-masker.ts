@@ -125,12 +125,12 @@ export class EraseMasker {
       }
       if (coverage > total * 0.01) {
         guidedActive = true;
-        // The DB map is a SHRUNK text polygon whose edge slices through the
-        // anti-aliased ring of each glyph. Dilate the inside region 2px so the
-        // ring is masked too — otherwise the ring stays unmasked, becomes the
-        // donor and repaints the letter cores as grey speckles.
-        for (let i = 0; i < total; i++) inside[i] = tm[i] > 0.12 ? 1 : 0;
-        for (let it = 0; it < 2; it++) {
+        // DBNet prob map is a shrunk centerline polygon (~60% of stroke span);
+        // dilate proportionally to crop height so word-end letters inside the
+        // unclipped box are covered without reaching outer crop corners.
+        const mapExpand = Math.max(4, Math.min(10, Math.round(h * 0.16)));
+        for (let i = 0; i < total; i++) inside[i] = tm[i] > 0.10 ? 1 : 0;
+        for (let it = 0; it < mapExpand; it++) {
           const prev = inside.slice();
           for (let yy = 0; yy < h; yy++) {
             for (let xx = 0; xx < w; xx++) {
@@ -203,7 +203,7 @@ export class EraseMasker {
 
     // 4. Dynamic halo dilation (2..5px scaled by line height) so fill donors
     // sit beyond anti-aliased glyph rings and artist white halos (fuchidori).
-    const dilRadius = guidedActive ? 2 : InpaintSolver.computeDilationRadius(h);
+    const dilRadius = InpaintSolver.computeDilationRadius(h);
     const dil = new Uint8Array(total);
     dil.set(mask);
     for (let it = 0; it < dilRadius; it++) {

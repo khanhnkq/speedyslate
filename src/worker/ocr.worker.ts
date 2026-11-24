@@ -362,10 +362,10 @@ function attachErasePatches(canvas: OffscreenCanvas, items: DialogueItem[], text
         }
       }
 
-      const bx = Math.max(0, b.box.x - 24);
-      const by = Math.max(0, b.box.y - 24);
-      const bw = Math.min(canvas.width - bx, b.box.width + 48);
-      const bh = Math.min(canvas.height - by, b.box.height + 48);
+      const bx = Math.max(0, b.box.x - 16);
+      const by = Math.max(0, b.box.y - 16);
+      const bw = Math.min(canvas.width - bx, b.box.width + 32);
+      const bh = Math.min(canvas.height - by, b.box.height + 32);
       if (bw < 12 || bh < 12) continue;
       const img = ctx.getImageData(bx, by, bw, bh);
       const patch = BubbleFiller.buildBubblePatch(img, bx, by, b.lineBoxes);

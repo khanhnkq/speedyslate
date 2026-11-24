@@ -47,15 +47,24 @@ export class BubbleFiller {
       const p = i * 4;
       lumas[i] = (data[p] * 77 + data[p + 1] * 150 + data[p + 2] * 29) >> 8;
     }
-    const sorted = lumas.slice().sort();
-    const med = sorted[total >> 1];
+    // Compute paper median strictly inside the inner 50% core (never polluted
+    // by dark hair/screentone in the outer safety margin around narrow bubbles).
+    const coreSamples: number[] = [];
+    const mx0 = Math.floor(w * 0.25), mx1 = Math.ceil(w * 0.75);
+    const my0 = Math.floor(h * 0.25), my1 = Math.ceil(h * 0.75);
+    for (let yy = my0; yy < my1; yy++) {
+      for (let xx = mx0; xx < mx1; xx++) {
+        coreSamples.push(lumas[yy * w + xx]);
+      }
+    }
+    coreSamples.sort((a, b) => a - b);
+    const med = coreSamples.length > 0 ? coreSamples[coreSamples.length >> 1] : 240;
 
-    // Ink = decisive deviation from the dominant interior tone. A 90-step
-    // gap keeps light-grey AA and shading floodable while real strokes,
-    // borders and screentone dots stay barriers.
+    // Ink = decisive deviation from the dominant interior tone (55 steps stops
+    // at even anti-aliased thin bubble borders so flood never leaks outward).
     const ink = new Uint8Array(total);
     for (let i = 0; i < total; i++) {
-      if (Math.abs(lumas[i] - med) > 90) ink[i] = 1;
+      if (Math.abs(lumas[i] - med) > 55) ink[i] = 1;
     }
 
     // Interior flood — seeds are the non-ink pixels of the centre band,

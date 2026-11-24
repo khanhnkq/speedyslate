@@ -1,4 +1,5 @@
-import { BoundingBox, DialogueItem } from '../shared/types';
+import { BoundingBox, DialogueItem, DialogueKind } from '../shared/types';
+import { VerticalText } from './vertical-text';
 
 /**
  * Aggregates individual text lines into unified dialogue bubbles
@@ -7,8 +8,10 @@ import { BoundingBox, DialogueItem } from '../shared/types';
  */
 export class BubbleAggregator {
   /**
-   * Groups vertically stacked text lines that belong to the SAME comic speech bubble.
-   * Strictly enforces font-size consistency, bounded vertical gaps, and strong horizontal alignment.
+   * Groups text lines that belong to the SAME comic speech bubble.
+   * Horizontal lines use font-height consistency, bounded vertical gaps, and horizontal alignment.
+   * Vertical CJK columns (`isVertical`) group by font-width consistency, bounded horizontal gaps,
+   * and vertical alignment, then join text right-to-left.
    * Guarantees that separate speech bubbles are never merged into one giant cluster.
    */
   public static aggregateDialogues(
@@ -16,8 +19,82 @@ export class BubbleAggregator {
     imageWidth: number,
     imageHeight: number
   ): DialogueItem[] {
-    if (items.length <= 1) return items;
+    if (items.length === 0) return items;
+    if (items.length === 1) return [this.enrichSingleItem(items[0])];
 
+    // Vertical CJK columns follow a separate grouping path (columns, not stacked lines)
+    const horizontalItems = items.filter((d) => d.isVertical !== true);
+    const verticalItems = items.filter((d) => d.isVertical === true);
+
+    const groups: DialogueItem[][] = [
+      ...this.groupHorizontalLines(horizontalItems),
+      ...this.groupVerticalColumns(verticalItems)
+    ];
+
+    // 2. Build aggregated DialogueItem for each speech bubble
+    const rawDialogues = groups.map((group, groupIdx) =>
+      this.buildBubble(group, groupIdx, imageWidth, imageHeight)
+    );
+
+    // 3. Drop detection junk that would paint over artwork:
+    //  - a giant box (>=15% of the page) holding very little text is a
+    //    misdetected art region, not real lettering;
+    //  - non-dialogue items of <=1 alphanumeric char are page-number noise.
+    const pageArea = imageWidth * imageHeight;
+    const sane = rawDialogues.filter((d) => {
+      const normLen = d.originalText.replace(/[^a-zA-Z0-9]/g, '').length;
+      const areaRatio = (d.box.width * d.box.height) / Math.max(1, pageArea);
+      if (areaRatio > 0.15 && normLen < 20) return false;
+      if (d.kind !== 'dialogue' && normLen <= 1) return false;
+      return true;
+    });
+
+    // 4. Deduplicate overlapping bubbles (e.g. multiple detector hits for same
+    // bubble). Longer-text bubbles register first so line-level fragments lose.
+    const deduped: DialogueItem[] = [];
+    const byLen = [...sane].sort((a, b) => b.originalText.length - a.originalText.length);
+    for (const d of byLen) {
+      const isDuplicate = deduped.some((existing) => {
+        const iou = this.calculateIoU(existing.box, d.box);
+        if (iou > 0.45) return true;
+
+        const textA = existing.originalText.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const textB = d.originalText.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (!textA || !textB) return false;
+        if (iou > 0.20 && (textA === textB || textA.includes(textB) || textB.includes(textA))) {
+          return true;
+        }
+
+        // Contained fragment: the smaller box sits mostly inside the bigger
+        // one and its (short) text is fuzzily present in the bigger text —
+        // e.g. "GOOD" inside "OH THEY ARE HAVING A GOOD TIME". Long bubbles
+        // sharing words with a neighbouring blob are never dropped this way.
+        const kb = existing.box;
+        const ib = d.box;
+        const ix = Math.max(0, Math.min(kb.x + kb.width, ib.x + ib.width) - Math.max(kb.x, ib.x));
+        const iy = Math.max(0, Math.min(kb.y + kb.height, ib.y + ib.height) - Math.max(kb.y, ib.y));
+        const minArea = Math.min(kb.width * kb.height, ib.width * ib.height);
+        if (minArea > 0 && (ix * iy) / minArea >= 0.5) {
+          const [shorter, longer] = textA.length >= textB.length ? [textB, textA] : [textA, textB];
+          if (longer.includes(shorter)) return true;
+          if (shorter.length <= 15 && this.lcsRatio(shorter, longer) >= 0.75) return true;
+        }
+        return false;
+      });
+
+      if (!isDuplicate) {
+        deduped.push(d);
+      }
+    }
+
+    return deduped.sort((a, b) => a.box.y - b.box.y);
+  }
+
+  /**
+   * Original grouping path for horizontal lines: vertically stacked lines inside
+   * the same speech bubble (font-height similarity, bounded vertical gap, horizontal overlap).
+   */
+  private static groupHorizontalLines(items: DialogueItem[]): DialogueItem[][] {
     // 1. Sort top to bottom by Y coordinate
     const sorted = [...items].sort((a, b) => a.box.y - b.box.y);
     const groups: DialogueItem[][] = [];
@@ -80,77 +157,261 @@ export class BubbleAggregator {
       groups.push(currentGroup);
     }
 
-    // 2. Build aggregated DialogueItem for each speech bubble
-    const rawDialogues = groups.map((group, groupIdx) => {
-      // Sort lines in group top to bottom
-      group.sort((a, b) => a.box.y - b.box.y);
+    return groups;
+  }
 
-      // Join sentences naturally
-      let fullText = '';
-      for (let k = 0; k < group.length; k++) {
-        const lineText = group[k].originalText.trim();
-        if (k === 0) {
-          fullText = lineText;
-        } else if (fullText.endsWith('-')) {
-          // Word hyphenation across lines e.g. "dis-" + "cover" -> "discover"
-          fullText = fullText.slice(0, -1) + lineText;
-        } else {
-          fullText += ' ' + lineText;
+  /**
+   * Grouping path for vertical CJK text columns: columns of the same bubble sit
+   * side-by-side (read right-to-left) with similar font width and shared vertical band.
+   */
+  private static groupVerticalColumns(items: DialogueItem[]): DialogueItem[][] {
+    // 1. Sort right to left by X coordinate (CJK column reading order)
+    const sorted = [...items].sort((a, b) => b.box.x - a.box.x);
+    const groups: DialogueItem[][] = [];
+    const used = new Set<number>();
+
+    for (let i = 0; i < sorted.length; i++) {
+      if (used.has(i)) continue;
+
+      const currentGroup: DialogueItem[] = [sorted[i]];
+      used.add(i);
+
+      let changed = true;
+      while (changed) {
+        changed = false;
+        // Compare candidate strictly against the immediate preceding column in the current bubble
+        const lastLine = currentGroup[currentGroup.length - 1];
+        const lastBox = lastLine.box;
+        const lastCenterY = lastBox.y + lastBox.height / 2;
+
+        for (let j = 0; j < sorted.length; j++) {
+          if (used.has(j)) continue;
+          const candidate = sorted[j];
+          const candBox = candidate.box;
+
+          // 1. Font-size / Column-width consistency (columns in the same bubble share font size)
+          const wRatio = Math.min(lastBox.width, candBox.width) / Math.max(lastBox.width, candBox.width);
+          if (wRatio < 0.45) continue;
+
+          // 2. Strict horizontal gap between adjacent columns
+          const horizontalGap = Math.max(
+            lastBox.x - (candBox.x + candBox.width),
+            candBox.x - (lastBox.x + lastBox.width)
+          );
+          const maxAllowedGap = Math.max(lastBox.width, candBox.width) * 2.8;
+          const isHorizontallyAdjacent =
+            horizontalGap >= -lastBox.width * 0.5 && horizontalGap <= maxAllowedGap;
+          if (!isHorizontallyAdjacent) continue;
+
+          // 3. Vertical overlap and center alignment (columns share a vertical band)
+          const yOverlap = Math.max(
+            0,
+            Math.min(lastBox.y + lastBox.height, candBox.y + candBox.height) - Math.max(lastBox.y, candBox.y)
+          );
+          const minH = Math.min(lastBox.height, candBox.height);
+          const maxH = Math.max(lastBox.height, candBox.height);
+          const overlapRatio = yOverlap / Math.max(1, minH);
+
+          const candCenterY = candBox.y + candBox.height / 2;
+          const centerDiffRatio = Math.abs(lastCenterY - candCenterY) / Math.max(1, maxH);
+
+          const isAligned = overlapRatio >= 0.25 || centerDiffRatio <= 0.45;
+          if (!isAligned) continue;
+
+          // Matched: add candidate column to bubble
+          currentGroup.push(candidate);
+          used.add(j);
+          changed = true;
+          break; // re-evaluate from the newly added column
         }
       }
 
-      // Compute bounding box encompassing all lines with slight breathing room
-      const minX = Math.min(...group.map((d) => d.box.x));
-      const minY = Math.min(...group.map((d) => d.box.y));
-      const maxX = Math.max(...group.map((d) => d.box.x + d.box.width));
-      const maxY = Math.max(...group.map((d) => d.box.y + d.box.height));
-
-      const padX = 4;
-      const padY = 3;
-
-      const finalX = Math.max(0, minX - padX);
-      const finalY = Math.max(0, minY - padY);
-      const finalW = Math.min(imageWidth - finalX, maxX - minX + padX * 2);
-      const finalH = Math.min(imageHeight - finalY, maxY - minY + padY * 2);
-
-      const unifiedBox: BoundingBox = {
-        x: Math.round(finalX),
-        y: Math.round(finalY),
-        width: Math.round(finalW),
-        height: Math.round(finalH)
-      };
-
-      const isDarkBackground = group.filter((d) => d.isDarkBackground).length > group.length / 2;
-
-      return {
-        id: `dialogue-bubble-${Date.now()}-${groupIdx + 1}`,
-        box: unifiedBox,
-        originalText: fullText,
-        isDarkBackground
-      };
-    });
-
-    // 3. Deduplicate overlapping bubbles (e.g. multiple detector hits for same bubble)
-    const deduped: DialogueItem[] = [];
-    for (const d of rawDialogues) {
-      const isDuplicate = deduped.some((existing) => {
-        const iou = this.calculateIoU(existing.box, d.box);
-        if (iou > 0.45) return true;
-
-        const textA = existing.originalText.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const textB = d.originalText.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (textA && textB && (textA === textB || textA.includes(textB) || textB.includes(textA))) {
-          if (iou > 0.20) return true;
-        }
-        return false;
-      });
-
-      if (!isDuplicate) {
-        deduped.push(d);
-      }
+      groups.push(currentGroup);
     }
 
-    return deduped;
+    return groups;
+  }
+
+  /**
+   * Builds one aggregated bubble DialogueItem from a member group:
+   * joined text, union box, and majority/mean metadata (kind, bgColor, confidence, lineBoxes).
+   */
+  private static buildBubble(
+    group: DialogueItem[],
+    groupIdx: number,
+    imageWidth: number,
+    imageHeight: number
+  ): DialogueItem {
+    const isVertical = group[0].isVertical === true;
+
+    // Sort members into reading order: top->bottom for horizontal, right->left for vertical
+    if (isVertical) {
+      VerticalText.groupColumns(group);
+    } else {
+      group.sort((a, b) => a.box.y - b.box.y);
+    }
+
+    const fullText = this.joinLineTexts(group);
+
+    // Compute bounding box encompassing all lines with slight breathing room
+    const minX = Math.min(...group.map((d) => d.box.x));
+    const minY = Math.min(...group.map((d) => d.box.y));
+    const maxX = Math.max(...group.map((d) => d.box.x + d.box.width));
+    const maxY = Math.max(...group.map((d) => d.box.y + d.box.height));
+
+    const padX = 4;
+    const padY = 3;
+
+    const finalX = Math.max(0, minX - padX);
+    const finalY = Math.max(0, minY - padY);
+    const finalW = Math.min(imageWidth - finalX, maxX - minX + padX * 2);
+    const finalH = Math.min(imageHeight - finalY, maxY - minY + padY * 2);
+
+    const unifiedBox: BoundingBox = {
+      x: Math.round(finalX),
+      y: Math.round(finalY),
+      width: Math.round(finalW),
+      height: Math.round(finalH)
+    };
+
+    const isDarkBackground = group.filter((d) => d.isDarkBackground).length > group.length / 2;
+
+    const bubble: DialogueItem = {
+      id: `dialogue-bubble-${Date.now()}-${groupIdx + 1}`,
+      box: unifiedBox,
+      originalText: fullText,
+      isDarkBackground,
+      kind: this.majorityKind(group),
+      lineBoxes: group.map((d) => d.box)
+    };
+
+    const confidence = this.meanConfidence(group);
+    if (confidence !== undefined) bubble.confidence = confidence;
+
+    const bgColor = this.majorityBgColor(group);
+    if (bgColor !== undefined) bubble.bgColor = bgColor;
+
+    const linePatches = group
+      .map((d) => d.erasePatch)
+      .filter((p): p is NonNullable<typeof p> => p !== undefined);
+    const bubblePatch = group
+      .map((d) => d.bubblePatch)
+      .find((p) => p !== undefined);
+    // Whole-interior repaint already covers glyphs+specks inside the
+    // bubble; keep member line patches only where they reach outside the
+    // bubble crop (lines bleeding past the bubble edge).
+    const erasePatches = bubblePatch
+      ? [bubblePatch, ...linePatches.filter((p) =>
+          p.x < bubblePatch.x || p.y < bubblePatch.y ||
+          p.x + p.width > bubblePatch.x + bubblePatch.width ||
+          p.y + p.height > bubblePatch.y + bubblePatch.height)]
+      : linePatches;
+    if (erasePatches.length > 0) bubble.erasePatches = erasePatches;
+
+    if (isVertical) bubble.isVertical = true;
+
+    return bubble;
+  }
+
+  /** Joins member texts in order, stitching hyphenated words across lines. */
+  private static joinLineTexts(group: DialogueItem[]): string {
+    let fullText = '';
+    for (let k = 0; k < group.length; k++) {
+      const lineText = group[k].originalText.trim();
+      if (k === 0) {
+        fullText = lineText;
+      } else if (fullText.endsWith('-')) {
+        // Word hyphenation across lines e.g. "dis-" + "cover" -> "discover"
+        fullText = fullText.slice(0, -1) + lineText;
+      } else {
+        fullText += ' ' + lineText;
+      }
+    }
+    return fullText;
+  }
+
+  /** Majority vote over member kind values; defaults to 'dialogue' when none are tagged. */
+  private static majorityKind(group: DialogueItem[]): DialogueKind {
+    const counts = new Map<DialogueKind, number>();
+    for (const d of group) {
+      if (d.kind === undefined) continue;
+      counts.set(d.kind, (counts.get(d.kind) ?? 0) + 1);
+    }
+    let best: DialogueKind = 'dialogue';
+    let bestCount = 0;
+    for (const [kind, count] of counts) {
+      if (count > bestCount) {
+        best = kind;
+        bestCount = count;
+      }
+    }
+    return best;
+  }
+
+  /** Mean of member confidence values; undefined when no member carries one. */
+  private static meanConfidence(group: DialogueItem[]): number | undefined {
+    let sum = 0;
+    let count = 0;
+    for (const d of group) {
+      if (typeof d.confidence === 'number') {
+        sum += d.confidence;
+        count++;
+      }
+    }
+    return count > 0 ? sum / count : undefined;
+  }
+
+  /** Most frequent member bgColor hex; undefined when no member carries one. */
+  private static majorityBgColor(group: DialogueItem[]): string | undefined {
+    const counts = new Map<string, number>();
+    for (const d of group) {
+      if (!d.bgColor) continue;
+      counts.set(d.bgColor, (counts.get(d.bgColor) ?? 0) + 1);
+    }
+    let best: string | undefined;
+    let bestCount = 0;
+    for (const [hex, count] of counts) {
+      if (count > bestCount) {
+        best = hex;
+        bestCount = count;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Single ungrouped item: keeps its box/id/text untouched but surfaces the same
+   * metadata contract (kind default, lineBoxes) so downstream per-line erase works.
+   */
+  private static enrichSingleItem(item: DialogueItem): DialogueItem {
+    const enriched: DialogueItem = { ...item };
+    if (enriched.kind === undefined) enriched.kind = 'dialogue';
+    if (enriched.lineBoxes === undefined) enriched.lineBoxes = [item.box];
+    if (enriched.erasePatches === undefined && (item.erasePatch || item.bubblePatch)) {
+      enriched.erasePatches = item.bubblePatch
+        ? (item.erasePatch ? [item.bubblePatch, item.erasePatch] : [item.bubblePatch])
+        : [item.erasePatch!];
+    }
+    return enriched;
+  }
+
+  /** Longest-common-subsequence length of `short` found in `long`, normalized. */
+  private static lcsRatio(short: string, long: string): number {
+    const m = short.length;
+    const n = long.length;
+    if (m === 0 || n === 0) return 0;
+    let prev = new Int32Array(n + 1);
+    let cur = new Int32Array(n + 1);
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        cur[j] = short[i - 1] === long[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+      }
+      const tmp = prev;
+      prev = cur;
+      cur = tmp;
+      cur.fill(0);
+    }
+    return prev[n] / m;
   }
 
   private static calculateIoU(a: BoundingBox, b: BoundingBox): number {

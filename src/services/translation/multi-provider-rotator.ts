@@ -1,4 +1,4 @@
-import { DialogueItem, ExtensionSettings, ProviderType } from '../../shared/types';
+import { DialogueItem, DialogueTranslateContext, ExtensionSettings, ProviderType } from '../../shared/types';
 import { ITranslationProvider } from './translation-provider.interface';
 import { TranslationProviderFactory } from './provider-factory';
 import { DebugLogger } from '../../shared/debug-logger';
@@ -125,7 +125,12 @@ export class MultiProviderRotator implements ITranslationProvider {
   /**
    * Translates dialogue lines with round-robin rotation and automatic failover
    */
-  public async translateDialogues(texts: string[], targetLang: string, sourceLang?: string): Promise<string[]> {
+  public async translateDialogues(
+    texts: string[],
+    targetLang: string,
+    sourceLang?: string,
+    ctx?: DialogueTranslateContext
+  ): Promise<string[]> {
     if (!texts.length) return [];
 
     const candidates = this.getOrderedCandidates(false);
@@ -137,7 +142,7 @@ export class MultiProviderRotator implements ITranslationProvider {
 
       try {
         const provider = TranslationProviderFactory.createSingleProvider(providerType, this.settings);
-        const result = await provider.translateDialogues(texts, targetLang, sourceLang);
+        const result = await provider.translateDialogues(texts, targetLang, sourceLang, ctx);
 
         MultiProviderRotator.clearCooldown(providerType);
         this.lastActiveProviderType = providerType;

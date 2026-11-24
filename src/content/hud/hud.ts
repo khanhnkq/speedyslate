@@ -1,4 +1,5 @@
 import { ChubbyIcons } from './chubby-icons';
+import { HudMenu } from './hud-menu';
 
 export type HudState = 'idle' | 'translating' | 'paused' | 'completed' | 'error';
 
@@ -10,14 +11,17 @@ export interface HudCallbacks {
 }
 
 /**
- * SpeedySlate Minimalist Floating Action Pill (Single Unified Button)
+ * SpeedySlate Minimalist Floating Action Pill
+ * Compact icon-only translate button + adjacent menu button in one HUD group.
  * Aesthetic: Minimalist Anime Editorial
- * Palette: #111111 (Ink), #F5F5F4 (Paper), #A855F7 (Accent)
+ * Palette: #111111 (Ink), #F5F5F4 (Paper), #E52E3D (Accent)
  * Following Single Responsibility Principle (SRP) & strictly under 500 lines.
  */
 export class FloatingHud {
+  private container: HTMLDivElement;
   private btn: HTMLButtonElement;
-  private menu: HTMLElement | null = null;
+  private menuBtn: HTMLButtonElement;
+  private hudMenu: HudMenu;
   private toast: HTMLElement | null = null;
   private toastTimer: any = null;
 
@@ -38,9 +42,39 @@ export class FloatingHud {
     this.callbacks = callbacks;
     this.injectStyles();
 
+    this.container = document.createElement('div');
+    this.container.id = 'speedyslate-hud';
+
     this.btn = document.createElement('button');
     this.btn.id = 'speedyslate-floating-btn';
-    this.initButton();
+    this.btn.setAttribute('type', 'button');
+
+    this.menuBtn = document.createElement('button');
+    this.menuBtn.id = 'speedyslate-hud-menu-btn';
+    this.menuBtn.setAttribute('type', 'button');
+    this.menuBtn.title = 'Mở menu SpeedySlate';
+    this.menuBtn.innerHTML = ChubbyIcons.dots(15, '#FFFFFF');
+
+    this.container.appendChild(this.btn);
+    this.container.appendChild(this.menuBtn);
+
+    this.hudMenu = new HudMenu({
+      isVisible: () => this.isVisible,
+      onToggleVisibility: () => {
+        this.isVisible = !this.isVisible;
+        this.callbacks.onToggleVisibility(this.isVisible);
+        this.render();
+      },
+      onClearChapterCache: () => {
+        this.callbacks.onClearChapterCache();
+        this.setState('idle');
+      },
+      onClearAllCache: () => {
+        this.callbacks.onClearAllCache?.();
+        this.setState('idle');
+      }
+    });
+
     this.setupEvents();
     this.mountToBody();
     this.render();
@@ -55,38 +89,50 @@ export class FloatingHud {
         from { transform: rotate(0deg); }
         to { transform: rotate(360deg); }
       }
-      #speedyslate-floating-btn {
+      #speedyslate-hud {
         position: fixed;
         bottom: 24px;
         right: 24px;
         z-index: 2147483647;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        user-select: none;
+      }
+      #speedyslate-floating-btn,
+      #speedyslate-hud-menu-btn {
         background: #0D0D11;
         color: #FFFFFF;
         border: 1px solid #26262E;
         border-radius: 8px;
-        padding: 8px 14px;
         height: 38px;
         font-family: 'Space Grotesk', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         font-size: 11px;
         font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        justify-content: center;
+        gap: 6px;
         cursor: pointer;
         user-select: none;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
         transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
         outline: none;
         white-space: nowrap;
+        padding: 0 10px;
       }
-      #speedyslate-floating-btn:hover {
+      #speedyslate-hud-menu-btn {
+        width: 38px;
+        padding: 0;
+      }
+      #speedyslate-floating-btn:hover,
+      #speedyslate-hud-menu-btn:hover {
         border-color: #E52E3D;
         transform: translateY(-1px);
         box-shadow: 0 6px 24px rgba(0, 0, 0, 0.8), 0 0 16px rgba(229, 46, 61, 0.4);
       }
-      #speedyslate-floating-btn:active {
+      #speedyslate-floating-btn:active,
+      #speedyslate-hud-menu-btn:active {
         transform: translateY(0px) scale(0.98);
       }
       .speedyslate-menu-item {
@@ -109,16 +155,11 @@ export class FloatingHud {
     (document.head || document.documentElement).appendChild(style);
   }
 
-  private initButton(): void {
-    this.btn.setAttribute('type', 'button');
-    this.btn.title = 'SpeedySlate • Bấm để dịch • Chuột phải mở tùy chọn';
-  }
-
   private mountToBody(): void {
     const tryMount = () => {
       const root = document.body || document.documentElement;
-      if (root && !document.getElementById('speedyslate-floating-btn')) {
-        root.appendChild(this.btn);
+      if (root && !document.getElementById('speedyslate-hud')) {
+        root.appendChild(this.container);
       } else if (!root) {
         setTimeout(tryMount, 50);
       }
@@ -131,14 +172,14 @@ export class FloatingHud {
   }
 
   private setupEvents(): void {
-    // 1. Mouse Dragging vs Clicking
-    this.btn.addEventListener('mousedown', (e: MouseEvent) => {
+    // 1. Mouse Dragging vs Clicking — drag moves the whole HUD group
+    const onDragStart = (e: MouseEvent) => {
       if (e.button !== 0) return; // Only primary click
       this.hasMoved = false;
       this.startX = e.clientX;
       this.startY = e.clientY;
 
-      const rect = this.btn.getBoundingClientRect();
+      const rect = this.container.getBoundingClientRect();
       this.initialLeft = rect.left;
       this.initialTop = rect.top;
 
@@ -147,13 +188,13 @@ export class FloatingHud {
         const dy = moveEvent.clientY - this.startY;
         if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
           this.hasMoved = true;
-          this.closeMenu();
+          this.hudMenu.close();
         }
         if (this.hasMoved) {
-          this.btn.style.bottom = 'auto';
-          this.btn.style.right = 'auto';
-          this.btn.style.left = `${this.initialLeft + dx}px`;
-          this.btn.style.top = `${this.initialTop + dy}px`;
+          this.container.style.bottom = 'auto';
+          this.container.style.right = 'auto';
+          this.container.style.left = `${this.initialLeft + dx}px`;
+          this.container.style.top = `${this.initialTop + dy}px`;
         }
       };
 
@@ -164,30 +205,55 @@ export class FloatingHud {
 
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
-    });
+    };
 
-    // 2. Left Click Handler
+    this.btn.addEventListener('mousedown', onDragStart);
+    this.menuBtn.addEventListener('mousedown', onDragStart);
+
+    // 2. Left Click Handlers
     this.btn.addEventListener('click', (e: MouseEvent) => {
       if (this.hasMoved) {
         e.preventDefault();
         e.stopPropagation();
         return;
       }
-      this.closeMenu();
+      this.hudMenu.close();
       this.handlePrimaryClick();
     });
 
-    // 3. Right Click: Context Menu for Secondary Actions
+    this.menuBtn.addEventListener('click', (e: MouseEvent) => {
+      if (this.hasMoved) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      e.stopPropagation();
+      this.hudMenu.toggle(this.menuBtn);
+    });
+
+    // 3. Right Click on either button: open the same menu
     this.btn.addEventListener('contextmenu', (e: MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      this.toggleMenu();
+      this.hudMenu.toggle(this.menuBtn);
+    });
+    this.menuBtn.addEventListener('contextmenu', (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.hudMenu.toggle(this.menuBtn);
     });
 
     // Close menu on click outside
     document.addEventListener('click', (e: MouseEvent) => {
-      if (this.menu && !this.menu.contains(e.target as Node) && e.target !== this.btn) {
-        this.closeMenu();
+      if (
+        this.hudMenu.isOpen &&
+        !this.hudMenu.contains(e.target as Node) &&
+        e.target !== this.menuBtn &&
+        e.target !== this.btn &&
+        !this.menuBtn.contains(e.target as Node) &&
+        !this.btn.contains(e.target as Node)
+      ) {
+        this.hudMenu.close();
       }
     });
   }
@@ -207,92 +273,6 @@ export class FloatingHud {
       this.isVisible = !this.isVisible;
       this.callbacks.onToggleVisibility(this.isVisible);
       this.render();
-    }
-  }
-
-  private toggleMenu(): void {
-    if (this.menu) {
-      this.closeMenu();
-    } else {
-      this.openMenu();
-    }
-  }
-
-  private openMenu(): void {
-    this.closeMenu();
-
-    const rect = this.btn.getBoundingClientRect();
-    this.menu = document.createElement('div');
-    this.menu.id = 'speedyslate-floating-menu';
-    Object.assign(this.menu.style, {
-      position: 'fixed',
-      left: `${Math.max(12, rect.left)}px`,
-      bottom: `${window.innerHeight - rect.top + 8}px`,
-      zIndex: '2147483647',
-      background: '#0D0D11',
-      border: '1px solid #26262E',
-      borderRadius: '8px',
-      overflow: 'hidden',
-      boxShadow: '0 8px 30px rgba(0, 0, 0, 0.7), 0 0 14px rgba(229, 46, 61, 0.15)',
-      minWidth: '170px',
-      userSelect: 'none'
-    });
-
-    // Item 1: Toggle Visibility
-    const itemVis = document.createElement('div');
-    itemVis.className = 'speedyslate-menu-item';
-    itemVis.innerHTML = `
-      ${ChubbyIcons.eye(15, '#E52E3D')}
-      <span>${this.isVisible ? 'Ẩn bản dịch (Xem gốc)' : 'Hiện lại bản dịch'}</span>
-    `;
-    itemVis.onclick = (e) => {
-      e.stopPropagation();
-      this.isVisible = !this.isVisible;
-      this.callbacks.onToggleVisibility(this.isVisible);
-      this.closeMenu();
-      this.render();
-    };
-
-    // Item 2: Clear chapter cache & re-translate
-    const itemClear = document.createElement('div');
-    itemClear.className = 'speedyslate-menu-item';
-    itemClear.style.borderTop = '1px solid #26262E';
-    itemClear.innerHTML = `
-      ${ChubbyIcons.broom(15, '#E52E3D')}
-      <span>Xóa cache chương này</span>
-    `;
-    itemClear.onclick = (e) => {
-      e.stopPropagation();
-      this.closeMenu();
-      this.callbacks.onClearChapterCache();
-      this.setState('idle');
-    };
-
-    // Item 3: Clear all cache
-    const itemClearAll = document.createElement('div');
-    itemClearAll.className = 'speedyslate-menu-item';
-    itemClearAll.style.borderTop = '1px solid #26262E';
-    itemClearAll.innerHTML = `
-      ${ChubbyIcons.trash(15, '#FF3B47')}
-      <span>Dọn sạch toàn bộ cache</span>
-    `;
-    itemClearAll.onclick = (e) => {
-      e.stopPropagation();
-      this.closeMenu();
-      this.callbacks.onClearAllCache?.();
-      this.setState('idle');
-    };
-
-    this.menu.appendChild(itemVis);
-    this.menu.appendChild(itemClear);
-    this.menu.appendChild(itemClearAll);
-    document.body.appendChild(this.menu);
-  }
-
-  private closeMenu(): void {
-    if (this.menu) {
-      this.menu.remove();
-      this.menu = null;
     }
   }
 
@@ -325,11 +305,11 @@ export class FloatingHud {
       if (this.toastTimer) clearTimeout(this.toastTimer);
     }
 
-    const rect = this.btn.getBoundingClientRect();
+    const rect = this.container.getBoundingClientRect();
     this.toast = document.createElement('div');
     Object.assign(this.toast.style, {
       position: 'fixed',
-      left: `${Math.max(12, rect.left)}px`,
+      right: `${window.innerWidth - rect.right}px`,
       bottom: `${window.innerHeight - rect.top + 8}px`,
       zIndex: '2147483647',
       background: '#140A0B',
@@ -359,47 +339,38 @@ export class FloatingHud {
     }, 6000);
   }
 
+  private badge(text: string, opts: { alert?: boolean } = {}): string {
+    const border = opts.alert ? '#E52E3D' : '#4D1217';
+    const bg = opts.alert ? '#1C0A0B' : '#140A0B';
+    return `<span style="background: ${bg}; border: 1px solid ${border}; color: #FFA5AC; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${text}</span>`;
+  }
+
   private render(): void {
+    const count = `${this.translatedCount}/${this.totalCount}`;
     switch (this.state) {
       case 'idle': {
-        const badge = this.totalCount > 0
-          ? `<span style="background: #140A0B; border: 1px solid #4D1217; color: #FFA5AC; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${this.totalCount}</span>`
-          : '';
-        this.btn.innerHTML = `
-          ${ChubbyIcons.bolt(15, '#E52E3D')}
-          <span>DỊCH TRUYỆN</span>
-          ${badge}
-        `;
+        const badge = this.totalCount > 0 ? this.badge(`${this.totalCount}`) : '';
+        this.btn.innerHTML = `${ChubbyIcons.bolt(15, '#E52E3D')}${badge}`;
         this.btn.style.background = '#0D0D11';
         this.btn.style.borderColor = '#26262E';
         this.btn.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.7)';
-        this.btn.title = 'Bấm để bắt đầu dịch truyện • Chuột phải mở menu';
+        this.btn.title = 'Bấm để bắt đầu dịch truyện';
         break;
       }
       case 'error': {
-        const badge = this.totalCount > 0
-          ? `<span style="background: #1C0A0B; border: 1px solid #E52E3D; color: #FFA5AC; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${this.translatedCount}/${this.totalCount}</span>`
-          : '';
-        this.btn.innerHTML = `
-          ${ChubbyIcons.alert(15, '#FF3B47')}
-          <span style="color: #FFA5AC;">LỖI DỊCH</span>
-          ${badge}
-        `;
+        const badge = this.totalCount > 0 ? this.badge(count, { alert: true }) : '';
+        this.btn.innerHTML = `${ChubbyIcons.alert(15, '#FF3B47')}${badge}`;
         this.btn.style.background = '#180D0E';
         this.btn.style.borderColor = '#FF3B47';
         this.btn.style.boxShadow = '0 6px 24px rgba(0, 0, 0, 0.8), 0 0 18px rgba(255, 59, 71, 0.35)';
-        this.btn.title = 'Có lỗi xảy ra khi dịch • Bấm để thử lại • Chuột phải mở menu';
+        this.btn.title = 'Có lỗi xảy ra khi dịch • Bấm để thử lại';
         break;
       }
       case 'translating': {
         const badge = this.totalCount > 0
-          ? `<span style="background: #1C0A0B; border: 1px solid #E52E3D; color: #FFA5AC; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${this.translatedCount}/${this.totalCount}</span>`
+          ? this.badge(count, { alert: true })
           : '<span style="color: #E52E3D; font-size: 10px;">...</span>';
-        this.btn.innerHTML = `
-          ${ChubbyIcons.spinner(15, '#E52E3D')}
-          <span>ĐANG DỊCH</span>
-          ${badge}
-        `;
+        this.btn.innerHTML = `${ChubbyIcons.spinner(15, '#E52E3D')}${badge}`;
         this.btn.style.background = '#0D0D11';
         this.btn.style.borderColor = '#E52E3D';
         this.btn.style.boxShadow = '0 6px 24px rgba(0, 0, 0, 0.8), 0 0 18px rgba(229, 46, 61, 0.45)';
@@ -408,17 +379,13 @@ export class FloatingHud {
       }
       case 'paused': {
         const badge = this.totalCount > 0
-          ? `<span style="background: #181820; border: 1px solid #33333E; color: #FFFFFF; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${this.translatedCount}/${this.totalCount}</span>`
+          ? `<span style="background: #181820; border: 1px solid #33333E; color: #FFFFFF; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${count}</span>`
           : '';
-        this.btn.innerHTML = `
-          ${ChubbyIcons.play(14, '#FFFFFF')}
-          <span>TẠM DỪNG</span>
-          ${badge}
-        `;
+        this.btn.innerHTML = `${ChubbyIcons.play(14, '#FFFFFF')}${badge}`;
         this.btn.style.background = '#0D0D11';
         this.btn.style.borderColor = '#26262E';
         this.btn.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.7)';
-        this.btn.title = 'Bấm để tiếp tục dịch';
+        this.btn.title = 'Đang tạm dừng • Bấm để tiếp tục dịch';
         break;
       }
       case 'completed': {
@@ -426,21 +393,12 @@ export class FloatingHud {
         this.btn.style.borderColor = '#26262E';
         this.btn.style.boxShadow = '0 4px 20px rgba(0, 0, 0, 0.7)';
         if (this.isVisible) {
-          const badge = this.totalCount > 0
-            ? `<span style="background: #140A0B; border: 1px solid #4D1217; color: #FFA5AC; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 700;">${this.totalCount}</span>`
-            : '';
-          this.btn.innerHTML = `
-            ${ChubbyIcons.checkCircle(15, '#E52E3D')}
-            <span>ĐÃ DỊCH</span>
-            ${badge}
-          `;
-          this.btn.title = 'Bấm để ẩn bản dịch (Xem tranh gốc) • Chuột phải mở menu';
+          const badge = this.totalCount > 0 ? this.badge(`${this.totalCount}`) : '';
+          this.btn.innerHTML = `${ChubbyIcons.checkCircle(15, '#E52E3D')}${badge}`;
+          this.btn.title = 'Đã dịch xong • Bấm để ẩn bản dịch (xem tranh gốc)';
         } else {
-          this.btn.innerHTML = `
-            ${ChubbyIcons.eye(15, '#FFFFFF')}
-            <span>XEM ẢNH GỐC</span>
-          `;
-          this.btn.title = 'Bấm để hiện lại bản dịch • Chuột phải mở menu';
+          this.btn.innerHTML = `${ChubbyIcons.eye(15, '#FFFFFF')}`;
+          this.btn.title = 'Đang xem ảnh gốc • Bấm để hiện lại bản dịch';
         }
         break;
       }
@@ -448,8 +406,8 @@ export class FloatingHud {
   }
 
   public destroy(): void {
-    this.closeMenu();
-    this.btn?.remove();
+    this.hudMenu.close();
+    this.container?.remove();
     this.toast?.remove();
     const styleEl = document.getElementById('speedyslate-hud-styles');
     if (styleEl) styleEl.remove();

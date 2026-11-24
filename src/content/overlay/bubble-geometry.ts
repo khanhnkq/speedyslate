@@ -67,10 +67,13 @@ export class BubbleGeometry {
       pixelWidth = (widthPct / 100) * naturalWidth;
     }
 
-    // Add subtle, calibrated padding (+3px) to guarantee original text ink is covered
-    // without pushing past the curved borders of circular comic balloons into the drawing
-    const padPixelX = item.normBox ? 3 : 5;
-    const padPixelY = item.normBox ? 3 : 4;
+    // Add subtle, calibrated padding to guarantee original text ink is covered
+    // without pushing past the curved borders of circular comic balloons into
+    // the drawing. Dialogue bubbles render as ellipses whose corners recede
+    // inward, so they need a wider pad to still cover corner text.
+    const ellipseBoost = item.kind === 'free' || item.kind === 'sfx' ? 1 : 1.6;
+    const padPixelX = (item.normBox ? 3 : 5) * ellipseBoost;
+    const padPixelY = (item.normBox ? 3 : 4) * ellipseBoost;
     const expandX = (padPixelX * 2 / Math.max(1, naturalWidth)) * 100;
     const expandY = (padPixelY * 2 / Math.max(1, naturalHeight)) * 100;
 

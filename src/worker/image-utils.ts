@@ -1,5 +1,6 @@
 import * as ort from 'onnxruntime-web';
 import { BoundingBox } from '../shared/types';
+import { PixelRegion } from './color-sampler';
 
 /**
  * Utility functions for image manipulation and ONNX tensor preparation
@@ -106,6 +107,38 @@ export class ImageUtils {
     }
 
     return new ort.Tensor('float32', floatData, [1, 3, targetH, targetW]);
+  }
+
+  /**
+   * Builds a batched Rec tensor [B, 3, targetH, bucketW] from same-height crops.
+   * Normalization: (v / 255.0 - 0.5) / 0.5; right padding stays 0.0.
+   */
+  public static imageToRecTensorBatch(
+    datas: PixelRegion[],
+    bucketW: number,
+    targetH: number
+  ): ort.Tensor {
+    const channelSize = targetH * bucketW;
+    const floatData = new Float32Array(datas.length * 3 * channelSize);
+
+    for (let i = 0; i < datas.length; i++) {
+      const src = datas[i];
+      const w = Math.min(src.width, bucketW);
+      const base = i * 3 * channelSize;
+
+      for (let h = 0; h < targetH; h++) {
+        for (let x = 0; x < w; x++) {
+          const srcIdx = (h * src.width + x) * 4;
+          const dstIdx = base + h * bucketW + x;
+
+          floatData[dstIdx] = (src.data[srcIdx] / 255.0 - 0.5) / 0.5;
+          floatData[dstIdx + channelSize] = (src.data[srcIdx + 1] / 255.0 - 0.5) / 0.5;
+          floatData[dstIdx + channelSize * 2] = (src.data[srcIdx + 2] / 255.0 - 0.5) / 0.5;
+        }
+      }
+    }
+
+    return new ort.Tensor('float32', floatData, [datas.length, 3, targetH, bucketW]);
   }
 
   /**

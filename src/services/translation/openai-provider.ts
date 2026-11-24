@@ -1,9 +1,10 @@
-import { DialogueItem } from '../../shared/types';
+import { DialogueItem, DialogueTranslateContext } from '../../shared/types';
 import { DebugLogger } from '../../shared/debug-logger';
 import { ITranslationProvider } from './translation-provider.interface';
 import { ApiKeyRotator } from './api-key-rotator';
 import { JsonExtractor } from './json-extractor';
 import { VisionBoxParser } from './vision-box-parser';
+import { PromptBuilder } from './prompt-builder';
 
 export class OpenAIProvider implements ITranslationProvider {
   private baseUrl: string;
@@ -21,12 +22,34 @@ export class OpenAIProvider implements ITranslationProvider {
     return this.keyRotator.count;
   }
 
-  public async translateDialogues(texts: string[], targetLang: string, sourceLang?: string): Promise<string[]> {
+  public async translateDialogues(
+    texts: string[],
+    targetLang: string,
+    sourceLang?: string,
+    ctx?: DialogueTranslateContext
+  ): Promise<string[]> {
     if (!texts.length) return [];
 
     const endpoint = `${this.baseUrl}/chat/completions`;
+    const rich = ctx?.items
+      ? PromptBuilder.buildDialogue(
+          PromptBuilder.itemsFrom(texts, ctx),
+          targetLang,
+          sourceLang,
+          {
+            glossaryPairs: PromptBuilder.parseGlossary(ctx.glossary),
+            chapterContext: ctx.chapterContext,
+            translateSfx: ctx.translateSfx
+          }
+        )
+      : null;
+    if (rich) {
+      rich.systemPrompt += `\n4. STRICT JSON OUTPUT FORMAT:
+   - Return ONLY a JSON object with a single key "translations" containing an array of strings with the EXACT same length and order as the input array.
+   {"translations": ["...", "", "..."]}`;
+    }
     const srcDesc = (!sourceLang || sourceLang === 'auto') ? 'the original comic language (auto-detect)' : sourceLang;
-    const systemPrompt = `You are an expert manga, manhwa, and comic translator from ${srcDesc} into ${targetLang}.
+    const systemPrompt = rich?.systemPrompt ?? `You are an expert manga, manhwa, and comic translator from ${srcDesc} into ${targetLang}.
 Translate the provided JSON array of dialogue strings into natural, expressive comic speech in ${targetLang}.
 
 RULES FOR TRANSLATION:
@@ -49,7 +72,7 @@ RULES FOR TRANSLATION:
       model: this.model,
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: JSON.stringify(texts) }
+        { role: 'user', content: rich ? rich.userPayload : JSON.stringify(texts) }
       ],
       response_format: { type: 'json_object' },
       temperature: 0.3
@@ -194,13 +217,17 @@ RULES FOR TRANSLATION:
       throw new Error('API không trả về kết quả choices[0].message.content.');
     }
 
+    const toStrings = (arr: any[]): string[] => {
+      const strs = arr.map((item: any) => String(item ?? ''));
+      return rich ? PromptBuilder.remapResults(strs, rich.sendMap, texts.length) : strs;
+    };
     const parsed = JsonExtractor.safeParse<any>(content, null);
     if (Array.isArray(parsed)) {
-      return parsed.map((item: any) => String(item ?? ''));
+      return toStrings(parsed);
     }
     if (parsed && typeof parsed === 'object') {
       if (Array.isArray(parsed.translations)) {
-        return (parsed.translations as any[]).map((item: any) => String(item ?? ''));
+        return toStrings(parsed.translations as any[]);
       }
       const values = Object.values(parsed);
       if (values.length === texts.length && values.every((v) => typeof v === 'string')) {

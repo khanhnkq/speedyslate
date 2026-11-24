@@ -1,10 +1,12 @@
-import { DialogueItem } from '../../shared/types';
+import { DialogueItem, DialogueTranslateContext } from '../../shared/types';
 import { ITranslationProvider } from './translation-provider.interface';
+import { PromptBuilder } from './prompt-builder';
 import { ApiKeyRotator } from './api-key-rotator';
 import { DebugLogger } from '../../shared/debug-logger';
 import { JsonExtractor } from './json-extractor';
 import { VisionBoxParser } from './vision-box-parser';
 import { AntigravityProvider } from './antigravity-provider';
+import { GeminiApiClient } from './gemini-api-client';
 
 export class GeminiProvider implements ITranslationProvider {
   private keyRotator: ApiKeyRotator;
@@ -22,18 +24,36 @@ export class GeminiProvider implements ITranslationProvider {
     return this.keyRotator.count;
   }
 
-  public async translateDialogues(texts: string[], targetLang: string, sourceLang?: string): Promise<string[]> {
+  public async translateDialogues(
+    texts: string[],
+    targetLang: string,
+    sourceLang?: string,
+    ctx?: DialogueTranslateContext
+  ): Promise<string[]> {
     if (!texts.length) return [];
     if (!this.keyRotator.hasKeys()) {
       throw new Error('Chưa cấu hình Gemini API Key. Vui lòng mở cài đặt extension.');
     }
     if (this.model.includes('antigravity')) {
       const antigravity = new AntigravityProvider(this.keyRotator.getRawKeys(), this.model, this.baseUrl);
-      return antigravity.translateDialogues(texts, targetLang, sourceLang);
+      return antigravity.translateDialogues(texts, targetLang, sourceLang, ctx);
     }
-    const srcDesc = (!sourceLang || sourceLang === 'auto') ? 'original comic language (auto-detect)' : sourceLang;
-    const systemPrompt = `You are an expert manga, manhwa, and comic translator.
-Translate the provided JSON array of OCR-extracted dialogue lines from ${srcDesc} into natural, contextual, expressive ${targetLang}.
+    const rich = ctx?.items
+      ? PromptBuilder.buildDialogue(
+          PromptBuilder.itemsFrom(texts, ctx),
+          targetLang,
+          sourceLang,
+          {
+            glossaryPairs: PromptBuilder.parseGlossary(ctx.glossary),
+            chapterContext: ctx.chapterContext,
+            translateSfx: ctx.translateSfx
+          }
+        )
+      : null;
+    const systemPrompt =
+      rich?.systemPrompt ??
+      `You are an expert manga, manhwa, and comic translator.
+Translate the provided JSON array of OCR-extracted dialogue lines from ${sourceLang && sourceLang !== 'auto' ? sourceLang : 'original comic language (auto-detect)'} into natural, contextual, expressive ${targetLang}.
 
 RULES FOR COMIC TRANSLATION:
 1. Translate dialogue, speech bubbles, inner monologues, and story narrations naturally, matching character emotion and comic context.
@@ -51,7 +71,7 @@ RULES FOR COMIC TRANSLATION:
       },
       contents: [
         {
-          parts: [{ text: JSON.stringify(texts) }]
+          parts: [{ text: rich ? rich.userPayload : JSON.stringify(texts) }]
         }
       ],
       generationConfig: {
@@ -71,150 +91,33 @@ RULES FOR COMIC TRANSLATION:
       ]
     };
 
-    let resp: Response | null = null;
-    const limitCheck = this.keyRotator.areAllKeysRateLimited();
-    if (limitCheck.allLimited) {
-      const sec = Math.ceil(limitCheck.minRemainingMs / 1000);
-      throw new Error(`Tất cả (${this.keyRotator.count}) API key đều đang bị giới hạn (429 Rate Limit). Vui lòng đợi ${sec}s.`);
-    }
-
-    const maxRetries = Math.min(this.keyRotator.count, 3);
-    let lastErrorMsg = '';
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      const activeKey = this.keyRotator.getNextKey();
-      const maskedKey = ApiKeyRotator.maskKey(activeKey);
-      const endpoint = `${this.baseUrl}/models/${this.model}:generateContent?key=${activeKey}`;
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
-
-      try {
-        resp = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(requestBody),
-          signal: controller.signal
-        });
-      } catch (netErr: any) {
-        clearTimeout(timeoutId);
-        if (netErr.name === 'AbortError') {
-          lastErrorMsg = `Quá thời gian phản hồi từ Gemini API (timeout 12s). Key ${maskedKey}`;
-        } else {
-          lastErrorMsg = `Lỗi mạng: ${netErr?.message || netErr}`;
-        }
-        DebugLogger.warn('Gemini API', `${lastErrorMsg}. Đang đổi key hoặc thử lại...`);
-        if (attempt < maxRetries && this.keyRotator.hasMultipleKeys) {
-          continue;
-        }
-        if (attempt < maxRetries) {
-          await new Promise((r) => setTimeout(r, 1000));
-          continue;
-        }
-        break;
-      }
-      clearTimeout(timeoutId);
-
-      if (resp.ok) {
-        this.lastKeyIndex = this.keyRotator.getKeyIndex(activeKey);
-        this.keyRotator.markSuccess(activeKey);
-        break;
-      }
-
-      const errText = await resp.text();
-      let errorDetail = `HTTP ${resp.status}`;
-      try {
-        const json = JSON.parse(errText);
-        if (json.error?.message) {
-          errorDetail = `(${resp.status}): ${json.error.message}`;
-        }
-      } catch {
-        errorDetail = `(${resp.status}): ${errText.substring(0, 120)}`;
-      }
-      lastErrorMsg = `Gemini API lỗi ${errorDetail}`;
-
-      // 1. HTTP 401 / 403: Invalid Key or Project Denied
-      if (resp.status === 401 || resp.status === 403) {
-        this.keyRotator.markFailed(activeKey, `HTTP ${resp.status}`);
-        DebugLogger.warn(
-          'Gemini API',
-          `Key ${maskedKey} bị từ chối ${errorDetail}. Đang tự động chuyển sang key khác...`
-        );
-        if (attempt < maxRetries && this.keyRotator.hasMultipleKeys) {
-          continue;
-        }
-        break;
-      }
-
-      // 2. HTTP 429: Rate Limit
-      if (resp.status === 429) {
-        const retryAfterSec = Number(resp.headers.get('retry-after'));
-        const backoffMs = !isNaN(retryAfterSec) && retryAfterSec > 0
-          ? retryAfterSec * 1000
-          : 2500 * Math.pow(1.4, Math.min(attempt, 3)) + Math.random() * 500;
-
-        this.keyRotator.markRateLimited(activeKey, backoffMs);
-
-        const checkAll = this.keyRotator.areAllKeysRateLimited();
-        if (checkAll.allLimited) {
-          const sec = Math.ceil(checkAll.minRemainingMs / 1000);
-          throw new Error(`Tất cả (${this.keyRotator.count}) API key đều đang bị giới hạn (429 Rate Limit). Vui lòng đợi ${sec}s.`);
-        }
-
-        if (this.keyRotator.hasMultipleKeys && attempt < maxRetries) {
-          DebugLogger.warn('Gemini API', `Key ${maskedKey} gặp 429 (Rate limit). Chuyển sang key khác ngay...`);
-          continue;
-        }
-
-        if (attempt < maxRetries) {
-          DebugLogger.warn('Gemini API', `429 Rate limited. Đang chờ ${Math.round(backoffMs)}ms...`);
-          await new Promise((r) => setTimeout(r, backoffMs));
-          continue;
-        }
-        break;
-      }
-
-      // 3. HTTP 5xx: Server Errors (500, 502, 503, 504)
-      if (resp.status >= 500) {
-        this.keyRotator.markRateLimited(activeKey, 10000);
-        DebugLogger.warn('Gemini API', `Key ${maskedKey} gặp lỗi máy chủ ${errorDetail}. Đang thử key khác...`);
-        if (this.keyRotator.hasMultipleKeys && attempt < maxRetries) {
-          continue;
-        }
-        if (attempt < maxRetries) {
-          await new Promise((r) => setTimeout(r, 1500));
-          continue;
-        }
-        break;
-      }
-
-      // Other 4xx client errors
-      break;
-    }
-
-    if (!resp || !resp.ok) {
-      if (this.keyRotator.hasMultipleKeys) {
-        throw new Error(`Gemini API: Đã thử qua ${this.keyRotator.count} API keys nhưng đều thất bại. ${lastErrorMsg}`);
-      }
-      throw new Error(lastErrorMsg || `Gemini API lỗi (${resp?.status || 0})`);
-    }
-
-    const data = await resp.json();
+    const data = await GeminiApiClient.postGenerate({
+      baseUrl: this.baseUrl,
+      model: this.model,
+      requestBody,
+      keyRotator: this.keyRotator,
+      timeoutMs: 12000,
+      tag: 'Gemini API',
+      onSuccess: (idx) => { this.lastKeyIndex = idx; }
+    });
     const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!candidateText) {
       throw new Error('Gemini API không trả về nội dung hợp lệ.');
     }
 
+    const toStrings = (arr: any[]): string[] => {
+      const strs = arr.map((item: any) => String(item ?? ''));
+      return rich ? PromptBuilder.remapResults(strs, rich.sendMap, texts.length) : strs;
+    };
     const parsed = JsonExtractor.safeParse<any>(candidateText, null);
     if (Array.isArray(parsed)) {
-      return parsed.map((item: any) => String(item ?? ''));
+      return toStrings(parsed);
     }
     if (parsed && typeof parsed === 'object') {
+      const expected = rich ? rich.sendMap.filter((i) => i >= 0).length : texts.length;
       const found = Object.values(parsed).find((v) => Array.isArray(v)) || Object.values(parsed);
-      if (Array.isArray(found) && found.length === texts.length) {
-        return (found as any[]).map((v: any) => String(v ?? ''));
+      if (Array.isArray(found) && found.length === expected) {
+        return toStrings(found as any[]);
       }
     }
 
@@ -321,135 +224,15 @@ CRITICAL NEGATIVE CONSTRAINTS:
       ]
     };
 
-    let resp: Response | null = null;
-    const limitCheck = this.keyRotator.areAllKeysRateLimited();
-    if (limitCheck.allLimited) {
-      const sec = Math.ceil(limitCheck.minRemainingMs / 1000);
-      throw new Error(`Tất cả (${this.keyRotator.count}) API key đều đang bị giới hạn (429 Rate Limit). Vui lòng đợi ${sec}s.`);
-    }
-
-    const maxRetries = Math.min(this.keyRotator.count, 3);
-    let lastErrorMsg = '';
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      const activeKey = this.keyRotator.getNextKey();
-      const maskedKey = ApiKeyRotator.maskKey(activeKey);
-      const endpoint = `${this.baseUrl}/models/${this.model}:generateContent?key=${activeKey}`;
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 24000);
-
-      try {
-        resp = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody),
-          signal: controller.signal
-        });
-      } catch (netErr: any) {
-        clearTimeout(timeoutId);
-        if (netErr.name === 'AbortError') {
-          lastErrorMsg = `Quá thời gian phản hồi từ Gemini API (timeout 24s). Key ${maskedKey}`;
-        } else {
-          lastErrorMsg = `Lỗi mạng: ${netErr?.message || netErr}`;
-        }
-        DebugLogger.warn('Gemini Vision API', `${lastErrorMsg}. Đang đổi key hoặc thử lại...`);
-        if (attempt < maxRetries && this.keyRotator.hasMultipleKeys) {
-          continue;
-        }
-        if (attempt < maxRetries) {
-          await new Promise((r) => setTimeout(r, 1000));
-          continue;
-        }
-        break;
-      }
-      clearTimeout(timeoutId);
-
-      if (resp.ok) {
-        this.lastKeyIndex = this.keyRotator.getKeyIndex(activeKey);
-        this.keyRotator.markSuccess(activeKey);
-        break;
-      }
-
-      const errText = await resp.text();
-      let errorDetail = `HTTP ${resp.status}`;
-      try {
-        const json = JSON.parse(errText);
-        if (json.error?.message) {
-          errorDetail = `(${resp.status}): ${json.error.message}`;
-        }
-      } catch {
-        errorDetail = `(${resp.status}): ${errText.substring(0, 120)}`;
-      }
-      lastErrorMsg = `Gemini Vision API lỗi ${errorDetail}`;
-
-      // 1. HTTP 401 / 403: Invalid Key or Project Denied
-      if (resp.status === 401 || resp.status === 403) {
-        this.keyRotator.markFailed(activeKey, `HTTP ${resp.status}`);
-        DebugLogger.warn(
-          'Gemini Vision API',
-          `Key ${maskedKey} bị từ chối ${errorDetail}. Đang tự động chuyển sang key khác...`
-        );
-        if (attempt < maxRetries && this.keyRotator.hasMultipleKeys) {
-          continue;
-        }
-        break;
-      }
-
-      // 2. HTTP 429: Rate Limit
-      if (resp.status === 429) {
-        const retryAfterSec = Number(resp.headers.get('retry-after'));
-        const backoffMs = !isNaN(retryAfterSec) && retryAfterSec > 0
-          ? retryAfterSec * 1000
-          : 2500 * Math.pow(1.4, Math.min(attempt, 3)) + Math.random() * 500;
-
-        this.keyRotator.markRateLimited(activeKey, backoffMs);
-
-        const checkAll = this.keyRotator.areAllKeysRateLimited();
-        if (checkAll.allLimited) {
-          const sec = Math.ceil(checkAll.minRemainingMs / 1000);
-          throw new Error(`Tất cả (${this.keyRotator.count}) API key đều đang bị giới hạn (429 Rate Limit). Vui lòng đợi ${sec}s.`);
-        }
-
-        if (this.keyRotator.hasMultipleKeys && attempt < maxRetries) {
-          DebugLogger.warn('Gemini Vision API', `Key ${maskedKey} gặp 429 (Rate limit). Chuyển sang key khác ngay...`);
-          continue;
-        }
-
-        if (attempt < maxRetries) {
-          DebugLogger.warn('Gemini Vision API', `429 Rate limited. Đang chờ ${Math.round(backoffMs)}ms...`);
-          await new Promise((r) => setTimeout(r, backoffMs));
-          continue;
-        }
-        break;
-      }
-
-      // 3. HTTP 5xx: Server Errors (500, 502, 503, 504)
-      if (resp.status >= 500) {
-        this.keyRotator.markRateLimited(activeKey, 10000);
-        DebugLogger.warn('Gemini Vision API', `Key ${maskedKey} gặp lỗi máy chủ ${errorDetail}. Đang thử key khác...`);
-        if (this.keyRotator.hasMultipleKeys && attempt < maxRetries) {
-          continue;
-        }
-        if (attempt < maxRetries) {
-          await new Promise((r) => setTimeout(r, 1500));
-          continue;
-        }
-        break;
-      }
-
-      // Other 4xx client errors
-      break;
-    }
-
-    if (!resp || !resp.ok) {
-      if (this.keyRotator.hasMultipleKeys) {
-        throw new Error(`Gemini Vision API: Đã thử qua ${this.keyRotator.count} API keys nhưng đều thất bại. ${lastErrorMsg}`);
-      }
-      throw new Error(lastErrorMsg || `Gemini Vision API lỗi (${resp?.status || 0})`);
-    }
-
-    const data = await resp.json();
+    const data = await GeminiApiClient.postGenerate({
+      baseUrl: this.baseUrl,
+      model: this.model,
+      requestBody,
+      keyRotator: this.keyRotator,
+      timeoutMs: 24000,
+      tag: 'Gemini Vision API',
+      onSuccess: (idx) => { this.lastKeyIndex = idx; }
+    });
     const candidate = data?.candidates?.[0];
     const finishReason = candidate?.finishReason;
     const blockReason = data?.promptFeedback?.blockReason;

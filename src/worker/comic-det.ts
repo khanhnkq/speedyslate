@@ -1,6 +1,6 @@
 import * as ort from 'onnxruntime-web';
 import { BoundingBox } from '../shared/types';
-import { ImageUtils } from './image-utils';
+import { LineSegmenter } from './line-segmenter';
 
 import { ITextDetector } from './detector-interface';
 
@@ -13,7 +13,8 @@ export class ComicDetEngine implements ITextDetector {
   private session: ort.InferenceSession;
   private inputSize = 640;
   private textBubbleThresh = 0.15;
-  private textFreeThresh = 0.10;
+  private textFreeThresh = 0.07;
+  private bubbleFallbackThresh = 0.30;
 
   constructor(session: ort.InferenceSession) {
     this.session = session;
@@ -97,12 +98,14 @@ export class ComicDetEngine implements ITextDetector {
         confidence: score
       };
 
-      // Label 1: text_bubble, Label 2: text_free (SFX)
+      // Label 1: text_bubble → dialogue, Label 2: text_free (SFX) → sfx
       if (label === 1 && score >= this.textBubbleThresh) {
+        box.kind = 'dialogue';
         textCandidates.push(box);
       } else if (label === 2 && score >= this.textFreeThresh) {
+        box.kind = 'sfx';
         textCandidates.push(box);
-      } else if (label === 0 && score >= 0.40) {
+      } else if (label === 0 && score >= this.bubbleFallbackThresh) {
         bubbleCandidates.push(box);
       }
     }
@@ -124,7 +127,8 @@ export class ComicDetEngine implements ITextDetector {
           y: b.y + padY,
           width: Math.max(12, b.width - padX * 2),
           height: Math.max(12, b.height - padY * 2),
-          confidence: b.confidence
+          confidence: b.confidence,
+          kind: 'dialogue'
         });
       }
     }
@@ -137,7 +141,7 @@ export class ComicDetEngine implements ITextDetector {
 
     for (const box of rawCandidates) {
       if (box.height >= 34 && box.width >= 28 && sourceCtx) {
-        const lines = this.segmentBubbleLines(sourceCtx, box, originalWidth, originalHeight);
+        const lines = LineSegmenter.segmentLines(sourceCtx, box, originalWidth, originalHeight);
         if (lines.length > 0) {
           finalBoxes.push(...lines);
           continue;
@@ -150,115 +154,4 @@ export class ComicDetEngine implements ITextDetector {
     return finalBoxes.sort((a, b) => a.y - b.y);
   }
 
-  /**
-   * Performs horizontal projection profiling to segment a multi-line bubble into individual lines
-   */
-  private segmentBubbleLines(
-    ctx: OffscreenCanvasRenderingContext2D,
-    box: BoundingBox,
-    canvasW: number,
-    canvasH: number
-  ): BoundingBox[] {
-    try {
-      const imgData = ctx.getImageData(box.x, box.y, box.width, box.height);
-      const data = imgData.data;
-      const w = box.width;
-      const h = box.height;
-
-      // 1. Detect background brightness from perimeter
-      let perimeterLuma = 0;
-      let samples = 0;
-      for (let x = 0; x < w; x += 3) {
-        const topIdx = x * 4;
-        const botIdx = ((h - 1) * w + x) * 4;
-        perimeterLuma += (data[topIdx] * 299 + data[topIdx + 1] * 587 + data[topIdx + 2] * 114) / 1000;
-        perimeterLuma += (data[botIdx] * 299 + data[botIdx + 1] * 587 + data[botIdx + 2] * 114) / 1000;
-        samples += 2;
-      }
-      const bgLuma = samples > 0 ? perimeterLuma / samples : 255;
-      const isDarkBg = bgLuma < 120;
-
-      // 2. Count text-like pixels per row
-      const textPixelsPerRow = new Int32Array(h);
-      for (let y = 0; y < h; y++) {
-        let count = 0;
-        const rowOffset = y * w * 4;
-        for (let x = 0; x < w; x++) {
-          const px = rowOffset + x * 4;
-          const luma = (data[px] * 299 + data[px + 1] * 587 + data[px + 2] * 114) / 1000;
-          const isText = isDarkBg ? luma > 160 : luma < 120;
-          if (isText) count++;
-        }
-        textPixelsPerRow[y] = count;
-      }
-
-      // 3. Identify contiguous vertical text bands
-      const minTextPixels = Math.max(3, Math.round(w * 0.02));
-      const lines: { startY: number; height: number }[] = [];
-      let inLine = false;
-      let startY = 0;
-
-      for (let y = 0; y < h; y++) {
-        const hasText = textPixelsPerRow[y] >= minTextPixels;
-        if (hasText && !inLine) {
-          inLine = true;
-          startY = y;
-        } else if (!hasText && inLine) {
-          inLine = false;
-          const lineH = y - startY;
-          if (lineH >= 11) {
-            lines.push({ startY, height: lineH });
-          }
-        }
-      }
-      if (inLine) {
-        const lineH = h - startY;
-        if (lineH >= 11) {
-          lines.push({ startY, height: lineH });
-        }
-      }
-
-      if (lines.length <= 1) {
-        return [box];
-      }
-
-      // 4. Tighten each line horizontally
-      return lines.map((l) => {
-        let minX = w;
-        let maxX = 0;
-
-        for (let dy = 0; dy < l.height; dy++) {
-          const y = l.startY + dy;
-          const rowOffset = y * w * 4;
-          for (let x = 0; x < w; x++) {
-            const px = rowOffset + x * 4;
-            const luma = (data[px] * 299 + data[px + 1] * 587 + data[px + 2] * 114) / 1000;
-            const isText = isDarkBg ? luma > 160 : luma < 120;
-            if (isText) {
-              if (x < minX) minX = x;
-              if (x > maxX) maxX = x;
-            }
-          }
-        }
-
-        const padX = 6;
-        const lineX = minX < maxX ? Math.max(box.x, box.x + minX - padX) : box.x;
-        const lineW = minX < maxX ? Math.min(canvasW - lineX, (maxX - minX) + padX * 2) : box.width;
-
-        return ImageUtils.clampBox(
-          {
-            x: lineX,
-            y: box.y + l.startY,
-            width: lineW,
-            height: l.height,
-            confidence: box.confidence
-          },
-          canvasW,
-          canvasH
-        );
-      });
-    } catch {
-      return [box];
-    }
-  }
 }

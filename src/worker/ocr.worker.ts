@@ -1,20 +1,25 @@
 import * as ort from 'onnxruntime-web';
-import { DialogueItem, OcrBackend } from '../shared/types';
+import { BoundingBox, DialogueItem, OcrBackend } from '../shared/types';
 import { ITextDetector } from './detector-interface';
 import { ComicDetEngine } from './comic-det';
 import { PaddleDetEngine } from './paddle-det';
 import { PaddleRecEngine } from './paddle-rec';
 import { StripSlicer } from './strip-slicer';
+import { LineSegmenter } from './line-segmenter';
+import { EraseMasker } from './erase-masker';
+import { BubbleFiller } from './bubble-filler';
+import { BubbleAggregator } from './bubble-aggregator';
 
 // Configure ONNX Runtime Web for Dedicated Worker environment
 // wasmPaths must be local — AMO Compliance: No remote code execution
 const basePath = self.location.href.substring(0, self.location.href.lastIndexOf('/') + 1);
 ort.env.wasm.wasmPaths = basePath;
-ort.env.wasm.numThreads = 2;
+ort.env.wasm.numThreads = Math.min(4, Math.max(1, ((self as any).navigator?.hardwareConcurrency ?? 2) - 1));
 ort.env.wasm.simd = true;
 ort.env.logLevel = 'error';
 
 let detEngine: ITextDetector | null = null;
+let det2Engine: ITextDetector | null = null; // Optional supplementary raw-text detector (gap-fill)
 let recEngine: PaddleRecEngine | null = null;
 let currentModelId: string | null = null;
 let activeBackend: OcrBackend = 'wasm';
@@ -27,6 +32,7 @@ export interface WorkerMessageIn {
   type: 'INIT_MODEL' | 'PROCESS_IMAGE' | 'PING';
   modelId?: string;
   detBuffer?: ArrayBuffer;
+  det2Buffer?: ArrayBuffer;
   recBuffer?: ArrayBuffer;
   keysText?: string;
   elementId?: string;
@@ -42,6 +48,7 @@ export interface WorkerMessageOut {
   elementId?: string;
   dialogues?: DialogueItem[];
   error?: string;
+  timings?: { detMs: number; recMs: number; boxCount: number; sliceCount?: number };
 }
 
 type WorkerMessageInWithReqId = WorkerMessageIn & { _reqId?: string };
@@ -162,7 +169,21 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
             ? new ComicDetEngine(detSession)
             : new PaddleDetEngine(detSession);
 
-          recEngine = new PaddleRecEngine(recSession, msg.keysText);
+          det2Engine = null;
+          if (msg.det2Buffer) {
+            try {
+              const det2Session = await ort.InferenceSession.create(msg.det2Buffer, wasmOpts);
+              // Supplementary engine: stricter prob-map cutoff + tighter unclip so
+              // narration lines on screentone stay separated instead of merging into blobs
+              det2Engine = new PaddleDetEngine(det2Session, { thresh: 0.3, boxThresh: 0.35, unclipRatio: 1.3 });
+            } catch (e) {
+              console.warn('[OCR Worker] Supplementary det session failed:', e);
+            }
+          }
+
+          recEngine = new PaddleRecEngine(recSession, msg.keysText, {
+            isCjkModel: /japan|korean|chinese|cjk/i.test(msg.modelId ?? '')
+          });
           currentModelId = msg.modelId || 'loaded';
 
           reply({
@@ -193,16 +214,71 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
             ctx.drawImage(bitmap, 0, 0);
 
             // 1. Text Detection (runs serialized on detSession, auto-slices if tall webtoon strip)
-            const boxes = await StripSlicer.detectWithSlicing(canvas, width, height, detEngine);
+            const tDet = performance.now();
+            const isComicDet = detEngine instanceof ComicDetEngine;
+            // Page-level text-probability map: DB detectors blit their raw
+            // segmentation output here so erase masking knows exactly where
+            // text pixels live (RT-DETR contributes nothing — box-only).
+            const textMap = new Float32Array(width * height);
+            const boxes = await StripSlicer.detectWithSlicing(canvas, width, height, detEngine, {
+              // Page-sized images: cap ~0.85 tiles the page into 2 near-square
+              // windows ≈1.7x effective text resolution. Tall strips keep 1.8
+              // to bound the number of RT-DETR runs.
+              aspectCap: isComicDet ? (height <= 2200 ? 0.85 : 1.8) : undefined,
+              invertedPass: true,
+              textMapOut: textMap
+            });
+
+            // Supplementary pass: DB-style detector finds raw text lines the
+            // bubble-aware engine misses (free-floating narration, open bubbles)
+            if (det2Engine) {
+              const supBoxes = await StripSlicer.detectWithSlicing(canvas, width, height, det2Engine, { textMapOut: textMap });
+              for (const sb of supBoxes) {
+                const dup = boxes.some((b) => StripSlicer.calculateIoU(b, sb) > 0.5);
+                if (dup) continue;
+                // Raw narration blocks often cover several lines — split them so
+                // the recognizer reads each line instead of squashing the block
+                if (sb.height >= 34 && sb.width >= 28) {
+                  const parts = LineSegmenter.segmentLines(ctx, sb, width, height);
+                  for (const p of parts) boxes.push({ ...p, kind: 'free' });
+                } else {
+                  boxes.push({ ...sb, kind: 'free' });
+                }
+              }
+              boxes.sort((a, b) => a.y - b.y);
+            }
+            // Split tall multi-line dialogue boxes into per-line crops — a
+            // 4-5 line bubble squashed into the 48px rec input loses middle
+            // lines entirely. Aggregator rejoins them into one bubble after.
+            const lineBoxes: BoundingBox[] = [];
+            for (const b of boxes) {
+              if (b.kind !== 'free' && b.height >= 50 && b.height > b.width * 0.4) {
+                const parts = LineSegmenter.segmentLines(ctx, b, width, height);
+                for (const p of parts) lineBoxes.push({ ...p, kind: b.kind });
+              } else {
+                lineBoxes.push(b);
+              }
+            }
+            boxes.length = 0;
+            boxes.push(...lineBoxes);
+            boxes.sort((a, b) => a.y - b.y);
+            const detMs = performance.now() - tDet;
 
             // 2. Text Recognition (runs serialized on recSession)
+            const tRec = performance.now();
             const dialogues = await recEngine.recognizeBoxes(canvas, boxes);
+            const recMs = performance.now() - tRec;
+
+            // 3. Per-line erase patches: inpaint glyph pixels only, so the
+            // original bubble/art is preserved and nothing spills outside.
+            attachErasePatches(canvas, dialogues, textMap);
 
             reply({
               type: 'PROCESS_RESULT',
               success: true,
               elementId: msg.elementId,
-              dialogues
+              dialogues,
+              timings: { detMs: Math.round(detMs), recMs: Math.round(recMs), boxCount: boxes.length }
             });
           } finally {
             bitmap.close();
@@ -231,6 +307,53 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
     });
   });
 };
+
+// Builds a pixel-level erase patch per recognized line: Otsu glyph mask +
+// diffusion inpaint, so downstream can remove ink without touching the
+// original bubble shape or surrounding artwork.
+function attachErasePatches(canvas: OffscreenCanvas, items: DialogueItem[], textMap?: Float32Array): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const pad = 4;
+  for (const item of items) {
+    const srcX = Math.max(0, item.box.x - pad);
+    const srcY = Math.max(0, item.box.y - pad);
+    const srcW = Math.min(canvas.width - srcX, item.box.width + pad * 2);
+    const srcH = Math.min(canvas.height - srcY, item.box.height + pad * 2);
+    if (srcW < 4 || srcH < 4) continue;
+    try {
+      const img = ctx.getImageData(srcX, srcY, srcW, srcH);
+      const patch = EraseMasker.buildPatch(img, srcX, srcY, item.bgColor, textMap, canvas.width);
+      if (patch) item.erasePatch = patch;
+    } catch {
+      // patch is best-effort — rendering falls back to box styling
+    }
+  }
+
+  // Whole-bubble interior repaint: aggregate items into bubbles, then
+  // flood-fill each bubble's interior once. Kills specks that line patches
+  // can't reach (between-line gaps) and keeps borders pixel-perfect.
+  try {
+    const bubbles = BubbleAggregator.aggregateDialogues(items, canvas.width, canvas.height);
+    const boxToItem = new Map(items.map((it) => [it.box, it]));
+    for (const b of bubbles) {
+      const bx = Math.max(0, b.box.x - 8);
+      const by = Math.max(0, b.box.y - 8);
+      const bw = Math.min(canvas.width - bx, b.box.width + 16);
+      const bh = Math.min(canvas.height - by, b.box.height + 16);
+      if (bw < 12 || bh < 12) continue;
+      const img = ctx.getImageData(bx, by, bw, bh);
+      const patch = BubbleFiller.buildBubblePatch(img, bx, by, b.lineBoxes);
+      if (!patch) continue;
+      for (const lb of b.lineBoxes || []) {
+        const member = boxToItem.get(lb);
+        if (member) member.bubblePatch = patch;
+      }
+    }
+  } catch {
+    // bubble fill is optional — line patches already cover the common case
+  }
+}
 
 self.addEventListener('error', (e) => {
   console.error('[OCR Worker] Global error:', e);

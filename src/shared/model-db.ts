@@ -5,7 +5,7 @@ const DB_VERSION = 1;
 const STORE_NAME = 'models_store';
 
 export interface StoredModelRecord {
-  id: string; // key e.g. 'paddle-en-slim:det', 'paddle-en-slim:rec', 'paddle-en-slim:keys'
+  id: string; // key e.g. 'comic-manga-manhwa:det', ':rec', ':keys'
   modelId: string;
   type: 'det' | 'rec' | 'keys';
   data: ArrayBuffer | string;

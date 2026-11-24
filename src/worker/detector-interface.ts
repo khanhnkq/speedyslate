@@ -10,4 +10,18 @@ export interface ITextDetector {
     originalWidth: number,
     originalHeight: number
   ): Promise<BoundingBox[]>;
+
+  /**
+   * Segmentation detectors (DB/PaddleDet) expose the raw per-pixel text
+   * probability map of the last detectText call, at model-input resolution.
+   * ratioW/ratioH map source pixels onto it: mapPx = srcPx * ratio.
+   * Box-only detectors (RT-DETR) leave this undefined.
+   */
+  lastProbMap?: {
+    data: Float32Array;
+    w: number;
+    h: number;
+    ratioW: number;
+    ratioH: number;
+  } | null;
 }

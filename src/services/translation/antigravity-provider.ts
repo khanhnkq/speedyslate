@@ -1,4 +1,4 @@
-import { DialogueItem } from '../../shared/types';
+import { DialogueItem, DialogueTranslateContext } from '../../shared/types';
 import { ITranslationProvider } from './translation-provider.interface';
 import { ApiKeyRotator } from './api-key-rotator';
 import { DebugLogger } from '../../shared/debug-logger';
@@ -53,7 +53,7 @@ export class AntigravityProvider implements ITranslationProvider {
   /**
    * Hybrid OCR Mode: Translates OCR-extracted dialogue lines
    */
-  public async translateDialogues(texts: string[], targetLang: string, sourceLang?: string): Promise<string[]> {
+  public async translateDialogues(texts: string[], targetLang: string, sourceLang?: string, _ctx?: DialogueTranslateContext): Promise<string[]> {
     if (!texts.length) return [];
     if (!this.keyRotator.hasKeys()) {
       throw new Error('Chưa cấu hình Gemini API Key cho Antigravity. Vui lòng mở cài đặt extension.');

@@ -1,4 +1,4 @@
-import { DialogueItem } from '../../shared/types';
+import { DialogueItem, DialogueTranslateContext } from '../../shared/types';
 
 /**
  * Standard interface for all translation providers
@@ -7,9 +7,15 @@ import { DialogueItem } from '../../shared/types';
 export interface ITranslationProvider {
   /**
    * Translates an array of comic dialogue strings into the target language
-   * Preserves exact ordering
+   * Preserves exact ordering. `ctx` optionally carries DialogueItems
+   * (confidence/kind), glossary and chapter context for richer prompts.
    */
-  translateDialogues(texts: string[], targetLang: string, sourceLang?: string): Promise<string[]>;
+  translateDialogues(
+    texts: string[],
+    targetLang: string,
+    sourceLang?: string,
+    ctx?: DialogueTranslateContext
+  ): Promise<string[]>;
 
   /**
    * Tests the connection with a lightweight probe

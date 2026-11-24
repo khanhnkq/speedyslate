@@ -70,7 +70,8 @@
         "worker.js",
         "icons/*",
         "*.wasm",
-        "*.mjs"
+        "*.mjs",
+        "src/popup/popup.html"
       ],
       "matches": [
         "<all_urls>"

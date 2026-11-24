@@ -10,7 +10,6 @@ import { ModelMissingBanner } from './missing-banner';
 import { DebugLogger } from '../shared/debug-logger';
 import { SafeMessenger } from './safe-messenger';
 import { TaskProcessor } from './task-processor';
-import { CompanionController } from './companion/companion-controller';
 import { SiteMatcher } from '../shared/site-matcher';
 import { CacheRestorer } from './cache-restorer';
 
@@ -20,7 +19,6 @@ class SpeedySlateContentApp {
   private ocrQueue!: OrderedTaskQueue<OcrTask>;
   private translationQueue!: OrderedTaskQueue<TranslationTask>;
   private taskProcessor!: TaskProcessor;
-  private companionController: CompanionController | null = null;
   private images: HTMLImageElement[] = [];
   private completedImages = new Set<HTMLImageElement>();
   private isModelReady: boolean = false;
@@ -168,22 +166,10 @@ class SpeedySlateContentApp {
       } catch {}
     }
 
-    // 6. Khoi tao Story Companion (Gemini 3.8 Live API)
-    const geminiKey = this.settings?.providers?.gemini?.apiKey || this.settings?.providers?.antigravity?.apiKey || '';
-    const companionCfg = { enabled: true, apiKey: geminiKey, model: 'gemini-3.8-live', voiceName: 'Aoede' as const, visionEnabled: true, autoVisionOnScroll: true };
-    this.companionController = new CompanionController(companionCfg);
-
-    browser.storage.onChanged.addListener((changes: any, area: string) => {
-      if (area === 'local' && changes['speedyslate_settings']?.newValue) {
-        const newSettings = changes['speedyslate_settings'].newValue;
-        const key = newSettings?.providers?.gemini?.apiKey || newSettings?.providers?.antigravity?.apiKey || '';
-        this.companionController?.updateSettings({ ...companionCfg, apiKey: key });
-      }
-    });
   }
 
   private resetPageTranslations(): void {
-    document.querySelectorAll('.speedyslate-bubble, .speedyslate-clean-canvas').forEach((el) => el.remove());
+    document.querySelectorAll('.speedyslate-bubble, .speedyslate-erase-patch, .speedyslate-clean-canvas').forEach((el) => el.remove());
     this.images.forEach((img, idx) => {
       delete img.dataset.slateStatus;
       if (img.parentElement) {
@@ -334,8 +320,6 @@ class SpeedySlateContentApp {
       this.mutationObserver.disconnect();
       this.mutationObserver = null;
     }
-    this.companionController?.destroy?.();
-    this.companionController = null;
     this.resetPageTranslations();
     this.hud?.destroy();
     this.hud = null;

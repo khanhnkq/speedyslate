@@ -10,23 +10,61 @@ import { BubbleCoordinates } from './bubble-geometry';
  */
 export class OverlayStyler {
   /**
+   * Resolves the erase/background colour for an item under the given theme.
+   * 'auto' prefers the real sampled bgColor; falls back to the dark/light binary.
+   */
+  public static resolveBackground(
+    theme: 'light' | 'dark' | 'auto',
+    isDark: boolean,
+    bgColor?: string
+  ): string {
+    if (theme === 'light') return '#ffffff';
+    if (theme === 'dark') return '#111111';
+    if (bgColor && /^#[0-9a-fA-F]{6}$/.test(bgColor)) return bgColor;
+    return isDark ? '#111111' : '#ffffff';
+  }
+
+  /** Picks readable text colour for a given background hex. */
+  public static textColorFor(bgHex: string): string {
+    return OverlayStyler.hexToLuma(bgHex) < 140 ? '#ffffff' : '#000000';
+  }
+
+  private static hexToLuma(hex: string): number {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+  }
+
+  /**
    * Applies complete overlay styles anchored to the comic speech bubble dimensions.
+   * `transparentBg` leaves erasure to per-line patches (art between lines stays visible).
    */
   public static applyStyles(
     bubble: HTMLElement,
     coords: BubbleCoordinates,
     fontSize: number,
-    isDark: boolean
+    isDark: boolean,
+    bgColor?: string,
+    transparentBg?: boolean,
+    kind?: 'dialogue' | 'sfx' | 'free'
   ): void {
-    const bg = isDark ? '#111111' : '#ffffff';
-    const textColor = isDark ? '#ffffff' : '#000000';
+    const bg = transparentBg ? 'transparent' : bgColor ?? (isDark ? '#111111' : '#ffffff');
+    const textColor = OverlayStyler.textColorFor(
+      bgColor ?? (isDark ? '#111111' : '#ffffff')
+    );
 
-    // Adaptive border-radius: smooth curves matching organic comic balloons (avoids sharp protruding corners)
-    let borderRadius = '18px';
-    if (coords.aspectRatio >= 0.55 && coords.aspectRatio <= 1.7) {
-      borderRadius = coords.pixelWidth >= 80 ? '22px' : '16px';
-    } else if (coords.aspectRatio < 0.45) {
+    // Speech bubbles erase as an ellipse so the overlay keeps the original
+    // balloon silhouette and never pokes past its curved border. Rectangular
+    // narration boxes (free) stay softly squared like the printed frame.
+    let borderRadius: string;
+    if (kind === 'free') {
       borderRadius = '8px';
+    } else if (kind === 'sfx') {
+      borderRadius = '10px';
+    } else {
+      // dialogue or unknown kind: organic balloon shape
+      borderRadius = '50%';
     }
 
     Object.assign(bubble.style, {

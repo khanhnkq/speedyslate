@@ -6,6 +6,7 @@ import { DebugLogger } from '../shared/debug-logger';
 import type { WorkerMessageIn, WorkerMessageOut } from '../worker/ocr.worker';
 
 import { StorageService } from '../shared/storage';
+import { encodeErasePatches } from "../shared/erase-codec";
 import { OCR_MODEL_PRESETS } from '../shared/presets';
 
 let worker: Worker | null = null;
@@ -167,6 +168,9 @@ async function runOcrOnImage(
 
   const rawDialogues = res.dialogues || [];
   const dialogues = BubbleAggregator.aggregateDialogues(rawDialogues, width, height);
+  // This result travels offscreen->background via runtime.sendMessage, which
+  // cannot carry Uint8ClampedArray on Chrome — encode pixel patches to base64.
+  encodeErasePatches(dialogues);
 
   return { dialogues, width, height };
 }

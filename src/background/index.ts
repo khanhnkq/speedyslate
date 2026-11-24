@@ -13,6 +13,10 @@ import { VisionStripSlicer } from '../services/translation/vision-strip-slicer';
 import { MultiProviderRotator } from '../services/translation/multi-provider-rotator';
 import { DebugLogger } from '../shared/debug-logger';
 
+import { buildTranslateCtx, rememberChapterPairs } from './chapter-memory';
+import { encodeErasePatches } from '../shared/erase-codec';
+import { ServiceWorkerKeepAlive } from './keep-alive';
+
 // Initialize DeclarativeNetRequest rules for anti-hotlinking & CORS
 DnrManager.init().catch(() => {});
 
@@ -33,31 +37,6 @@ if (typeof self !== 'undefined') {
 // All ONNX inference runs inside Dedicated Web Worker / Offscreen Document.
 // ---------------------------------------------------------------------------
 
-class ServiceWorkerKeepAlive {
-  private static timer: any = null;
-  private static refCount = 0;
-
-  public static start(): void {
-    this.refCount++;
-    if (this.timer) return;
-    this.timer = setInterval(() => {
-      try {
-        browser.runtime.getPlatformInfo().catch(() => {});
-      } catch {
-        // ignore
-      }
-    }, 10000);
-  }
-
-  public static stop(): void {
-    this.refCount = Math.max(0, this.refCount - 1);
-    if (this.refCount === 0 && this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
-  }
-}
-
 async function handleBackgroundMessage(msg: any): Promise<any> {
   ServiceWorkerKeepAlive.start();
   try {
@@ -76,7 +55,7 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
       // ── Pre-warm OCR backend if model is ready ──────────────────────────
       case 'WARMUP_OCR': {
         const settings = await StorageService.getSettings();
-        const modelId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'pp-ocrv4-english';
+        const modelId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'comic-manga-manhwa';
         const modelStatus = await ModelDbService.getModelStatus(modelId);
         if (modelStatus.status === 'ready') {
           await ocrWorkerClient.ensureModelLoaded(modelId, settings.useWebGpu ?? true);
@@ -91,7 +70,7 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
       case 'SET_WEBGPU': {
         await ocrWorkerClient.resetForBackendChange();
         const settings = await StorageService.getSettings();
-        const modelId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'pp-ocrv4-english';
+        const modelId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'comic-manga-manhwa';
         const modelStatus = await ModelDbService.getModelStatus(modelId);
         if (modelStatus.status === 'ready') {
           await ocrWorkerClient.ensureModelLoaded(modelId, settings.useWebGpu ?? true);
@@ -104,7 +83,7 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
 
       case 'CHECK_MODEL_STATUS': {
         const settings = await StorageService.getSettings();
-        const modelId = msg.modelId || settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'pp-ocrv4-english';
+        const modelId = msg.modelId || settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'comic-manga-manhwa';
         const status = await ModelDbService.getModelStatus(modelId);
         return { success: true, status };
       }
@@ -237,7 +216,7 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
         }
 
         // 3. Hybrid OCR Mode: Load OCR model via Dedicated Worker / Offscreen
-        const modelId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'pp-ocrv4-english';
+        const modelId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'comic-manga-manhwa';
         try {
           await ocrWorkerClient.ensureModelLoaded(modelId, settings.useWebGpu ?? true);
         } catch (err: any) {
@@ -283,7 +262,12 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
         const minDelayMs = MultiProviderRotator.computeEffectiveDelay(settings);
 
         const translations = await ApiRateLimiter.throttle(minDelayMs, () =>
-          provider.translateDialogues(texts, targetLang, sourceLang)
+          provider.translateDialogues(
+            texts,
+            targetLang,
+            sourceLang,
+            buildTranslateCtx(settings, dialogues, chapterUrl || imageUrl)
+          )
         );
 
         const validDialogues: DialogueItem[] = [];
@@ -301,6 +285,7 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
             validDialogues.push(d);
           }
         });
+        rememberChapterPairs(chapterUrl || imageUrl, validDialogues);
 
         // Save to cache DB
         if (imageUrl) {
@@ -340,7 +325,7 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
 
         // 2. Load model via Worker
         const settings = await StorageService.getSettings();
-        const modelId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'pp-ocrv4-server-heavy';
+        const modelId = settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'comic-manga-manhwa';
         try {
           await ocrWorkerClient.ensureModelLoaded(modelId, settings.useWebGpu ?? true);
         } catch (err: any) {
@@ -376,7 +361,12 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
             : (API_PRESETS[settings.activeProvider]?.defaultDelayMs ?? 1200);
 
         const translations = await ApiRateLimiter.throttle(minDelayMs, () =>
-          provider.translateDialogues(texts, targetLang, sourceLang)
+          provider.translateDialogues(
+            texts,
+            targetLang,
+            sourceLang,
+            buildTranslateCtx(settings, dialogues, chapterUrl || imageUrl)
+          )
         );
 
         const validDialogues: DialogueItem[] = [];
@@ -393,6 +383,7 @@ async function handleBackgroundMessage(msg: any): Promise<any> {
             validDialogues.push(d);
           }
         });
+        rememberChapterPairs(chapterUrl || imageUrl, validDialogues);
 
         // 5. Save cache
         if (imageUrl) {
@@ -480,7 +471,14 @@ browser.runtime.onMessage.addListener((rawMsg: any) => {
     return undefined;
   }
   return withMessageTimeout(
-    handleBackgroundMessage(rawMsg),
+    handleBackgroundMessage(rawMsg).then((res) => {
+      // Pixel patches can't survive runtime.sendMessage JSON serialization —
+      // encode to base64 once, here, at the single response exit point.
+      if (Array.isArray(res?.dialogues)) {
+        encodeErasePatches(res.dialogues);
+      }
+      return res;
+    }),
     60000,
     { success: false, error: 'Tác vụ nền quá thời gian chờ (timeout 60s). Vui lòng thử lại.' }
   );

@@ -219,6 +219,33 @@
             </label>
           </div>
 
+          <div class="form-group">
+            <label class="form-label" for="input-glossary">
+              <i class="ti ti-book-2"></i> GLOSSARY (TÊN RIÊNG / THUẬT NGỮ)
+            </label>
+            <textarea
+              id="input-glossary"
+              class="form-textarea"
+              rows="3"
+              placeholder="Mỗi dòng: Tên gốc = Cách dịch&#10;Ví dụ:&#10;Kai = Cai&#10;Yotogi = Dạ Cộ"
+              spellcheck="false"></textarea>
+          </div>
+
+          <!-- SFX Translation Switch -->
+          <div class="toggle-card" style="margin-top: 4px; margin-bottom: 10px;">
+            <div class="toggle-meta">
+              <i class="ti ti-volume toggle-icon"></i>
+              <div class="toggle-text-block">
+                <span class="toggle-name">Dịch hiệu ứng âm thanh (SFX)</span>
+                <span class="toggle-desc">Bật để dịch onomatopoeia (BOOM, SWOOSH…). Tắt giữ nguyên nét vẽ gốc</span>
+              </div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="toggle-translate-sfx" />
+              <span class="switch-track"></span>
+            </label>
+          </div>
+
           <div class="action-btn-row">
             <button id="btn-test-connection" class="btn btn-secondary" type="button">
               <i class="ti ti-plug-connected"></i> Kiểm tra kết nối

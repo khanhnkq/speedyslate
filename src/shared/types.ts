@@ -3,12 +3,24 @@
  * Following SOLID principles: Segregated, focused interfaces
  */
 
+export type DialogueKind = 'dialogue' | 'sfx' | 'free';
+
 export interface BoundingBox {
   x: number;      // Pixel coordinate X (left)
   y: number;      // Pixel coordinate Y (top)
   width: number;  // Pixel width
   height: number; // Pixel height
   confidence?: number;
+  kind?: DialogueKind;
+}
+
+/** Pixel-level erase patch: RGBA data where alpha>0 marks repainted ink pixels. */
+export interface ErasePatch {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  pixels: Uint8ClampedArray | string; // base64 string after sendMessage transport
 }
 
 export interface DialogueItem {
@@ -23,6 +35,21 @@ export interface DialogueItem {
   originalText: string;
   translatedText?: string;
   isDarkBackground?: boolean;
+  confidence?: number;      // Mean CTC score from recognizer
+  kind?: DialogueKind;
+  bgColor?: string;         // Sampled bubble background '#RRGGBB'
+  isVertical?: boolean;     // True when crop was rotated from a vertical CJK column
+  lineBoxes?: BoundingBox[]; // Member line boxes merged into this bubble
+  erasePatch?: ErasePatch;   // Per-line inpainted region (raw item)
+  bubblePatch?: ErasePatch;  // Whole-interior repaint from BubbleFiller
+  erasePatches?: ErasePatch[]; // All member patches on an aggregated bubble
+}
+
+export interface DialogueTranslateContext {
+  items?: DialogueItem[];
+  glossary?: string;
+  chapterContext?: string[];
+  translateSfx?: boolean;
 }
 
 export interface ImageSliceData {
@@ -74,6 +101,8 @@ export interface ExtensionSettings {
   rateLimitDelayMs?: number; // Minimum spacing between API translation requests in ms
   useWebGpu: boolean;       // Use WebGPU backend for ONNX (default: true, falls back to WASM)
   rotateProviders: boolean; // Auto-rotate across configured providers with failover on 429
+  glossary?: string;        // "Term = Translation" lines applied verbatim to prompts
+  translateSfx?: boolean;   // When false, kind==='sfx' items are filtered before translation
 }
 
 export interface OcrModelPreset {

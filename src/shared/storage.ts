@@ -1,6 +1,6 @@
 import browser from 'webextension-polyfill';
 import { ExtensionSettings, ProviderConfig, ProviderType } from './types';
-import { DEFAULT_SETTINGS } from './presets';
+import { DEFAULT_SETTINGS, OCR_MODEL_PRESETS } from './presets';
 
 const SETTINGS_KEY = 'speedyslate_settings';
 
@@ -19,7 +19,7 @@ export class StorageService {
         return DEFAULT_SETTINGS;
       }
       const saved = data[SETTINGS_KEY] as Partial<ExtensionSettings>;
-      return {
+      const merged = {
         ...DEFAULT_SETTINGS,
         ...saved,
         providers: {
@@ -27,6 +27,10 @@ export class StorageService {
           ...(saved.providers || {})
         }
       };
+      if (!OCR_MODEL_PRESETS.some((p) => p.id === merged.activeOcrModelId)) {
+        merged.activeOcrModelId = DEFAULT_SETTINGS.activeOcrModelId;
+      }
+      return merged;
     } catch (err) {
       console.error('[SpeedySlate] Failed to read settings, fallback to defaults:', err);
       return DEFAULT_SETTINGS;

@@ -9,9 +9,16 @@ export class PaddleDetEngine implements ITextDetector {
   private thresh: number = 0.10;
   private boxThresh: number = 0.15;
   private unclipRatio: number = 1.65;
+  public lastProbMap: ITextDetector['lastProbMap'] = null;
 
-  constructor(session: ort.InferenceSession) {
+  constructor(
+    session: ort.InferenceSession,
+    opts?: { thresh?: number; boxThresh?: number; unclipRatio?: number }
+  ) {
     this.session = session;
+    if (opts?.thresh !== undefined) this.thresh = opts.thresh;
+    if (opts?.boxThresh !== undefined) this.boxThresh = opts.boxThresh;
+    if (opts?.unclipRatio !== undefined) this.unclipRatio = opts.unclipRatio;
   }
 
   /**
@@ -48,6 +55,10 @@ export class PaddleDetEngine implements ITextDetector {
     const outputTensor = results[outputName];
     const predData = outputTensor.data as Float32Array;
 
+    // Keep the per-pixel text-probability map — downstream erase masking uses
+    // it as the authoritative "text lives here" signal (DB segmentation).
+    this.lastProbMap = { data: predData, w: targetW, h: targetH, ratioW, ratioH };
+
     // Extract raw bounding boxes from probability map
     const rawBoxes = this.extractBoxes(predData, targetW, targetH);
 
@@ -71,11 +82,13 @@ export class PaddleDetEngine implements ITextDetector {
       const origW = Math.round(expW / ratioW);
       const origH = Math.round(expH / ratioH);
 
+      // clampBox returns a fresh box without `kind` — re-attach it
       const clamped = ImageUtils.clampBox(
         { x: origX, y: origY, width: origW, height: origH, confidence: b.confidence },
         originalWidth,
         originalHeight
       );
+      clamped.kind = b.kind;
 
       // Filter tiny noise while preserving wide shout bubbles and dialogues
       // Only filter out true full-image outer frame borders
@@ -153,7 +166,8 @@ export class PaddleDetEngine implements ITextDetector {
                 y: newTop,
                 width: mergedW,
                 height: newBot - newTop,
-                confidence: Math.max(cur.confidence || 0, other.confidence || 0)
+                confidence: Math.max(cur.confidence || 0, other.confidence || 0),
+                kind: cur.kind ?? other.kind
               };
 
               used.add(j);
@@ -234,7 +248,8 @@ export class PaddleDetEngine implements ITextDetector {
             y: minY,
             width: boxW,
             height: boxH,
-            confidence: scoreSum / pixelCount
+            confidence: scoreSum / pixelCount,
+            kind: 'dialogue'
           });
         }
       }

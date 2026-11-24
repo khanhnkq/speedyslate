@@ -2,9 +2,10 @@ import browser from 'webextension-polyfill';
 import { ModelHubController } from './model-hub-controller';
 import { DebugTabController } from './debug-tab-controller';
 import { SitesTabController } from './sites-tab-controller';
+import { DisplayPrefsController } from './display-prefs-controller';
 import { API_PRESETS, OCR_MODEL_PRESETS, SOURCE_LANGUAGE_PRESETS, TARGET_LANGUAGE_PRESETS } from '../shared/presets';
 import { StorageService } from '../shared/storage';
-import { BubbleTheme, ExtensionSettings, ProviderType } from '../shared/types';
+import { ExtensionSettings, ProviderType } from '../shared/types';
 import { ApiKeyRotator } from '../services/translation/api-key-rotator';
 import { DebugLogger } from '../shared/debug-logger';
 
@@ -37,14 +38,13 @@ class PopupController {
   private apiKeyInput = document.getElementById('input-api-key') as HTMLTextAreaElement;
   private apiKeyCountBadge = document.getElementById('api-key-count-badge') as HTMLElement;
   private rateLimitInput = document.getElementById('input-rate-limit') as HTMLInputElement;
-  private toggleRotateProviders = document.getElementById('toggle-rotate-providers') as HTMLInputElement;
+  private displayPrefs = new DisplayPrefsController();
   private testBtn = document.getElementById('btn-test-connection') as HTMLButtonElement;
   private testResult = document.getElementById('test-result') as HTMLElement;
   private currentEditingProvider: ProviderType = 'gemini';
 
   // DOM Elements - Preferences & Save
-  private themeSelect = document.getElementById('select-theme') as HTMLSelectElement;
-  private speedInput = document.getElementById('input-speed') as HTMLInputElement;
+
   private saveBtn = document.getElementById('btn-save-settings') as HTMLButtonElement;
   private saveStatus = document.getElementById('save-status') as HTMLElement;
   private debugTab!: DebugTabController;
@@ -61,7 +61,7 @@ class PopupController {
       cardsContainer,
       storageLabel,
       this.statusBadge,
-      this.settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'pp-ocrv4-server-heavy',
+      this.settings.activeOcrModelId || OCR_MODEL_PRESETS[0]?.id || 'comic-manga-manhwa',
       async (newModelId) => {
         this.settings.activeOcrModelId = newModelId;
         await StorageService.saveSettings(this.settings);
@@ -200,11 +200,7 @@ class PopupController {
   }
 
   private loadDisplayPreferences(): void {
-    this.themeSelect.value = this.settings.bubbleTheme;
-    this.speedInput.value = String(this.settings.autoScrollSpeed);
-    if (this.toggleRotateProviders) {
-      this.toggleRotateProviders.checked = this.settings.rotateProviders ?? true;
-    }
+    this.displayPrefs.load(this.settings);
   }
 
 
@@ -322,9 +318,9 @@ class PopupController {
     this.customModelInput.addEventListener('input', () => this.saveCurrentProviderToMemory());
 
     // Rotate providers toggle
-    if (this.toggleRotateProviders) {
-      this.toggleRotateProviders.addEventListener('change', async () => {
-        this.settings.rotateProviders = this.toggleRotateProviders.checked;
+    if (this.displayPrefs.rotateToggle) {
+      this.displayPrefs.rotateToggle.addEventListener('change', async () => {
+        this.settings.rotateProviders = this.displayPrefs.rotateToggle.checked;
         await StorageService.saveSettings(this.settings);
       });
     }
@@ -447,12 +443,8 @@ class PopupController {
     this.saveCurrentProviderToMemory();
     this.settings.activeProvider = this.currentEditingProvider;
     this.settings.translationMode = this.radioModeVision?.checked ? 'vision_ai' : 'hybrid_ocr';
-    this.settings.bubbleTheme = this.themeSelect.value as BubbleTheme;
-    this.settings.autoScrollSpeed = Number(this.speedInput.value) || 3;
+    this.displayPrefs.applyTo(this.settings);
     this.settings.rateLimitDelayMs = Number(this.rateLimitInput.value) || 1200;
-    if (this.toggleRotateProviders) {
-      this.settings.rotateProviders = this.toggleRotateProviders.checked;
-    }
 
     if (this.selectSourceLang) {
       if (this.selectSourceLang.value === 'custom') {

@@ -118,14 +118,72 @@ export class BubbleFiller {
     // Open/broken border guard: a closed bubble never floods out to the crop boundary
     if (interiorArea < total * 0.08 || touchesCropEdge > 2) return null;
 
-    // Outside flood — boundary seeds over non-interior pixels. Whatever
-    // stays unmarked is interior or an enclosed hole → the paint zone.
+    // Expand 1px from barrier-stopped `interior` up to the true non-ink paper edge
+    const baseInterior = interior.slice();
+    for (let yy = 0; yy < h; yy++) {
+      for (let xx = 0; xx < w; xx++) {
+        const i = yy * w + xx;
+        if (baseInterior[i] || ink[i]) continue;
+        if (
+          (xx > 0 && interior[i - 1]) ||
+          (xx < w - 1 && interior[i + 1]) ||
+          (yy > 0 && interior[i - w]) ||
+          (yy < h - 1 && interior[i + w])
+        ) {
+          baseInterior[i] = 1;
+        }
+      }
+    }
+
+    // Euclidean Disk Morphological Closing (R = 5px) on `baseInterior`:
+    // Swallows 2-5px glyph strokes welded directly onto the inner bubble wall
+    // ('D' in DECIDED, 'T' in HONEST, 'Y'/'S' in YES) while moving the smooth
+    // outer convex bubble border by 0.0 pixels!
+    const closeR = 5;
+    const closeR2 = closeR * closeR;
+    const pw = w + closeR * 2;
+    const ph = h + closeR * 2;
+    const dilated = new Uint8Array(pw * ph);
+    for (let yy = 0; yy < h; yy++) {
+      for (let xx = 0; xx < w; xx++) {
+        if (!baseInterior[yy * w + xx]) continue;
+        const cy = yy + closeR;
+        const cx = xx + closeR;
+        for (let dy = -closeR; dy <= closeR; dy++) {
+          const rOff = (cy + dy) * pw + cx;
+          for (let dx = -closeR; dx <= closeR; dx++) {
+            if (dx * dx + dy * dy <= closeR2) dilated[rOff + dx] = 1;
+          }
+        }
+      }
+    }
+    const closedInterior = new Uint8Array(total);
+    for (let yy = 0; yy < h; yy++) {
+      const cy = yy + closeR;
+      for (let xx = 0; xx < w; xx++) {
+        const cx = xx + closeR;
+        let allSet = 1;
+        for (let dy = -closeR; dy <= closeR && allSet; dy++) {
+          const rOff = (cy + dy) * pw + cx;
+          for (let dx = -closeR; dx <= closeR; dx++) {
+            if (dx * dx + dy * dy <= closeR2 && !dilated[rOff + dx]) {
+              allSet = 0;
+              break;
+            }
+          }
+        }
+        closedInterior[yy * w + xx] = allSet;
+      }
+    }
+
+    // Outside flood — boundary seeds over non-closedInterior pixels. Whatever
+    // stays unmarked is closedInterior or an enclosed glyph counter -> paint zone.
     const outside = new Uint8Array(total);
     const oq = new Int32Array(total);
     let oqh = 0;
     let oqt = 0;
     const seedEdge = (i: number) => {
-      if (!interior[i] && !outside[i]) { outside[i] = 1; oq[oqt++] = i; }
+      if (!closedInterior[i] && !outside[i]) { outside[i] = 1; oq[oqt++] = i; }
     };
     for (let xx = 0; xx < w; xx++) { seedEdge(xx); seedEdge((h - 1) * w + xx); }
     for (let yy = 0; yy < h; yy++) { seedEdge(yy * w); seedEdge(yy * w + w - 1); }
@@ -133,10 +191,10 @@ export class BubbleFiller {
       const i = oq[oqh++];
       const xx = i % w;
       const yy = (i / w) | 0;
-      if (xx > 0 && !interior[i - 1] && !outside[i - 1]) { outside[i - 1] = 1; oq[oqt++] = i - 1; }
-      if (xx < w - 1 && !interior[i + 1] && !outside[i + 1]) { outside[i + 1] = 1; oq[oqt++] = i + 1; }
-      if (yy > 0 && !interior[i - w] && !outside[i - w]) { outside[i - w] = 1; oq[oqt++] = i - w; }
-      if (yy < h - 1 && !interior[i + w] && !outside[i + w]) { outside[i + w] = 1; oq[oqt++] = i + w; }
+      if (xx > 0 && !closedInterior[i - 1] && !outside[i - 1]) { outside[i - 1] = 1; oq[oqt++] = i - 1; }
+      if (xx < w - 1 && !closedInterior[i + 1] && !outside[i + 1]) { outside[i + 1] = 1; oq[oqt++] = i + 1; }
+      if (yy > 0 && !closedInterior[i - w] && !outside[i - w]) { outside[i - w] = 1; oq[oqt++] = i - w; }
+      if (yy < h - 1 && !closedInterior[i + w] && !outside[i + w]) { outside[i + w] = 1; oq[oqt++] = i + w; }
     }
 
     // Interior statistics over non-ink pixels: uniformity + mean colour.
@@ -210,15 +268,16 @@ export class BubbleFiller {
     const b = accB / n;
     for (let i = 0; i < total; i++) {
       if (outside[i] || !clip[i]) continue;
-      // Retreat 1px from outside-ink neighbours so the border's own AA
-      // fringe is never repainted — that was the remaining "lẹm" edge.
-      const xx = i % w;
-      const yy = (i / w) | 0;
-      if ((xx > 0 && ink[i - 1] && outside[i - 1]) ||
-          (xx < w - 1 && ink[i + 1] && outside[i + 1]) ||
-          (yy > 0 && ink[i - w] && outside[i - w]) ||
-          (yy < h - 1 && ink[i + w] && outside[i + w])) {
-        continue;
+      // Retreat 1px only on non-welded paper touching outside ink so border AA stays crisp
+      if (baseInterior[i]) {
+        const xx = i % w;
+        const yy = (i / w) | 0;
+        if ((xx > 0 && ink[i - 1] && outside[i - 1]) ||
+            (xx < w - 1 && ink[i + 1] && outside[i + 1]) ||
+            (yy > 0 && ink[i - w] && outside[i - w]) ||
+            (yy < h - 1 && ink[i + w] && outside[i + w])) {
+          continue;
+        }
       }
       const p = i * 4;
       out[p] = r;

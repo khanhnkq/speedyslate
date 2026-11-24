@@ -271,18 +271,7 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
             const fullPageImg = ctx.getImageData(0, 0, width, height);
             const gapBoxes = ChamberGapScanner.recoverMissedLines(fullPageImg, boxes);
             if (gapBoxes.length > 0) {
-              for (const gb of gapBoxes) {
-                boxes.push(gb);
-                const x0 = Math.max(0, gb.x + 5);
-                const x1 = Math.min(width - 1, gb.x + gb.width - 6);
-                const y0 = Math.max(0, gb.y + 3);
-                const y1 = Math.min(height - 1, gb.y + gb.height - 4);
-                for (let yy = y0; yy <= y1; yy++) {
-                  for (let xx = x0; xx <= x1; xx++) {
-                    if (textMap[yy * width + xx] < 0.85) textMap[yy * width + xx] = 0.85;
-                  }
-                }
-              }
+              boxes.push(...gapBoxes);
             }
             boxes.sort((a, b) => a.y - b.y);
             const detMs = performance.now() - tDet;
@@ -344,17 +333,32 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
 function attachErasePatches(canvas: OffscreenCanvas, items: DialogueItem[], textMap?: Float32Array): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
-  const pad = 4;
+  const pad = 12;
   for (const item of items) {
     const srcX = Math.max(0, item.box.x - pad);
     const srcY = Math.max(0, item.box.y - pad);
-    const srcW = Math.min(canvas.width - srcX, item.box.width + pad * 2);
-    const srcH = Math.min(canvas.height - srcY, item.box.height + pad * 2);
+    const srcW = Math.min(canvas.width - srcX, item.box.width + (item.box.x - srcX) + pad);
+    const srcH = Math.min(canvas.height - srcY, item.box.height + (item.box.y - srcY) + pad);
     if (srcW < 4 || srcH < 4) continue;
     try {
       const img = ctx.getImageData(srcX, srcY, srcW, srcH);
       const localQuad = item.box.quad?.map(([qx, qy]) => [qx - srcX, qy - srcY] as [number, number]);
-      const patch = EraseMasker.buildPatch(img, srcX, srcY, item.bgColor, textMap, canvas.width, localQuad);
+      const innerRect = {
+        x0: item.box.x - srcX,
+        y0: item.box.y - srcY,
+        x1: item.box.x - srcX + item.box.width,
+        y1: item.box.y - srcY + item.box.height
+      };
+      const patch = EraseMasker.buildPatch(
+        img,
+        srcX,
+        srcY,
+        item.bgColor,
+        textMap,
+        canvas.width,
+        localQuad,
+        innerRect
+      );
       if (patch) item.erasePatch = patch;
     } catch {
       // patch is best-effort — rendering falls back to box styling

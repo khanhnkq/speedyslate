@@ -75,4 +75,40 @@ describe('ONNX Tensor disposal & session release', () => {
       (globalThis as any).OffscreenCanvas = origOffscreen;
     }
   });
+
+  it('keeps text lines separated across screentone background (prob ~0.18) using standard DBNet thresh 0.30', async () => {
+    const origOffscreen = (globalThis as any).OffscreenCanvas;
+    (globalThis as any).OffscreenCanvas = class {
+      constructor(public width: number, public height: number) {}
+      getContext() {
+        return {
+          drawImage: () => {},
+          getImageData: (_x: number, _y: number, w: number, h: number) => ({
+            data: new Uint8ClampedArray(w * h * 4),
+            width: w,
+            height: h
+          })
+        };
+      }
+    };
+
+    try {
+      const w = 128, h = 128;
+      const prob = new Float32Array(w * h).fill(0.15); // screentone background noise (< 0.20 thresh)
+      for (let y = 20; y < 32; y++) for (let x = 20; x < 90; x++) prob[y * w + x] = 0.88;
+      for (let y = 70; y < 82; y++) for (let x = 20; x < 90; x++) prob[y * w + x] = 0.88;
+
+      const fakeSession: any = {
+        inputNames: ['x'],
+        outputNames: ['out'],
+        run: vi.fn(async () => ({ out: { data: prob, dispose: () => {} } })),
+        release: vi.fn(async () => {})
+      };
+      const eng = new PaddleDetEngine(fakeSession);
+      const boxes = await eng.detectText(new (globalThis as any).OffscreenCanvas(w, h), w, h);
+      expect(boxes).toHaveLength(2);
+    } finally {
+      (globalThis as any).OffscreenCanvas = origOffscreen;
+    }
+  });
 });

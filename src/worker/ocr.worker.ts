@@ -228,7 +228,7 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
               // windows ≈1.7x effective text resolution. Tall strips keep 1.8
               // to bound the number of RT-DETR runs.
               aspectCap: isComicDet ? (height <= 2200 ? 0.85 : 1.8) : undefined,
-              invertedPass: true,
+              invertedPass: isComicDet,
               textMapOut: textMap
             });
 
@@ -255,7 +255,7 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
             // lines entirely. Aggregator rejoins them into one bubble after.
             const lineBoxes: BoundingBox[] = [];
             for (const b of boxes) {
-              if (b.kind !== 'free' && b.height >= 50 && b.height > b.width * 0.4) {
+              if (b.kind !== 'free' && b.height >= 42 && b.height <= b.width * 2.2) {
                 const parts = LineSegmenter.segmentLines(ctx, b, width, height);
                 for (const p of parts) lineBoxes.push({ ...p, kind: b.kind });
               } else {

@@ -1158,22 +1158,22 @@
     },
     {
       id: "ppocr-v6-multilingual",
-      name: "PaddleOCR v6 Small WebGPU (~30MB - \u0110a ng\xF4n ng\u1EEF CJK + Latin)",
-      description: "Th\u1EBF h\u1EC7 PP-OCRv6 m\u1EDBi nh\u1EA5t ch\u1EA1y 100% tr\xEAn WebGPU (Det + Rec), h\u1ED7 tr\u1EE3 xoay ph\u1EB3ng ch\u1EEF nghi\xEAng v\xE0 \u0111a ng\xF4n ng\u1EEF Nh\u1EADt/H\xE0n/Trung/Anh.",
-      totalSizeMb: 29.7,
+      name: "PaddleOCR v6 Hybrid WebGPU (~25MB - \u0110a ng\xF4n ng\u1EEF CJK + Latin)",
+      description: "K\u1EBFt h\u1EE3p Detector v4 chuy\xEAn b\u1EAFt bong b\xF3ng truy\u1EC7n tranh v\u1EDBi b\u1ED9 nh\u1EADn di\u1EC7n PP-OCRv6 SVTR m\u1EDBi nh\u1EA5t ch\u1EA1y 100% tr\xEAn WebGPU (Nh\u1EADt/H\xE0n/Trung/Anh).",
+      totalSizeMb: 25,
       files: {
-        detUrl: `${PPU_ONNX_BASE}/detection/PP-OCRv6_small_det.onnx`,
+        detUrl: "https://huggingface.co/deepghs/paddleocr/resolve/main/det/ch_PP-OCRv4_det/model.onnx",
         recUrl: `${PPU_ONNX_BASE}/recognition/PP-OCRv6_small_rec.onnx`,
         keysUrl: `${PPU_DICT_BASE}/recognition/ppocrv6_dict.txt`
       }
     },
     {
       id: "ppocr-v5-english-fast",
-      name: "PaddleOCR v5 English WebGPU (~12MB - Si\xEAu t\u1ED1c Comic/Manhwa Anh)",
-      description: "B\u1ED9 PP-OCRv5 Mobile si\xEAu nh\u1EB9 t\u1ED1i \u01B0u ri\xEAng cho truy\u1EC7n ti\u1EBFng Anh/Latin, ch\u1EA1y full WebGPU t\u1ED1c \u0111\u1ED9 cao.",
-      totalSizeMb: 12,
+      name: "PaddleOCR v5 English WebGPU (~12.2MB - Si\xEAu t\u1ED1c Comic/Manhwa Anh)",
+      description: "Detector v4 b\u1EAFt \u0111\u1EE7 m\u1ECDi bong b\xF3ng tho\u1EA1i k\u1EBFt h\u1EE3p b\u1ED9 \u0111\u1ECDc PP-OCRv5 English SVTR si\xEAu nh\u1EB9 ch\u1EA1y full WebGPU t\u1ED1c \u0111\u1ED9 cao.",
+      totalSizeMb: 12.2,
       files: {
-        detUrl: `${PPU_ONNX_BASE}/detection/PP-OCRv5_mobile_det_infer.onnx`,
+        detUrl: "https://huggingface.co/deepghs/paddleocr/resolve/main/det/ch_PP-OCRv4_det/model.onnx",
         recUrl: `${PPU_ONNX_BASE}/recognition/multi/en/v5/en_PP-OCRv5_mobile_rec_infer.onnx`,
         keysUrl: `${PPU_DICT_BASE}/recognition/multi/en/v5/ppocrv5_en_dict.txt`
       }

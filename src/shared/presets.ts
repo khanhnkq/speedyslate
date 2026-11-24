@@ -152,22 +152,22 @@ export const OCR_MODEL_PRESETS: OcrModelPreset[] = [
   },
   {
     id: 'ppocr-v6-multilingual',
-    name: 'PaddleOCR v6 Small WebGPU (~30MB - Đa ngôn ngữ CJK + Latin)',
-    description: 'Thế hệ PP-OCRv6 mới nhất chạy 100% trên WebGPU (Det + Rec), hỗ trợ xoay phẳng chữ nghiêng và đa ngôn ngữ Nhật/Hàn/Trung/Anh.',
-    totalSizeMb: 29.7,
+    name: 'PaddleOCR v6 Hybrid WebGPU (~25MB - Đa ngôn ngữ CJK + Latin)',
+    description: 'Kết hợp Detector v4 chuyên bắt bong bóng truyện tranh với bộ nhận diện PP-OCRv6 SVTR mới nhất chạy 100% trên WebGPU (Nhật/Hàn/Trung/Anh).',
+    totalSizeMb: 25.0,
     files: {
-      detUrl: `${PPU_ONNX_BASE}/detection/PP-OCRv6_small_det.onnx`,
+      detUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/det/ch_PP-OCRv4_det/model.onnx',
       recUrl: `${PPU_ONNX_BASE}/recognition/PP-OCRv6_small_rec.onnx`,
       keysUrl: `${PPU_DICT_BASE}/recognition/ppocrv6_dict.txt`
     }
   },
   {
     id: 'ppocr-v5-english-fast',
-    name: 'PaddleOCR v5 English WebGPU (~12MB - Siêu tốc Comic/Manhwa Anh)',
-    description: 'Bộ PP-OCRv5 Mobile siêu nhẹ tối ưu riêng cho truyện tiếng Anh/Latin, chạy full WebGPU tốc độ cao.',
-    totalSizeMb: 12.0,
+    name: 'PaddleOCR v5 English WebGPU (~12.2MB - Siêu tốc Comic/Manhwa Anh)',
+    description: 'Detector v4 bắt đủ mọi bong bóng thoại kết hợp bộ đọc PP-OCRv5 English SVTR siêu nhẹ chạy full WebGPU tốc độ cao.',
+    totalSizeMb: 12.2,
     files: {
-      detUrl: `${PPU_ONNX_BASE}/detection/PP-OCRv5_mobile_det_infer.onnx`,
+      detUrl: 'https://huggingface.co/deepghs/paddleocr/resolve/main/det/ch_PP-OCRv4_det/model.onnx',
       recUrl: `${PPU_ONNX_BASE}/recognition/multi/en/v5/en_PP-OCRv5_mobile_rec_infer.onnx`,
       keysUrl: `${PPU_DICT_BASE}/recognition/multi/en/v5/ppocrv5_en_dict.txt`
     }

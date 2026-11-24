@@ -7,8 +7,8 @@ import { ITextDetector } from './detector-interface';
 
 export class PaddleDetEngine implements ITextDetector {
   private session: ort.InferenceSession;
-  private thresh: number = 0.10;
-  private boxThresh: number = 0.15;
+  private thresh: number = 0.20;
+  private boxThresh: number = 0.25;
   private unclipRatio: number = 1.65;
   public lastProbMap: ITextDetector['lastProbMap'] = null;
 

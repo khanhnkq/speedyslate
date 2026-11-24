@@ -123,6 +123,7 @@ export class BubbleAggregator {
         for (let j = 0; j < sorted.length; j++) {
           if (used.has(j)) continue;
           const candidate = sorted[j];
+          if (Boolean(lastLine.isDarkBackground) !== Boolean(candidate.isDarkBackground)) continue;
           const candBox = candidate.box;
 
           // 1. Font-size / Line-height consistency (lines in the same bubble have similar font size)
@@ -193,6 +194,7 @@ export class BubbleAggregator {
         for (let j = 0; j < sorted.length; j++) {
           if (used.has(j)) continue;
           const candidate = sorted[j];
+          if (Boolean(lastLine.isDarkBackground) !== Boolean(candidate.isDarkBackground)) continue;
           const candBox = candidate.box;
 
           // 1. Font-size / Column-width consistency (columns in the same bubble share font size)
@@ -303,15 +305,9 @@ export class BubbleAggregator {
     const bubblePatch = group
       .map((d) => d.bubblePatch)
       .find((p) => p !== undefined);
-    // Whole-interior repaint already covers glyphs+specks inside the
-    // bubble; keep member line patches only where they reach outside the
-    // bubble crop (lines bleeding past the bubble edge).
-    const erasePatches = bubblePatch
-      ? [bubblePatch, ...linePatches.filter((p) =>
-          p.x < bubblePatch.x || p.y < bubblePatch.y ||
-          p.x + p.width > bubblePatch.x + bubblePatch.width ||
-          p.y + p.height > bubblePatch.y + bubblePatch.height)]
-      : linePatches;
+    // Layer per-line Telea patches first, then whole-bubble interior repaint on top
+    // so glyphs touching the bubble crop boundary are still 100% erased.
+    const erasePatches = bubblePatch ? [...linePatches, bubblePatch] : linePatches;
     if (erasePatches.length > 0) bubble.erasePatches = erasePatches;
 
     const memberWithChamber = group.find((d) => d.chamberBox !== undefined);

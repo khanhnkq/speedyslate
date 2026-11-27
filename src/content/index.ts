@@ -199,7 +199,7 @@ class SpeedySlateContentApp {
   private resetPageTranslations(): void {
     document
       .querySelectorAll(
-        '.speedyslate-bubble, .speedyslate-erase-patch, .speedyslate-clean-canvas, .speedyslate-page-badge'
+        '.speedyslate-overlay-layer, .speedyslate-bubble, .speedyslate-erase-patch, .speedyslate-clean-canvas, .speedyslate-page-badge'
       )
       .forEach((el) => el.remove());
     this.images.forEach((img) => {

@@ -109,15 +109,21 @@ export class VisionBoxParser {
           const a = current.normBox;
           const b = candidate.normBox;
 
-          // Vertical proximity on 0-1000 scale: overlapping or vertical gap <= 40 (~4% image height)
-          const yGap = Math.max(0, Math.max(a.ymin, b.ymin) - Math.min(a.ymax, b.ymax));
-          const isVertAdjacent = yGap <= 40;
+          // Pixel-space vertical proximity: only merge overlapping or immediately touching
+          // fragments within one bubble (never across inter-bubble borders/gutters)
+          const aHeightPx = ((a.ymax - a.ymin) / 1000) * naturalHeight;
+          const bHeightPx = ((b.ymax - b.ymin) / 1000) * naturalHeight;
+          const minHPx = Math.max(8, Math.min(aHeightPx, bHeightPx));
+          const yGapPx = ((Math.max(a.ymin, b.ymin) - Math.min(a.ymax, b.ymax)) / 1000) * naturalHeight;
+          const isVertAdjacent = yGapPx <= Math.min(10, minHPx * 0.2);
 
-          // Horizontal alignment: substantial overlap or close center
+          // Horizontal alignment: substantial overlap AND aligned center
           const xOverlap = Math.min(a.xmax, b.xmax) - Math.max(a.xmin, b.xmin);
           const minW = Math.min(a.xmax - a.xmin, b.xmax - b.xmin);
           const centerDiff = Math.abs((a.xmin + a.xmax) / 2 - (b.xmin + b.xmax) / 2);
-          const hasXOverlap = xOverlap >= minW * 0.2 || centerDiff <= 70;
+          const hasXOverlap =
+            xOverlap >= minW * 0.45 &&
+            centerDiff <= Math.max(a.xmax - a.xmin, b.xmax - b.xmin) * 0.35;
 
           if (isVertAdjacent && hasXOverlap) {
             const unitedNormBox = {

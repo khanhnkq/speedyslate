@@ -9,6 +9,7 @@ import { LineSegmenter } from './line-segmenter';
 import { EraseMasker } from './erase-masker';
 import { BubbleFiller } from './bubble-filler';
 import { BubbleAggregator } from './bubble-aggregator';
+import { PagePixelBuffer } from './bubble-wall-detector';
 import { BubbleChamberExtractor } from './bubble-chamber';
 import { ChamberGapScanner } from './chamber-gap-scanner';
 
@@ -290,7 +291,7 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
 
             // 3. Per-line erase patches: inpaint glyph pixels only, so the
             // original bubble/art is preserved and nothing spills outside.
-            attachErasePatches(canvas, dialogues, textMap);
+            attachErasePatches(canvas, dialogues, textMap, fullPageImg);
 
             reply({
               type: 'PROCESS_RESULT',
@@ -327,10 +328,32 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
   });
 };
 
+function findBubbleMember(
+  lb: BoundingBox,
+  boxToItem: Map<BoundingBox, DialogueItem>,
+  items: DialogueItem[]
+): DialogueItem | undefined {
+  return (
+    boxToItem.get(lb) ??
+    items.find(
+      (it) =>
+        Math.abs(it.box.x - lb.x) <= 2 &&
+        Math.abs(it.box.y - lb.y) <= 2 &&
+        Math.abs(it.box.height - lb.height) <= 4 &&
+        lb.width <= it.box.width + 4
+    )
+  );
+}
+
 // Builds a pixel-level erase patch per recognized line: Otsu glyph mask +
 // diffusion inpaint, so downstream can remove ink without touching the
 // original bubble shape or surrounding artwork.
-function attachErasePatches(canvas: OffscreenCanvas, items: DialogueItem[], textMap?: Float32Array): void {
+function attachErasePatches(
+  canvas: OffscreenCanvas,
+  items: DialogueItem[],
+  textMap?: Float32Array,
+  pageImg?: PagePixelBuffer
+): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const pad = 16;
@@ -369,9 +392,15 @@ function attachErasePatches(canvas: OffscreenCanvas, items: DialogueItem[], text
   // flood-fill each bubble's interior once. Kills specks that line patches
   // can't reach (between-line gaps) and keeps borders pixel-perfect.
   try {
-    const bubbles = BubbleAggregator.aggregateDialogues(items, canvas.width, canvas.height);
+    if (items.length === 1) items[0].bubbleClusterId = 0;
+    const bubbles = BubbleAggregator.aggregateDialogues(items, canvas.width, canvas.height, undefined, pageImg);
     const boxToItem = new Map(items.map((it) => [it.box, it]));
-    for (const b of bubbles) {
+    for (let bIdx = 0; bIdx < bubbles.length; bIdx++) {
+      const b = bubbles[bIdx];
+      for (const lb of b.lineBoxes || []) {
+        const member = findBubbleMember(lb, boxToItem, items);
+        if (member) member.bubbleClusterId = bIdx;
+      }
       // Search window generous enough horizontally to capture oval CJK chambers
       const padX = Math.max(24, Math.min(180, Math.round(Math.max(b.box.width * 1.6, b.box.height * 0.85))));
       const padY = Math.max(16, Math.min(120, Math.round(b.box.height * 0.45)));
@@ -384,7 +413,7 @@ function attachErasePatches(canvas: OffscreenCanvas, items: DialogueItem[], text
         const chamber = BubbleChamberExtractor.extractChamber(cImg, cx, cy, b.box);
         if (chamber) {
           for (const lb of b.lineBoxes || []) {
-            const member = boxToItem.get(lb);
+            const member = findBubbleMember(lb, boxToItem, items);
             if (member) {
               member.chamberBox = chamber.chamberBox;
               member.isOvalChamber = chamber.isOval;
@@ -402,9 +431,13 @@ function attachErasePatches(canvas: OffscreenCanvas, items: DialogueItem[], text
       const patch = BubbleFiller.buildBubblePatch(img, bx, by, b.lineBoxes);
       if (!patch) continue;
       for (const lb of b.lineBoxes || []) {
-        const member = boxToItem.get(lb);
+        const member = findBubbleMember(lb, boxToItem, items);
         if (member) member.bubblePatch = patch;
       }
+    }
+    let nextClusterId = bubbles.length;
+    for (const it of items) {
+      if (it.bubbleClusterId === undefined) it.bubbleClusterId = nextClusterId++;
     }
   } catch {
     // bubble fill is optional — line patches already cover the common case

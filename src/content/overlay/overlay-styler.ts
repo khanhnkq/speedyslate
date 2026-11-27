@@ -1,4 +1,4 @@
-import { BubbleCoordinates } from './bubble-geometry';
+import type { BubbleCoordinates } from './bubble-geometry';
 
 /**
  * OverlayStyler: Manages clean, comic-authentic styling for speech bubble overlays.
@@ -9,6 +9,27 @@ import { BubbleCoordinates } from './bubble-geometry';
  * Following Single Responsibility Principle (SRP) & strictly < 500 lines.
  */
 export class OverlayStyler {
+  /**
+   * Computes pixel interior padding for a rendered speech bubble box.
+   * Uses CSS pixel dimensions (never CSS `%`, which resolves against the full wrapper width).
+   */
+  public static computePaddingPx(
+    cssBoxW: number,
+    cssBoxH: number,
+    isEllipse: boolean
+  ): { padX: number; padY: number } {
+    if (isEllipse) {
+      return {
+        padX: Math.max(3, Math.round(cssBoxW * 0.09)),
+        padY: Math.max(2, Math.round(cssBoxH * 0.06))
+      };
+    }
+    return {
+      padX: Math.min(6, Math.max(2, Math.round(cssBoxW * 0.04))),
+      padY: Math.min(3, Math.max(1, Math.round(cssBoxH * 0.04)))
+    };
+  }
+
   /**
    * Resolves the erase/background colour for an item under the given theme.
    * 'auto' prefers the real sampled bgColor; falls back to the dark/light binary.
@@ -47,7 +68,9 @@ export class OverlayStyler {
     isDark: boolean,
     bgColor?: string,
     transparentBg?: boolean,
-    kind?: 'dialogue' | 'sfx' | 'free'
+    kind?: 'dialogue' | 'sfx' | 'free',
+    paddingPx?: { padX: number; padY: number },
+    hasManualLineBreaks?: boolean
   ): void {
     const bg = transparentBg ? 'transparent' : bgColor ?? (isDark ? '#111111' : '#ffffff');
     const textColor = OverlayStyler.textColorFor(
@@ -69,6 +92,8 @@ export class OverlayStyler {
       borderRadius = '50%';
     }
 
+    const pad = paddingPx ?? OverlayStyler.computePaddingPx(coords.pixelWidth, coords.pixelHeight, isEllipse);
+
     Object.assign(bubble.style, {
       position: 'absolute',
       top: `${coords.topPct}%`,
@@ -78,6 +103,7 @@ export class OverlayStyler {
       maxWidth: `${coords.widthPct}%`,
       height: `${coords.heightPct}%`,
       maxHeight: `${coords.heightPct}%`,
+      margin: '0',
       backgroundColor: bg,
       color: textColor,
       border: 'none',
@@ -89,12 +115,16 @@ export class OverlayStyler {
       paintOrder: needsStrokeHalo ? 'stroke fill' : 'normal',
       borderRadius,
       boxSizing: 'border-box',
-      padding: isEllipse ? '5% 10%' : '3px 6px',
+      padding: `${pad.padY}px ${pad.padX}px`,
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
       textAlign: 'center',
+      textIndent: '0px',
+      wordSpacing: '0px',
+      direction: 'ltr',
+      writingMode: 'horizontal-tb',
       fontFamily: "'SpeedySlateComic', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif",
       fontWeight: '600',
       lineHeight: '1.24',
@@ -102,17 +132,23 @@ export class OverlayStyler {
       fontSize: `${fontSize}px`,
       zIndex: '50',
       cursor: 'default',
+      pointerEvents: 'auto',
       transition: 'opacity 0.15s ease-in-out',
       userSelect: 'text',
-      whiteSpace: 'normal',
+      whiteSpace: hasManualLineBreaks ? 'pre-line' : 'normal',
       wordBreak: 'normal',
       overflowWrap: 'break-word',
       hyphens: 'none',
       overflow: 'visible'
     });
 
-    // Balanced line breaking for natural comic dialogue layout
-    bubble.style.setProperty('text-wrap', 'balance');
-    bubble.style.setProperty('-webkit-text-wrap', 'balance');
+    if (hasManualLineBreaks) {
+      bubble.style.setProperty('text-wrap', 'normal');
+      bubble.style.setProperty('-webkit-text-wrap', 'normal');
+    } else {
+      // Balanced line breaking for natural comic dialogue layout
+      bubble.style.setProperty('text-wrap', 'balance');
+      bubble.style.setProperty('-webkit-text-wrap', 'balance');
+    }
   }
 }

@@ -240,21 +240,37 @@ export class ComicPanelAdapter {
       return img.parentElement;
     }
 
+    let marginTop = '0';
+    let marginBottom = '0';
+    if (typeof getComputedStyle === 'function') {
+      try {
+        const cs = getComputedStyle(img);
+        if (cs.marginTop && cs.marginTop !== '0px') marginTop = cs.marginTop;
+        if (cs.marginBottom && cs.marginBottom !== '0px') marginBottom = cs.marginBottom;
+      } catch {
+        // Ignore computed style failure in detached environments
+      }
+    }
+
     const wrapper = document.createElement('div');
     wrapper.className = 'speedyslate-wrapper';
     wrapper.style.position = 'relative';
     wrapper.style.display = 'block';
     wrapper.style.width = 'fit-content';
     wrapper.style.maxWidth = '100%';
-    wrapper.style.margin = '0 auto';
+    wrapper.style.margin = `${marginTop} auto ${marginBottom} auto`;
+    wrapper.style.padding = '0';
+    wrapper.style.border = 'none';
     wrapper.style.lineHeight = '0'; // prevent gaps between comic slices
     wrapper.style.boxSizing = 'border-box';
     wrapper.style.overflow = 'hidden';
 
-    // Ensure image matches wrapper bounds exactly with no horizontal margins
+    // Ensure image matches wrapper bounds exactly with no host margins/padding
     img.style.display = 'block';
     img.style.maxWidth = '100%';
     img.style.height = 'auto';
+    img.style.setProperty('margin', '0', 'important');
+    img.style.setProperty('padding', '0', 'important');
 
     img.parentElement?.insertBefore(wrapper, img);
     wrapper.appendChild(img);

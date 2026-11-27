@@ -25,7 +25,7 @@ export class SpaOverlayShield {
         const wrapper = img.parentElement;
         if (wrapper?.classList.contains('speedyslate-wrapper')) {
           wrapper
-            .querySelectorAll('.speedyslate-bubble, .speedyslate-erase-patch, .speedyslate-clean-canvas')
+            .querySelectorAll('.speedyslate-overlay-layer, .speedyslate-bubble, .speedyslate-erase-patch, .speedyslate-clean-canvas')
             .forEach((el) => el.remove());
         }
         delete img.dataset.slateStatus;

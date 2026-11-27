@@ -1,3 +1,5 @@
+import { OverlayStyler } from './overlay-styler';
+
 export type WidthMeasurer = (text: string, fontPx: number) => number;
 
 const COMIC_FONT_STACK = "'SpeedySlateComic', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif";
@@ -66,6 +68,42 @@ export class TextAutoFitter {
   }
 
   /**
+   * Computes CSS font-size, wrapped lines, and pixel padding scaled to the actual
+   * rendered DOM width of the comic image (`renderedWidth / naturalWidth`).
+   */
+  public static fitScaledDialogue(
+    naturalBoxWidthPx: number,
+    naturalBoxHeightPx: number,
+    text: string,
+    opts?: {
+      naturalWidth?: number;
+      renderedWidth?: number;
+      elliptical?: boolean;
+      measureWidth?: WidthMeasurer;
+    }
+  ): { fontSize: number; lines: string[]; padX: number; padY: number } {
+    const natW = opts?.naturalWidth && opts.naturalWidth > 0 ? opts.naturalWidth : 0;
+    const renW = opts?.renderedWidth && opts.renderedWidth > 0 ? opts.renderedWidth : 0;
+    const scale = natW > 0 && renW > 0 ? renW / natW : 1;
+
+    const cssW = naturalBoxWidthPx * scale;
+    const cssH = naturalBoxHeightPx * scale;
+    const elliptical = Boolean(opts?.elliptical);
+
+    const { padX, padY } = OverlayStyler.computePaddingPx(cssW, cssH, elliptical);
+    const innerW = Math.max(14, cssW - padX * 2);
+    const innerH = Math.max(12, cssH - padY * 2);
+
+    const res = this.fitDialogue(innerW, innerH, text, {
+      elliptical,
+      measureWidth: opts?.measureWidth,
+      minFontPx: 7.5,
+      maxFontPx: 22
+    });
+    return { fontSize: res.fontSize, lines: res.lines, padX, padY };
+  }
+
+  /**
    * Computes CSS font-size scaled to the actual rendered DOM width of the comic
    * image (`renderedWidth / naturalWidth`), deducting elliptical safe padding.
    */
@@ -80,24 +118,7 @@ export class TextAutoFitter {
       measureWidth?: WidthMeasurer;
     }
   ): number {
-    const natW = opts?.naturalWidth && opts.naturalWidth > 0 ? opts.naturalWidth : 0;
-    const renW = opts?.renderedWidth && opts.renderedWidth > 0 ? opts.renderedWidth : 0;
-    const scale = natW > 0 && renW > 0 ? renW / natW : 1;
-
-    const cssW = naturalBoxWidthPx * scale;
-    const cssH = naturalBoxHeightPx * scale;
-    const elliptical = Boolean(opts?.elliptical);
-
-    // Match OverlayStyler's interior padding ('5% 10%' for ellipse, '3px 6px' for rect)
-    const innerW = elliptical ? cssW * 0.8 : cssW - 12;
-    const innerH = elliptical ? cssH * 0.88 : cssH - 6;
-
-    return this.fitDialogue(innerW, innerH, text, {
-      elliptical,
-      measureWidth: opts?.measureWidth,
-      minFontPx: 7.5,
-      maxFontPx: 22
-    }).fontSize;
+    return this.fitScaledDialogue(naturalBoxWidthPx, naturalBoxHeightPx, text, opts).fontSize;
   }
 
   public static fitDialogue(

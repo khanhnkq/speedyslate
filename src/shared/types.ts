@@ -42,6 +42,7 @@ export interface DialogueItem {
   bgColor?: string;         // Sampled bubble background '#RRGGBB'
   isVertical?: boolean;     // True when crop was rotated from a vertical CJK column
   lineBoxes?: BoundingBox[]; // Member line boxes merged into this bubble
+  bubbleClusterId?: number; // Wall-verified bubble cluster id stamped inside OCR worker so downstream re-aggregation never merges across bubble walls
   chamberBox?: BoundingBox;  // Detected speech-bubble interior chamber (tail severed)
   isOvalChamber?: boolean;   // True when chamber silhouette is elliptical/rounded
   erasePatch?: ErasePatch;   // Per-line inpainted region (raw item)

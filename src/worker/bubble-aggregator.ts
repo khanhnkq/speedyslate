@@ -1,4 +1,5 @@
 import { BoundingBox, DialogueItem, DialogueKind } from '../shared/types';
+import { BubbleWallDetector, PagePixelBuffer } from './bubble-wall-detector';
 import { VerticalText } from './vertical-text';
 import { OcrNoiseFilter } from './ocr-noise-filter';
 import { ReadingOrderSorter } from './reading-order';
@@ -20,7 +21,8 @@ export class BubbleAggregator {
     items: DialogueItem[],
     imageWidth: number,
     imageHeight: number,
-    sourceLang?: string
+    sourceLang?: string,
+    pageImg?: PagePixelBuffer
   ): DialogueItem[] {
     if (items.length === 0) return items;
     const filtered = OcrNoiseFilter.filterRawLines(items, imageWidth, imageHeight);
@@ -32,8 +34,8 @@ export class BubbleAggregator {
     const verticalItems = filtered.filter((d) => d.isVertical === true);
 
     const groups: DialogueItem[][] = [
-      ...this.groupHorizontalLines(horizontalItems),
-      ...this.groupVerticalColumns(verticalItems)
+      ...this.groupHorizontalLines(horizontalItems, pageImg),
+      ...this.groupVerticalColumns(verticalItems, pageImg)
     ];
 
     // 2. Build aggregated DialogueItem for each speech bubble
@@ -100,7 +102,7 @@ export class BubbleAggregator {
    * Original grouping path for horizontal lines: vertically stacked lines inside
    * the same speech bubble (font-height similarity, bounded vertical gap, horizontal overlap).
    */
-  private static groupHorizontalLines(items: DialogueItem[]): DialogueItem[][] {
+  private static groupHorizontalLines(items: DialogueItem[], pageImg?: PagePixelBuffer): DialogueItem[][] {
     // 1. Sort top to bottom by Y coordinate
     const sorted = [...items].sort((a, b) => a.box.y - b.box.y);
     const groups: DialogueItem[][] = [];
@@ -125,6 +127,12 @@ export class BubbleAggregator {
           const candidate = sorted[j];
           const candBox = candidate.box;
           if (
+            (lastLine.bubbleClusterId !== undefined || candidate.bubbleClusterId !== undefined) &&
+            lastLine.bubbleClusterId !== candidate.bubbleClusterId
+          ) {
+            continue;
+          }
+          if (
             Boolean(lastLine.isDarkBackground) !== Boolean(candidate.isDarkBackground) &&
             Math.max(lastBox.height, candBox.height) >= 30
           ) {
@@ -137,8 +145,8 @@ export class BubbleAggregator {
 
           // 2. Strict vertical gap: measured from the bottom of the immediate last line
           const verticalGap = candBox.y - (lastBox.y + lastBox.height);
-          // In comics, line spacing is between 0.2x and 2.8x of line height
-          const maxAllowedGap = Math.max(lastBox.height, candBox.height) * 2.8;
+          // In comics, line spacing is between 0.2x and 1.85x of line height
+          const maxAllowedGap = Math.max(lastBox.height, candBox.height) * 1.85;
           const isVerticallyAdjacent = verticalGap >= -lastBox.height * 0.5 && verticalGap <= maxAllowedGap;
           if (!isVerticallyAdjacent) continue;
 
@@ -158,6 +166,10 @@ export class BubbleAggregator {
           const isAligned = overlapRatio >= 0.25 || centerDiffRatio <= 0.45;
           if (!isAligned) continue;
 
+          if (pageImg && BubbleWallDetector.hasHorizontalWallBetween(pageImg, lastBox, candBox)) {
+            continue;
+          }
+
           // Matched: add candidate line to bubble
           currentGroup.push(candidate);
           used.add(j);
@@ -176,7 +188,7 @@ export class BubbleAggregator {
    * Grouping path for vertical CJK text columns: columns of the same bubble sit
    * side-by-side (read right-to-left) with similar font width and shared vertical band.
    */
-  private static groupVerticalColumns(items: DialogueItem[]): DialogueItem[][] {
+  private static groupVerticalColumns(items: DialogueItem[], pageImg?: PagePixelBuffer): DialogueItem[][] {
     // 1. Sort right to left by X coordinate (CJK column reading order)
     const sorted = [...items].sort((a, b) => b.box.x - a.box.x);
     const groups: DialogueItem[][] = [];
@@ -201,6 +213,12 @@ export class BubbleAggregator {
           const candidate = sorted[j];
           const candBox = candidate.box;
           if (
+            (lastLine.bubbleClusterId !== undefined || candidate.bubbleClusterId !== undefined) &&
+            lastLine.bubbleClusterId !== candidate.bubbleClusterId
+          ) {
+            continue;
+          }
+          if (
             Boolean(lastLine.isDarkBackground) !== Boolean(candidate.isDarkBackground) &&
             Math.max(lastBox.height, candBox.height) >= 30
           ) {
@@ -216,7 +234,7 @@ export class BubbleAggregator {
             lastBox.x - (candBox.x + candBox.width),
             candBox.x - (lastBox.x + lastBox.width)
           );
-          const maxAllowedGap = Math.max(lastBox.width, candBox.width) * 2.8;
+          const maxAllowedGap = Math.max(lastBox.width, candBox.width) * 1.85;
           const isHorizontallyAdjacent =
             horizontalGap >= -lastBox.width * 0.5 && horizontalGap <= maxAllowedGap;
           if (!isHorizontallyAdjacent) continue;
@@ -235,6 +253,10 @@ export class BubbleAggregator {
 
           const isAligned = overlapRatio >= 0.25 || centerDiffRatio <= 0.45;
           if (!isAligned) continue;
+
+          if (pageImg && BubbleWallDetector.hasVerticalWallBetween(pageImg, lastBox, candBox)) {
+            continue;
+          }
 
           // Matched: add candidate column to bubble
           currentGroup.push(candidate);
@@ -302,6 +324,7 @@ export class BubbleAggregator {
       kind: this.majorityKind(group),
       lineBoxes: group.map((d) => d.box)
     };
+    if (group[0].bubbleClusterId !== undefined) bubble.bubbleClusterId = group[0].bubbleClusterId;
 
     const confidence = this.meanConfidence(group);
     if (confidence !== undefined) bubble.confidence = confidence;

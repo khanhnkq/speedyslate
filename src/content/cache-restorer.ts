@@ -2,6 +2,8 @@ import { BubbleTheme } from '../shared/types';
 import { SafeMessenger } from './safe-messenger';
 import { OverlayRenderer } from './overlay/overlay-renderer';
 import { resolveOverlayDimensions } from './image-compressor';
+import { ComicPanelAdapter } from './panel-adapter';
+import { MediaTargetResolver } from './media-target';
 
 /**
  * CacheRestorer: Restores previously completed translations from IndexedDB cache
@@ -9,6 +11,15 @@ import { resolveOverlayDimensions } from './image-compressor';
  * Follows Single Responsibility Principle (SRP) & strictly < 500 lines.
  */
 export class CacheRestorer {
+  private static resolveImageUrl(img: HTMLImageElement): string {
+    return (
+      MediaTargetResolver.extractBestImageUrl(img) ||
+      img.dataset.src ||
+      img.getAttribute('data-src') ||
+      img.src
+    );
+  }
+
   public static async restore(
     images: HTMLImageElement[],
     completedImages: Set<HTMLImageElement>,
@@ -19,7 +30,7 @@ export class CacheRestorer {
     if (images.length === 0) return;
 
     const urls = images
-      .map((img) => img.dataset.src || img.getAttribute('data-src') || img.src)
+      .map((img) => CacheRestorer.resolveImageUrl(img))
       .filter(Boolean);
 
     try {
@@ -37,26 +48,24 @@ export class CacheRestorer {
         const img = images[i];
         if (completedImages.has(img)) continue;
 
-        const url = img.dataset.src || img.getAttribute('data-src') || img.src;
+        const url = CacheRestorer.resolveImageUrl(img);
         const cached = cache[url];
         if (cached && Array.isArray(cached.dialogues) && cached.dialogues.length > 0) {
-          const wrapper = img.parentElement;
-          if (wrapper) {
-            const { width: renderW, height: renderH } = resolveOverlayDimensions(
-              cached.naturalWidth,
-              cached.naturalHeight,
-              img.naturalWidth || 800,
-              img.naturalHeight || 1200
-            );
-            OverlayRenderer.renderDialogues(
-              wrapper,
-              cached.dialogues,
-              renderW,
-              renderH,
-              bubbleTheme
-            );
-            img.dataset.slateStatus = 'translated';
-          }
+          const wrapper = ComicPanelAdapter.wrapImage(img);
+          const { width: renderW, height: renderH } = resolveOverlayDimensions(
+            cached.naturalWidth,
+            cached.naturalHeight,
+            img.naturalWidth || 800,
+            img.naturalHeight || 1200
+          );
+          OverlayRenderer.renderDialogues(
+            wrapper,
+            cached.dialogues,
+            renderW,
+            renderH,
+            bubbleTheme
+          );
+          img.dataset.slateStatus = 'translated';
           markCompleted(img);
           newlyRestored++;
         }

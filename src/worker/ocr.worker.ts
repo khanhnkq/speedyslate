@@ -408,10 +408,12 @@ function attachErasePatches(
       const cy = Math.max(0, b.box.y - padY);
       const cw = Math.min(canvas.width - cx, b.box.width + padX * 2);
       const ch = Math.min(canvas.height - cy, b.box.height + padY * 2);
+      let chamberBox: BoundingBox | undefined;
       if (b.kind === 'dialogue' && cw >= 20 && ch >= 20) {
         const cImg = ctx.getImageData(cx, cy, cw, ch);
         const chamber = BubbleChamberExtractor.extractChamber(cImg, cx, cy, b.box);
         if (chamber) {
+          chamberBox = chamber.chamberBox;
           for (const lb of b.lineBoxes || []) {
             const member = findBubbleMember(lb, boxToItem, items);
             if (member) {
@@ -422,13 +424,18 @@ function attachErasePatches(
         }
       }
 
-      const bx = Math.max(0, b.box.x - 16);
-      const by = Math.max(0, b.box.y - 16);
-      const bw = Math.min(canvas.width - bx, b.box.width + 32);
-      const bh = Math.min(canvas.height - by, b.box.height + 32);
+      const useChamberCrop =
+        chamberBox !== undefined &&
+        chamberBox.width * chamberBox.height <= canvas.width * canvas.height * 0.25;
+      const minX = useChamberCrop ? Math.min(b.box.x, chamberBox!.x) : b.box.x;
+      const minY = useChamberCrop ? Math.min(b.box.y, chamberBox!.y) : b.box.y;
+      const maxX = useChamberCrop ? Math.max(b.box.x + b.box.width, chamberBox!.x + chamberBox!.width) : b.box.x + b.box.width;
+      const maxY = useChamberCrop ? Math.max(b.box.y + b.box.height, chamberBox!.y + chamberBox!.height) : b.box.y + b.box.height;
+      const bx = Math.max(0, minX - 16), by = Math.max(0, minY - 16);
+      const bw = Math.min(canvas.width - bx, maxX + 16 - bx), bh = Math.min(canvas.height - by, maxY + 16 - by);
       if (bw < 12 || bh < 12) continue;
       const img = ctx.getImageData(bx, by, bw, bh);
-      const patch = BubbleFiller.buildBubblePatch(img, bx, by, b.lineBoxes);
+      const patch = BubbleFiller.buildBubblePatch(img, bx, by, b.lineBoxes, useChamberCrop ? chamberBox : undefined);
       if (!patch) continue;
       for (const lb of b.lineBoxes || []) {
         const member = findBubbleMember(lb, boxToItem, items);

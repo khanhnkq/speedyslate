@@ -35,7 +35,8 @@ export class BubbleFiller {
     img: ImageData,
     pageX: number,
     pageY: number,
-    lineBoxes?: { x: number; y: number; width: number; height: number }[]
+    lineBoxes?: { x: number; y: number; width: number; height: number }[],
+    chamberBox?: { x: number; y: number; width: number; height: number }
   ): ErasePatchDbg | null {
     const w = img.width;
     const h = img.height;
@@ -234,6 +235,15 @@ export class BubbleFiller {
           clip.fill(1, yy * w + x0, yy * w + x1);
         }
       }
+      if (chamberBox && touchesCropEdge === 0) {
+        const cx0 = Math.max(0, Math.floor(chamberBox.x - pageX));
+        const cy0 = Math.max(0, Math.floor(chamberBox.y - pageY));
+        const cx1 = Math.min(w, Math.ceil(chamberBox.x - pageX + chamberBox.width));
+        const cy1 = Math.min(h, Math.ceil(chamberBox.y - pageY + chamberBox.height));
+        for (let yy = cy0; yy < cy1; yy++) {
+          clip.fill(1, yy * w + cx0, yy * w + cx1);
+        }
+      }
     } else {
       clip.fill(1);
     }
@@ -285,13 +295,35 @@ export class BubbleFiller {
       out[p + 2] = b;
       out[p + 3] = 255;
     }
+    let coversLineInk = true;
+    if (lineBoxes && lineBoxes.length > 0) {
+      let totalLineInk = 0;
+      let missedLineInk = 0;
+      for (const lb of lineBoxes) {
+        const lx0 = Math.max(0, Math.floor(lb.x - pageX) + 1);
+        const ly0 = Math.max(0, Math.floor(lb.y - pageY) + 1);
+        const lx1 = Math.min(w, Math.ceil(lb.x - pageX + lb.width) - 1);
+        const ly1 = Math.min(h, Math.ceil(lb.y - pageY + lb.height) - 1);
+        for (let yy = ly0; yy < ly1; yy++) {
+          for (let xx = lx0; xx < lx1; xx++) {
+            const idx = yy * w + xx;
+            if (!ink[idx]) continue;
+            totalLineInk++;
+            if (out[idx * 4 + 3] === 0) missedLineInk++;
+          }
+        }
+      }
+      if (missedLineInk > 4 || (totalLineInk > 0 && missedLineInk > totalLineInk * 0.05)) {
+        coversLineInk = false;
+      }
+    }
     return {
       x: pageX,
       y: pageY,
       width: w,
       height: h,
       pixels: out,
-      dbg: { path: 'bubble', guided: true, risky: paintInk / paintArea, std: stddev, tmMax: 0 }
+      dbg: { path: 'bubble', guided: true, risky: paintInk / paintArea, std: stddev, tmMax: 0, coversLineInk }
     };
   }
 }

@@ -1,4 +1,5 @@
-import { BoundingBox, DialogueItem, DialogueKind } from '../shared/types';
+import { BoundingBox, DialogueItem, DialogueKind, ErasePatch } from '../shared/types';
+import type { ErasePatchDbg } from './erase-masker';
 import { BubbleWallDetector, PagePixelBuffer } from './bubble-wall-detector';
 import { VerticalText } from './vertical-text';
 import { OcrNoiseFilter } from './ocr-noise-filter';
@@ -332,15 +333,12 @@ export class BubbleAggregator {
     const bgColor = this.majorityBgColor(group);
     if (bgColor !== undefined) bubble.bgColor = bgColor;
 
-    const linePatches = group
-      .map((d) => d.erasePatch)
-      .filter((p): p is NonNullable<typeof p> => p !== undefined);
-    const bubblePatch = group
-      .map((d) => d.bubblePatch)
-      .find((p) => p !== undefined);
-    // Layer per-line Telea patches first, then whole-bubble interior repaint on top
-    // so glyphs touching the bubble crop boundary are still 100% erased.
-    const erasePatches = bubblePatch ? [...linePatches, bubblePatch] : linePatches;
+    const linePatches = group.map((d) => d.erasePatch).filter((p): p is NonNullable<typeof p> => p !== undefined);
+    const bubblePatch = group.map((d) => d.bubblePatch).find((p) => p !== undefined);
+    // Prefer whole-bubble patch alone when it encloses all lines with >=8px margin
+    const erasePatches = bubblePatch
+      ? (this.enclosesBoxesWithMargin(bubblePatch, bubble.lineBoxes ?? [], 8) ? [bubblePatch] : [...linePatches, bubblePatch])
+      : linePatches;
     if (erasePatches.length > 0) bubble.erasePatches = erasePatches;
 
     const memberWithChamber = group.find((d) => d.chamberBox !== undefined);
@@ -420,18 +418,30 @@ export class BubbleAggregator {
     return best;
   }
 
-  /**
-   * Single ungrouped item: keeps its box/id/text untouched but surfaces the same
-   * metadata contract (kind default, lineBoxes) so downstream per-line erase works.
-   */
+  private static enclosesBoxesWithMargin(p: ErasePatch, boxes: BoundingBox[], m = 8): boolean {
+    if (boxes.length === 0 || (p as ErasePatchDbg).dbg?.coversLineInk === false) return false;
+    return boxes.every((b) => {
+      if (b.x < p.x + m || b.y < p.y + m || b.x + b.width > p.x + p.width - m || b.y + b.height > p.y + p.height - m) return false;
+      if (!(p.pixels instanceof Uint8ClampedArray)) return true;
+      const x0 = Math.max(0, Math.floor(b.x - p.x)), y0 = Math.max(0, Math.floor(b.y - p.y));
+      const x1 = Math.min(p.width, Math.ceil(b.x - p.x + b.width)), y1 = Math.min(p.height, Math.ceil(b.y - p.y + b.height));
+      for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) if (p.pixels[(yy * p.width + xx) * 4 + 3] > 0) return true;
+      return false;
+    });
+  }
+
+  /** Single ungrouped item: keeps its box/id/text untouched and surfaces metadata/erasePatches. */
   private static enrichSingleItem(item: DialogueItem): DialogueItem {
     const enriched: DialogueItem = { ...item };
     if (enriched.kind === undefined) enriched.kind = 'dialogue';
     if (enriched.lineBoxes === undefined) enriched.lineBoxes = [item.box];
     if (enriched.erasePatches === undefined && (item.erasePatch || item.bubblePatch)) {
-      enriched.erasePatches = item.bubblePatch
-        ? (item.erasePatch ? [item.bubblePatch, item.erasePatch] : [item.bubblePatch])
-        : [item.erasePatch!];
+      if (item.bubblePatch) {
+        const encloses = this.enclosesBoxesWithMargin(item.bubblePatch, [item.box], 8);
+        enriched.erasePatches = encloses || !item.erasePatch ? [item.bubblePatch] : [item.erasePatch, item.bubblePatch];
+      } else {
+        enriched.erasePatches = [item.erasePatch!];
+      }
     }
     return enriched;
   }

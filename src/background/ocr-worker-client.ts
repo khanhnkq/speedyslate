@@ -3,6 +3,7 @@ import { ModelDbService } from '../shared/model-db';
 import { DialogueItem, OcrBackend } from '../shared/types';
 import { BubbleAggregator } from '../worker/bubble-aggregator';
 import { DebugLogger } from '../shared/debug-logger';
+import { encodeErasePatches } from '../shared/erase-codec';
 import type { WorkerMessageIn, WorkerMessageOut } from '../worker/ocr.worker';
 
 declare const chrome: any;
@@ -267,6 +268,7 @@ export class OcrWorkerClient {
 
         const rawLines = (result as any).dialogues as DialogueItem[];
         const dialogues = BubbleAggregator.aggregateDialogues(rawLines, width, height, params.sourceLang);
+        encodeErasePatches(dialogues);
 
         return { dialogues, width, height };
       }

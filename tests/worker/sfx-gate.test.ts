@@ -166,6 +166,32 @@ describe('SfxGate.isCleanFlatBackground', () => {
     };
     expect(SfxGate.isCleanFlatBackground(flat, mildTilt)).toBe(true);
   });
+
+  it('keeps middle line of 3-line #dadde6 cloud narration and bordered cream box over foliage', () => {
+    // 3-line #dadde6 cloud narration with 6px leading: outerRing hits adjacent lines above/below
+    const cloud3 = makeImg(320, 220, 255, 255, 255);
+    fillRect(cloud3, 40, 30, 220, 150, 0xda, 0xdd, 0xe6);
+    fillRect(cloud3, 60, 44, 150, 18, 18, 18, 18); // line 1
+    fillRect(cloud3, 60, 68, 150, 18, 18, 18, 18); // line 2 (middle)
+    fillRect(cloud3, 60, 92, 150, 18, 18, 18, 18); // line 3
+    expect(SfxGate.isCleanFlatBackground(cloud3, { x: 60, y: 68, width: 150, height: 18 })).toBe(true);
+
+    // Bordered cream narration box with 6px margin over noisy foliage
+    const creamOnFoliage = makeImg(320, 220, 255, 255, 255);
+    paintNoisyFoliage(creamOnFoliage, 0, 0, 320, 220);
+    fillRect(creamOnFoliage, 42, 42, 216, 66, 20, 20, 20); // 2px dark border
+    fillRect(creamOnFoliage, 44, 44, 212, 62, 255, 245, 220); // cream interior (6px margin around box)
+    const creamBox: BoundingBox = { x: 50, y: 50, width: 200, height: 50 };
+    fillRect(creamOnFoliage, 60, 65, 130, 14, 20, 20, 20);
+    expect(SfxGate.isCleanFlatBackground(creamOnFoliage, creamBox)).toBe(true);
+
+    // Fuchidori glow SFX on foliage must still be rejected
+    const glowOnFoliage = makeImg(320, 220, 255, 255, 255);
+    paintNoisyFoliage(glowOnFoliage, 0, 0, 320, 220);
+    const sfxBox: BoundingBox = { x: 60, y: 60, width: 180, height: 48 };
+    paintFuchidoriBars(glowOnFoliage, sfxBox);
+    expect(SfxGate.isCleanFlatBackground(glowOnFoliage, sfxBox)).toBe(false);
+  });
 });
 
 describe('SfxGate.isStylizedVisualSfx', () => {
@@ -203,6 +229,26 @@ describe('SfxGate.isStylizedVisualSfx', () => {
     const pBox: BoundingBox = { x: 40, y: 40, width: 180, height: 64 };
     fillRect(pastel, 60, 56, 130, 20, 20, 20, 25);
     expect(SfxGate.isStylizedVisualSfx(pastel, pBox)).toBe(false);
+
+    // Tight white speech bubble (2px black border, black text "WAIT!") over blue sky
+    const sky = makeImg(300, 200, 60, 150, 235);
+    fillRect(sky, 48, 48, 144, 44, 15, 15, 15);
+    fillRect(sky, 50, 50, 140, 40, 255, 255, 255);
+    const tightBox: BoundingBox = { x: 52, y: 52, width: 136, height: 36 };
+    fillRect(sky, 70, 62, 80, 14, 15, 15, 15);
+    expect(SfxGate.isStylizedVisualSfx(sky, tightBox)).toBe(false);
+    expect(SfxGate.hasFlatNeutralInterior(sky, tightBox)).toBe(true);
+
+    // Middle line h=30 of 3-line white speech bubble on pure DBNet (!isComicDet) over art
+    const dbImg = makeImg(300, 220, 70, 120, 60);
+    fillRect(dbImg, 46, 36, 188, 128, 18, 18, 18);
+    fillRect(dbImg, 50, 40, 180, 120, 255, 255, 255);
+    fillRect(dbImg, 64, 52, 130, 26, 18, 18, 18); // line 1
+    fillRect(dbImg, 64, 84, 130, 30, 18, 18, 18); // line 2 (h=30)
+    fillRect(dbImg, 64, 120, 130, 26, 18, 18, 18); // line 3
+    const midLine: BoundingBox = { x: 64, y: 84, width: 130, height: 30 };
+    expect(SfxGate.isStylizedVisualSfx(dbImg, midLine)).toBe(false);
+    expect(SfxGate.hasFlatNeutralInterior(dbImg, midLine)).toBe(true);
   });
 });
 
@@ -243,6 +289,16 @@ describe('SfxGate.isBurstOnomatopoeia', () => {
     const cloud = makeImg(300, 200, 255, 255, 255);
     fillRect(cloud, 40, 40, 220, 80, 0xda, 0xdd, 0xe6);
     expect(SfxGate.isBurstOnomatopoeia(cloud, mkItem('Meanwhile, back home', box))).toBe(false);
+
+    // Shouted dialogue ("NOOO!", "GASP!", "SHH!", "SIGH...") inside tight white bubble (border 4px away)
+    const tightBubble = makeImg(300, 200, 80, 130, 70);
+    fillRect(tightBubble, 54, 54, 132, 44, 15, 15, 15);
+    fillRect(tightBubble, 56, 56, 128, 40, 255, 255, 255);
+    const tightDlgBox: BoundingBox = { x: 60, y: 60, width: 120, height: 32 };
+    fillRect(tightBubble, 76, 68, 70, 14, 15, 15, 15);
+    for (const shouted of ['NOOO!', 'GASP!', 'SHH!', 'SIGH...']) {
+      expect(SfxGate.isBurstOnomatopoeia(tightBubble, mkItem(shouted, tightDlgBox))).toBe(false);
+    }
   });
 
   it('bypasses all SFX gates when translateSfx=true and keeps non-SFX when translateSfx=false', () => {

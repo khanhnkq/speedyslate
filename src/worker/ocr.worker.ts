@@ -233,7 +233,8 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
                   if (b.kind === 'sfx') return false;
                   if (!isComicDet && !SfxGate.isCleanFlatBackground(fullPageImg, b)) {
                     if (SfxGate.isStylizedVisualSfx(fullPageImg, b)) return false;
-                    if (b.height >= 28 || SfxGate.isTiltedQuad(b)) return false;
+                    if (SfxGate.isTiltedQuad(b)) return false;
+                    if (b.height >= 28 && !SfxGate.hasFlatNeutralInterior(fullPageImg, b)) return false;
                   }
                   return true;
                 });

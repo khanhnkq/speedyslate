@@ -138,7 +138,8 @@ async function runOcrOnImage(
   imageUrl?: string,
   naturalW?: number,
   naturalH?: number,
-  sourceLang?: string
+  sourceLang?: string,
+  translateSfx?: boolean
 ): Promise<{ dialogues: DialogueItem[]; width: number; height: number }> {
   let blob: Blob;
   if (dataUrl) {
@@ -165,7 +166,8 @@ async function runOcrOnImage(
   const res = await sendToWorker({
     _reqId: nextReqId(),
     type: 'PROCESS_IMAGE',
-    imageBitmap: bitmap
+    imageBitmap: bitmap,
+    translateSfx: translateSfx ?? false
   }, [bitmap]);
 
   const rawDialogues = res.dialogues || [];
@@ -201,7 +203,14 @@ async function handleOffscreenMessage(msg: any): Promise<any> {
             if (!currentModelId || !activeBackend || (targetModelId && currentModelId !== targetModelId)) {
               await ensureModel(targetModelId, msg.useWebGpu ?? true);
             }
-            const res = await runOcrOnImage(msg.dataUrl, msg.imageUrl, msg.width, msg.height, msg.sourceLang);
+            const res = await runOcrOnImage(
+              msg.dataUrl,
+              msg.imageUrl,
+              msg.width,
+              msg.height,
+              msg.sourceLang,
+              msg.translateSfx ?? false
+            );
             resolve({ success: true, ...res });
             break;
           }

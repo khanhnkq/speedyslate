@@ -5,6 +5,7 @@ import { ColorSampler } from './color-sampler';
 import { VerticalText } from './vertical-text';
 import { RecBatcher } from './rec-batcher';
 import { PolygonDeskew, Quad4 } from './polygon-deskew';
+import { RecCropCleaner } from './rec-crop-cleaner';
 
 interface PreparedCrop {
   index: number;
@@ -67,7 +68,7 @@ export class PaddleRecEngine {
 
     const prepared: PreparedCrop[] = [];
     for (let i = 0; i < boxes.length; i++) {
-      const crop = this.prepareCrop(sourceCanvas, boxes[i], i);
+      const crop = this.prepareCrop(sourceCanvas, ctx, boxes[i], i);
       if (crop) prepared.push(crop);
     }
 
@@ -117,28 +118,60 @@ export class PaddleRecEngine {
    */
   private prepareCrop(
     sourceCanvas: OffscreenCanvas,
+    sourceCtx: OffscreenCanvasRenderingContext2D,
     box: BoundingBox,
     index: number
   ): PreparedCrop | null {
-    // 1. Add padding: extra horizontal room preserves inter-word spacing
-    const padX = 5;
-    const padY = 2;
-    const srcX = Math.max(0, box.x - padX);
-    const srcY = Math.max(0, box.y - padY);
-    const srcW = Math.max(1, Math.min(sourceCanvas.width - srcX, box.width + padX * 2));
-    const srcH = Math.max(1, Math.min(sourceCanvas.height - srcY, box.height + padY * 2));
+    const isVertical = VerticalText.isVerticalCandidate(box, this.isCjkModel);
+    const willWarp = Boolean(box.quad && box.quad.length === 4 && PolygonDeskew.shouldWarp(box.angleDeg));
 
-    // 2. Build the native-res crop and clean it: Otsu-separate the minority
-    // (text) class, then repaint all background pixels with their mean color
-    // so screentone/art noise never reaches the rec model.
+    // 1. Tighten horizontal (and excessive vertical) whitespace inside the box
+    // so short bottom lines ("HOME.", "HERE.") don't shrink inside wide empty margins.
+    let bx = Math.max(0, Math.min(sourceCanvas.width - 1, Math.round(box.x)));
+    let by = Math.max(0, Math.min(sourceCanvas.height - 1, Math.round(box.y)));
+    let bw0 = Math.max(1, Math.min(sourceCanvas.width - bx, Math.round(box.width)));
+    let bh0 = Math.max(1, Math.min(sourceCanvas.height - by, Math.round(box.height)));
+
+    if (!isVertical && !willWarp && bw0 >= 12 && bh0 >= 12) {
+      const boxData = sourceCtx.getImageData(bx, by, bw0, bh0);
+      const bounds = RecCropCleaner.findInkBounds(boxData);
+      if (bounds) {
+        const inkW = bounds.maxX - bounds.minX + 1;
+        const inkH = bounds.maxY - bounds.minY + 1;
+        if (inkW > 6) {
+          bx += bounds.minX;
+          bw0 = inkW;
+        }
+        if (inkH > 6 && bh0 >= 28 && inkH < bh0 * 0.65) {
+          by += bounds.minY;
+          bh0 = inkH;
+        }
+      }
+    }
+
+    // 2. Add crisp padding along and across the reading axis
+    const padX = isVertical
+      ? Math.max(3, Math.min(6, Math.round(bw0 * 0.2)))
+      : Math.max(6, Math.min(12, Math.round(bh0 * 0.35)));
+    const padY = isVertical
+      ? Math.max(6, Math.min(12, Math.round(bw0 * 0.3)))
+      : Math.max(3, Math.min(6, Math.round(bh0 * 0.25)));
+
+    const srcX = Math.max(0, bx - padX);
+    const srcY = Math.max(0, by - padY);
+    const srcW = Math.max(1, Math.min(sourceCanvas.width - srcX, bx + bw0 + padX - srcX));
+    const srcH = Math.max(1, Math.min(sourceCanvas.height - srcY, by + bh0 + padY - srcY));
+
+    // 3. Build the native-res crop, deskew if tilted, mask outer border walls,
+    // and clean high-variance screentone/art backgrounds.
     let nativeCanvas = new OffscreenCanvas(srcW, srcH);
     let nativeCtx = nativeCanvas.getContext('2d');
     if (!nativeCtx) return null;
     nativeCtx.drawImage(sourceCanvas, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
     let nativeData = nativeCtx.getImageData(0, 0, srcW, srcH);
 
-    // Perspective deskew for tilted comic lettering (>= 4 deg)
-    if (box.quad && box.quad.length === 4 && PolygonDeskew.shouldWarp(box.angleDeg)) {
+    // Perspective deskew for tilted comic lettering (>= 10 deg)
+    if (willWarp && box.quad) {
       const localQuad: Quad4 = box.quad.map(([qx, qy]) => [qx - srcX, qy - srcY]) as Quad4;
       const warped = PolygonDeskew.warpQuadToHorizontal(nativeData, localQuad);
       if (warped) {
@@ -151,12 +184,18 @@ export class PaddleRecEngine {
     }
 
     if (nativeData.width >= 16 && nativeData.height >= 12) {
-      PaddleRecEngine.cleanCropToMask(nativeData);
+      if (!willWarp) {
+        RecCropCleaner.maskBorderWallsInPadding(
+          nativeData,
+          bx - srcX,
+          srcX + srcW - (bx + bw0)
+        );
+      }
+      RecCropCleaner.cleanCropToMask(nativeData);
       nativeCtx.putImageData(nativeData, 0, 0);
     }
 
-    // 3. Vertical CJK columns are rotated CCW so the rec model reads them left-to-right
-    const isVertical = VerticalText.isVerticalCandidate(box, this.isCjkModel);
+    // 4. Vertical CJK columns are rotated CCW so the rec model reads them left-to-right
     let cropW = nativeData.width;
     let cropH = nativeData.height;
     let rotatedCanvas: OffscreenCanvas | null = null;
@@ -314,95 +353,6 @@ export class PaddleRecEngine {
     }
   }
 
-  /**
-   * Otsu-binarizes a crop and repaints every background pixel with the mean
-   * background color. Text strokes (minority class) are kept untouched.
-   * Skips degenerate splits (uniform crops, near-balanced art) where the
-   * minority-class assumption is unreliable.
-   */
-  private static cleanCropToMask(img: ImageData): void {
-    const data = img.data;
-    const total = img.width * img.height;
-    const lumas = new Uint8Array(total);
-    const hist = new Int32Array(256);
-    for (let i = 0; i < total; i++) {
-      const p = i * 4;
-      const l = (data[p] * 299 + data[p + 1] * 587 + data[p + 2] * 114) / 1000;
-      const li = l | 0;
-      lumas[i] = li;
-      hist[li]++;
-    }
-
-    let sumAll = 0;
-    for (let t = 0; t < 256; t++) sumAll += t * hist[t];
-    let sumB = 0;
-    let wB = 0;
-    let maxVar = -1;
-    let otsuT = 128;
-    for (let t = 0; t < 256; t++) {
-      wB += hist[t];
-      if (wB === 0) continue;
-      const wF = total - wB;
-      if (wF === 0) break;
-      sumB += t * hist[t];
-      const mB = sumB / wB;
-      const mF = (sumAll - sumB) / wF;
-      const v = wB * wF * (mB - mF) * (mB - mF);
-      if (v > maxVar) { maxVar = v; otsuT = t; }
-    }
-
-    let below = 0;
-    for (let t = 0; t <= otsuT; t++) below += hist[t];
-    // Degenerate: near-uniform crop or split that cannot be text-vs-background
-    if (otsuT < 20 || otsuT > 235) return;
-    const minority = Math.min(below, total - below);
-    if (minority < total * 0.02 || minority > total * 0.45) return;
-
-    const textIsDark = below <= total / 2;
-
-    // Mean color + luma stddev of the majority (background) class
-    let rSum = 0, gSum = 0, bSum = 0, lSum = 0, lSq = 0, bgCount = 0;
-    for (let i = 0; i < total; i++) {
-      const isText = textIsDark ? lumas[i] <= otsuT : lumas[i] > otsuT;
-      if (isText) continue;
-      const p = i * 4;
-      rSum += data[p]; gSum += data[p + 1]; bSum += data[p + 2];
-      lSum += lumas[i]; lSq += lumas[i] * lumas[i];
-      bgCount++;
-    }
-    if (bgCount === 0) return;
-    const bgLumaStd = Math.sqrt(Math.max(0, lSq / bgCount - (lSum / bgCount) ** 2));
-    // Clean uniform background already: filling would only erase anti-aliasing
-    if (bgLumaStd <= 30) return;
-    const bgR = rSum / bgCount, bgG = gSum / bgCount, bgB = bSum / bgCount;
-
-    // Text mask with despeckle: a pixel is text only if >=3 of its 8
-    // neighbors share the class — removes halftone dots mistaken as glyphs
-    const w = img.width, h = img.height;
-    const textMask = new Uint8Array(total);
-    for (let i = 0; i < total; i++) {
-      textMask[i] = (textIsDark ? lumas[i] <= otsuT : lumas[i] > otsuT) ? 1 : 0;
-    }
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const i = y * w + x;
-        if (textMask[i]) {
-          let n = 0;
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              if (!dx && !dy) continue;
-              const nx = x + dx, ny = y + dy;
-              if (nx >= 0 && nx < w && ny >= 0 && ny < h && textMask[ny * w + nx]) n++;
-            }
-          }
-          if (n >= 3) continue; // real stroke pixel -> keep; else repaint as bg
-        }
-        const p = i * 4;
-        data[p] = bgR; data[p + 1] = bgG; data[p + 2] = bgB;
-      }
-    }
-  }
-
   private static invertRgb(data: Uint8ClampedArray): void {
     for (let i = 0; i < data.length; i += 4) {
       data[i] = 255 - data[i];
@@ -413,9 +363,9 @@ export class PaddleRecEngine {
 
   /**
    * CTC Greedy Decoder for PaddleOCR
-   * Tensor shape: [1, sequence_length, num_classes] or [1, num_classes, sequence_length]
+   * Tensor shape: [1, sequence_length, num_classes]
    */
-  private ctcDecode(
+  public ctcDecode(
     data: Float32Array,
     dims: readonly number[]
   ): { text: string; confidence: number } {
@@ -448,10 +398,15 @@ export class PaddleRecEngine {
       }
 
       // In PaddleOCR: index 0 is blank!
+      // en_PP-OCRv4_rec (use_space_char=True) appends a trailing space token at charIdx === characters.length.
       if (maxIdx !== 0 && maxIdx !== lastIndex) {
         const charIdx = maxIdx - 1;
         if (charIdx < this.characters.length) {
           decodedChars.push(this.characters[charIdx]);
+          totalScore += maxProb;
+          validCharCount++;
+        } else if (charIdx === this.characters.length && numClasses === this.characters.length + 2) {
+          decodedChars.push(' ');
           totalScore += maxProb;
           validCharCount++;
         }

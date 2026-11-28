@@ -51,8 +51,9 @@ export class ChamberGapScanner {
       else if (p30 <= 45) med = p30;
       else continue; // textured background, not a clean speech bubble
 
-      const sx0 = Math.max(0, gx0 - 34);
-      const sx1 = Math.min(w - 1, gx1 + 34);
+      const padX = Math.max(48, Math.min(200, Math.round(Math.max(gx1 - gx0, avgH * 4) * 0.75)));
+      const sx0 = Math.max(0, gx0 - padX);
+      const sx1 = Math.min(w - 1, gx1 + padX);
       const sy0 = Math.max(0, Math.round(gy0 - Math.min(90, Math.max(46, avgH * 3.5))));
       const sy1 = Math.min(h - 1, Math.round(gy1 + Math.min(125, Math.max(65, avgH * 4.8))));
       const sw = sx1 - sx0 + 1;
@@ -265,7 +266,7 @@ export class ChamberGapScanner {
           const cand = sorted[j];
           const gapY = cand.y - (last.y + last.height);
           const maxH = Math.max(last.height, cand.height);
-          if (gapY < -last.height * 0.5 || gapY > maxH * 2.8) continue;
+          if (gapY < -last.height * 0.5 || gapY > maxH * 3.6) continue;
           const overlapX = Math.max(
             0,
             Math.min(last.x + last.width, cand.x + cand.width) - Math.max(last.x, cand.x)

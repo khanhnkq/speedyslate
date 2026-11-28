@@ -144,12 +144,13 @@ export class BubbleAggregator {
           const hRatio = Math.min(lastBox.height, candBox.height) / Math.max(lastBox.height, candBox.height);
           if (hRatio < 0.38) continue;
 
-          // 2. Strict vertical gap: measured from the bottom of the immediate last line
+          // 2. Vertical gap: default 1.85x; relax up to 2.65x for aligned dialogue lines in a uniform bubble
+          const lineMaxH = Math.max(lastBox.height, candBox.height);
           const verticalGap = candBox.y - (lastBox.y + lastBox.height);
-          // In comics, line spacing is between 0.2x and 1.85x of line height
-          const maxAllowedGap = Math.max(lastBox.height, candBox.height) * 1.85;
-          const isVerticallyAdjacent = verticalGap >= -lastBox.height * 0.5 && verticalGap <= maxAllowedGap;
-          if (!isVerticallyAdjacent) continue;
+          const maxAllowedGap = lineMaxH * 1.85;
+          const relaxedMaxGap = lineMaxH * 2.65;
+          if (verticalGap < -lastBox.height * 0.5 || verticalGap > relaxedMaxGap) continue;
+          if (verticalGap > maxAllowedGap && !pageImg) continue;
 
           // 3. Horizontal overlap and center alignment
           const xOverlap = Math.max(
@@ -166,6 +167,12 @@ export class BubbleAggregator {
           // Lines in a speech bubble are horizontally aligned or centered
           const isAligned = overlapRatio >= 0.25 || centerDiffRatio <= 0.45;
           if (!isAligned) continue;
+
+          if (verticalGap > maxAllowedGap) {
+            const tightlyAligned = overlapRatio >= 0.4 || centerDiffRatio <= 0.25;
+            const bothDialogue = lastLine.kind === 'dialogue' && candidate.kind === 'dialogue';
+            if (!tightlyAligned || !bothDialogue) continue;
+          }
 
           if (pageImg && BubbleWallDetector.hasHorizontalWallBetween(pageImg, lastBox, candBox)) {
             continue;

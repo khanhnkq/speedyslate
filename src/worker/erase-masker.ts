@@ -190,6 +190,13 @@ export class EraseMasker {
       if (byOtsu || Math.abs(l - localBg) > 26) raw[i] = 1;
     }
 
+    if (innerRect) {
+      EraseMasker.completeClippedStrokes(
+        raw, lumas, localBg, isBgLight, w, h, rx0, ry0, rx1, ry1, boxH,
+        borderShield, rowWallLeft, rowWallRight, colWallTop, colWallBot
+      );
+    }
+
     const mask = filterMask(raw, w, h, total, true) ?? (EraseMasker.hasAny(raw) ? raw : null);
     if (!mask) return null;
 
@@ -258,6 +265,94 @@ export class EraseMasker {
       pixels: inpainted,
       dbg: { path: 'telea', guided: guidedActive, tmMax }
     };
+  }
+
+  private static completeClippedStrokes(
+    raw: Uint8Array,
+    lumas: Uint8Array,
+    localBg: number,
+    isBgLight: boolean,
+    w: number,
+    h: number,
+    rx0: number,
+    ry0: number,
+    rx1: number,
+    ry1: number,
+    boxH: number,
+    borderShield: Uint8Array,
+    rowWallLeft: Int16Array,
+    rowWallRight: Int16Array,
+    colWallTop: Int16Array,
+    colWallBot: Int16Array
+  ): void {
+    const maxExtend = Math.min(18, Math.round(boxH * 0.75));
+    if (maxExtend <= 0) return;
+    const maxWidth = Math.max(8, Math.round(boxH * 2.5));
+    const maxAdded = 400;
+
+    const runDir = (seedY: number, isUp: boolean): void => {
+      const minY = isUp ? Math.max(0, seedY - maxExtend) : seedY;
+      const maxY = isUp ? seedY : Math.min(h - 1, seedY + maxExtend);
+      const visited = new Uint8Array(w * h);
+      const q = new Int32Array(w * h);
+
+      for (let sx = rx0; sx < rx1; sx++) {
+        const seedIdx = seedY * w + sx;
+        if (!raw[seedIdx] || visited[seedIdx]) continue;
+        let qh = 0, qt = 0, added = 0;
+        let compMinX = sx, compMaxX = sx;
+        visited[seedIdx] = 1;
+        q[qt++] = seedIdx;
+
+        while (qh < qt) {
+          const ci = q[qh++];
+          const cx = ci % w;
+          const cy = (ci / w) | 0;
+
+          for (let dy = -1; dy <= 1; dy++) {
+            const ny = cy + dy;
+            if (ny < minY || ny > maxY) continue;
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = cx + dx;
+              if (nx < 0 || nx >= w) continue;
+              const ni = ny * w + nx;
+              if (visited[ni]) continue;
+              if (
+                borderShield[ni] ||
+                nx <= rowWallLeft[ny] ||
+                nx >= rowWallRight[ny] ||
+                ny <= colWallTop[nx] ||
+                ny >= colWallBot[nx]
+              ) {
+                continue;
+              }
+              if (ny === seedY) {
+                if (!raw[ni]) continue;
+              } else {
+                const l = lumas[ni];
+                const samePolarity = isBgLight ? l <= localBg - 26 : l >= localBg + 26;
+                if (!samePolarity) continue;
+                const nextMinX = Math.min(compMinX, nx);
+                const nextMaxX = Math.max(compMaxX, nx);
+                if (nextMaxX - nextMinX + 1 > maxWidth || added >= maxAdded) continue;
+                compMinX = nextMinX;
+                compMaxX = nextMaxX;
+                if (!raw[ni]) {
+                  raw[ni] = 1;
+                  added++;
+                }
+              }
+              visited[ni] = 1;
+              q[qt++] = ni;
+            }
+          }
+        }
+      }
+    };
+
+    runDir(ry0, true);
+    runDir(ry1 - 1, false);
   }
 
   private static dilateDisk(src: Uint8Array, w: number, h: number, radius: number): Uint8Array {

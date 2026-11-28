@@ -110,9 +110,9 @@ export class OverlayStyler {
       outline: 'none',
       boxShadow: 'none',
       filter: 'none',
-      textShadow: needsStrokeHalo ? `0 1px 2px rgba(0,0,0,0.38)` : 'none',
-      webkitTextStroke: needsStrokeHalo ? `3px ${haloColor}` : '0px transparent',
-      paintOrder: needsStrokeHalo ? 'stroke fill' : 'normal',
+      textShadow: needsStrokeHalo
+        ? `-1px -1px 0 ${haloColor}, 1px -1px 0 ${haloColor}, -1px 1px 0 ${haloColor}, 1px 1px 0 ${haloColor}, 0 1px 2px rgba(0,0,0,0.45)`
+        : 'none',
       borderRadius,
       boxSizing: 'border-box',
       padding: `${pad.padY}px ${pad.padX}px`,
@@ -141,6 +141,14 @@ export class OverlayStyler {
       hyphens: 'none',
       overflow: 'visible'
     });
+
+    if (needsStrokeHalo) {
+      bubble.style.setProperty('-webkit-text-stroke', `3px ${haloColor}`);
+      bubble.style.setProperty('paint-order', 'stroke fill');
+    } else {
+      bubble.style.setProperty('-webkit-text-stroke', '0px transparent');
+      bubble.style.setProperty('paint-order', 'normal');
+    }
 
     if (hasManualLineBreaks) {
       bubble.style.setProperty('text-wrap', 'normal');

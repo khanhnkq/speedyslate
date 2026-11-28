@@ -76,7 +76,7 @@ export class OverlayRenderer {
       const hasPixelPatch = (item.erasePatches?.length ?? 0) > 0;
       const useLineErase =
         !hasPixelPatch &&
-        item.kind !== undefined &&
+        item.kind === 'dialogue' &&
         !item.normBox &&
         item.lineBoxes !== undefined &&
         item.lineBoxes.length > 0;
@@ -106,7 +106,8 @@ export class OverlayRenderer {
       }
 
       const hasManualLineBreaks = useEllipse && fitted.lines.length >= 2;
-      const transparentBg = hasPixelPatch || useLineErase;
+      const transparentBg =
+        hasPixelPatch || useLineErase || item.kind === 'free' || item.kind === 'sfx';
       OverlayStyler.applyStyles(
         bubble,
         coords,

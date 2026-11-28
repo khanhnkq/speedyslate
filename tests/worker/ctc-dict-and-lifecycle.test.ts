@@ -338,4 +338,60 @@ describe('PaddleRecEngine CTC space decoding & RecCropCleaner', () => {
       (globalThis as any).ImageData = origImageData;
     }
   });
+
+  it('PaddleRecEngine replicates edge padding for thin clipped lines (bh0 < 20) but skips vertical edge replication on tall seam boxes (bh0 >= 20)', async () => {
+    const origOffscreen = (globalThis as any).OffscreenCanvas;
+    const origImageData = (globalThis as any).ImageData;
+    const spy = vi.spyOn(RecCropCleaner, 'padClippedImageData');
+
+    (globalThis as any).ImageData = class {
+      constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+    };
+    (globalThis as any).OffscreenCanvas = class {
+      constructor(public width: number, public height: number) {}
+      getContext() {
+        return {
+          drawImage: () => {},
+          putImageData: () => {},
+          getImageData: (_x: number, _y: number, gw: number, gh: number) => ({
+            data: new Uint8ClampedArray(gw * gh * 4).fill(255),
+            width: gw,
+            height: gh
+          })
+        };
+      }
+    };
+
+    try {
+      const fakeSession: any = {
+        inputNames: ['x'],
+        outputNames: ['out'],
+        run: vi.fn(async () => ({
+          out: { data: new Float32Array(5 * 3).fill(0), dims: [1, 1, 5], dispose: () => {} }
+        })),
+        release: vi.fn(async () => {})
+      };
+      const eng = new PaddleRecEngine(fakeSession, 'A\nB\n ');
+
+      // Tall seam box (height=38 >= 20) touching bottom y=48 (x=10 so horizontal edgePadL/R=0) -> NO vertical replication
+      await eng.recognizeBoxes(
+        new (globalThis as any).OffscreenCanvas(200, 48),
+        [{ x: 10, y: 10, width: 100, height: 38 }]
+      );
+      expect(spy).not.toHaveBeenCalled();
+
+      // Thin clipped top-edge line (height=12 < 20) at y=0 -> replicates top padding (padT > 0)
+      await eng.recognizeBoxes(
+        new (globalThis as any).OffscreenCanvas(200, 48),
+        [{ x: 10, y: 0, width: 100, height: 12 }]
+      );
+      expect(spy).toHaveBeenCalledOnce();
+      expect(spy.mock.calls[0][2]).toBeGreaterThan(0); // padT > 0
+      expect(spy.mock.calls[0][4]).toBe(0); // padB === 0
+    } finally {
+      spy.mockRestore();
+      (globalThis as any).OffscreenCanvas = origOffscreen;
+      (globalThis as any).ImageData = origImageData;
+    }
+  });
 });

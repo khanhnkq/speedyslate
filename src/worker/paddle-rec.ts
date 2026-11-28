@@ -182,8 +182,8 @@ export class PaddleRecEngine {
 
     const edgePadL = bx === 0 ? padX : 0;
     const edgePadR = bx + bw0 >= sourceCanvas.width ? padX : 0;
-    const edgePadT = clippedTop ? Math.min(3, padY) : 0;
-    const edgePadB = clippedBottom ? Math.min(3, padY) : 0;
+    const edgePadT = clippedTop && bh0 < 20 ? Math.min(3, padY) : 0;
+    const edgePadB = clippedBottom && bh0 < 20 ? Math.min(3, padY) : 0;
     if (!willWarp && (edgePadL > 0 || edgePadR > 0 || edgePadT > 0 || edgePadB > 0)) {
       const padded = RecCropCleaner.padClippedImageData(nativeData, edgePadL, edgePadT, edgePadR, edgePadB);
       nativeCanvas = new OffscreenCanvas(padded.width, padded.height);

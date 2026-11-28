@@ -67,13 +67,19 @@ export class ChamberGapScanner {
       let qt = 0;
       const isPaperLuma = (l: number) => Math.abs(l - med) <= 28;
 
-      for (let y = gy0; y <= gy1; y++) {
-        for (let x = gx0; x <= gx1; x++) {
-          if (!isPaperLuma(lumas[y * w + x])) continue;
-          const li = (y - sy0) * sw + (x - sx0);
-          if (!paper[li]) {
-            paper[li] = 1;
-            q[qt++] = li;
+      for (const b of cluster) {
+        const bx0 = Math.max(sx0, Math.floor(b.x));
+        const by0 = Math.max(sy0, Math.floor(b.y));
+        const bx1 = Math.min(sx1, Math.ceil(b.x + b.width) - 1);
+        const by1 = Math.min(sy1, Math.ceil(b.y + b.height) - 1);
+        for (let y = by0; y <= by1; y++) {
+          for (let x = bx0; x <= bx1; x++) {
+            if (!isPaperLuma(lumas[y * w + x])) continue;
+            const li = (y - sy0) * sw + (x - sx0);
+            if (!paper[li]) {
+              paper[li] = 1;
+              q[qt++] = li;
+            }
           }
         }
       }

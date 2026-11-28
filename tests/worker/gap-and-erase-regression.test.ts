@@ -96,6 +96,37 @@ describe('ChamberGapScanner — wide white bubbles & open backgrounds', () => {
     const recovered = ChamberGapScanner.recoverMissedLines({ data, width: w, height: h }, existing);
     expect(recovered).toHaveLength(0);
   });
+
+  it('rejects white+dark artwork sitting between two separate bubbles 3.2x apart (returns 0 boxes)', () => {
+    const w = 400;
+    const h = 340;
+    const data = makeBuffer(w, h, 252);
+
+    // Bubble 1 (top): x=80..320, y=30..92 with 3px black border
+    paintRect(data, w, h, 80, 30, 240, 62, 15);
+    paintRect(data, w, h, 83, 33, 234, 56, 252);
+
+    // White+dark artwork sitting in the gap between the two bubbles (y=104..130)
+    for (let y = 104; y <= 130; y++) {
+      for (let x = 130; x <= 270; x += 6) {
+        setPixel(data, w, x, y, 14);
+        setPixel(data, w, x + 1, y, 14);
+      }
+    }
+
+    // Bubble 2 (bottom): x=80..320, y=150..212 with 3px black border
+    paintRect(data, w, h, 80, 150, 240, 62, 15);
+    paintRect(data, w, h, 83, 153, 234, 56, 252);
+
+    // Top box y=50..76 (bottom=76), bottom box y=160..186 -> gap = 84px = 3.23 * 26 (clusters under 3.6x)
+    const existing: BoundingBox[] = [
+      { x: 120, y: 50, width: 160, height: 26, kind: 'dialogue' },
+      { x: 120, y: 160, width: 160, height: 26, kind: 'dialogue' }
+    ];
+
+    const recovered = ChamberGapScanner.recoverMissedLines({ data, width: w, height: h }, existing);
+    expect(recovered).toHaveLength(0);
+  });
 });
 
 describe('BubbleAggregator — wide-gap merge vs border wall split', () => {
@@ -159,6 +190,45 @@ describe('BubbleAggregator — wide-gap merge vs border wall split', () => {
     const out = BubbleAggregator.aggregateDialogues(items, w, h, undefined, { data, width: w, height: h });
     expect(out).toHaveLength(2);
     expect(out.map((b) => b.originalText)).toEqual(['UPPER BUBBLE', 'LOWER BUBBLE']);
+  });
+
+  it('keeps 2.2x-apart dialogue lines merged on pass 2 (without pageImg) ONLY when stamped with the same bubbleClusterId', () => {
+    const itemsSameCluster: DialogueItem[] = [
+      {
+        id: 'p2-top',
+        kind: 'dialogue',
+        bubbleClusterId: 7,
+        originalText: 'PASS TWO TOP',
+        box: { x: 120, y: 80, width: 200, height: 30 }
+      },
+      {
+        id: 'p2-bot',
+        kind: 'dialogue',
+        bubbleClusterId: 7,
+        originalText: 'PASS TWO BOT',
+        box: { x: 130, y: 176, width: 180, height: 30 }
+      }
+    ];
+    const mergedPass2 = BubbleAggregator.aggregateDialogues(itemsSameCluster, 500, 400);
+    expect(mergedPass2).toHaveLength(1);
+    expect(mergedPass2[0].originalText).toBe('PASS TWO TOP PASS TWO BOT');
+
+    const itemsUnclustered: DialogueItem[] = [
+      {
+        id: 'u-top',
+        kind: 'dialogue',
+        originalText: 'UNCLUSTERED TOP',
+        box: { x: 120, y: 80, width: 200, height: 30 }
+      },
+      {
+        id: 'u-bot',
+        kind: 'dialogue',
+        originalText: 'UNCLUSTERED BOT',
+        box: { x: 130, y: 176, width: 180, height: 30 }
+      }
+    ];
+    const splitPass2 = BubbleAggregator.aggregateDialogues(itemsUnclustered, 500, 400);
+    expect(splitPass2).toHaveLength(2);
   });
 });
 

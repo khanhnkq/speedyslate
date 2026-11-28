@@ -149,8 +149,11 @@ export class BubbleAggregator {
           const verticalGap = candBox.y - (lastBox.y + lastBox.height);
           const maxAllowedGap = lineMaxH * 1.85;
           const relaxedMaxGap = lineMaxH * 2.65;
+          const sameCluster =
+            lastLine.bubbleClusterId !== undefined &&
+            lastLine.bubbleClusterId === candidate.bubbleClusterId;
           if (verticalGap < -lastBox.height * 0.5 || verticalGap > relaxedMaxGap) continue;
-          if (verticalGap > maxAllowedGap && !pageImg) continue;
+          if (verticalGap > maxAllowedGap && !pageImg && !sameCluster) continue;
 
           // 3. Horizontal overlap and center alignment
           const xOverlap = Math.max(

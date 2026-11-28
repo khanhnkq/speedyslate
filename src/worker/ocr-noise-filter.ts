@@ -6,10 +6,13 @@ const KANA_ONLY_RE = /^[\u3040-\u309F\u30A0-\u30FFー・\s]+$/;
 const HAS_KANJI_RE = /[\u4E00-\u9FFF]/;
 
 const FULL_WATERMARK_RE =
-  /^(?:read\s+(?:first|free|more|manga|comics?)?\s*(?:at|on)\b.*|(?:join\s+(?:our\s+)?)?discord\.gg\/\S+|patreon\.com\/\S+|(?:https?:\/\/)?(?:www\.)?[a-z0-9-]{3,}\.(?:com|net|org|xyz|gg|me|io|cc|tv|to)(?:\/\S*)?)$/i;
+  /^(?:read\s+(?:first|free|more|latest|manga|comics?)?\s*(?:chapters?\s+)?(?:at|on)\b.*|read\s+(?:[\w'&+-]+\s+){0,6}(?:online\s+(?:in\s+[a-z]+\s+)?free|free\s+online|in\s+english\s+free)[.!]*|read\s+(?:free\s+)?(?:manga|manhwa|manhua|webtoon|comics?)\s+(?:online(?:\s+in\s+[a-z]+)?(?:\s+free)?|free(?:\s+online)?)[.!]*|read(?:manga|manhwa|manhua|webtoon|comics?)?(?:online(?:in[a-z]+)?free|freeonline|inenglishfree)[.!]*|read(?:manga|manhwa|manhua|webtoon|comics?)online(?:in[a-z]+)?(?:free)?[.!]*|(?:join\s+(?:our\s+)?)?discord\.gg\/\S+|patreon\.com\/\S+|(?:https?:\/\/)?(?:www\.)?[a-z0-9-]{3,}\.(?:com|net|org|xyz|gg|me|io|cc|tv|to)(?:\/\S*)?)$/i;
 
 const TRAILING_DOMAIN_RE =
   /\s*(?:https?:\/\/)?(?:www\.)?[a-z0-9-]{3,}\.(?:com|net|org|xyz|gg|me|io|cc|tv|to)(?:\/\S*)?\s*$/i;
+
+const TRAILING_READ_BANNER_RE =
+  /\s+(?:read\s+(?:manga|manhwa|manhua|webtoon|comics?)\s+online(?:\s+in\s+[a-z]+)?(?:\s+free)?|read(?:manga|manhwa|manhua|webtoon|comics?)online(?:in[a-z]+)?(?:free)?)[.!]*\s*$/i;
 
 /**
  * OcrNoiseFilter: Clean-room post-OCR noise, scanlator watermark, and
@@ -17,7 +20,7 @@ const TRAILING_DOMAIN_RE =
  */
 export class OcrNoiseFilter {
   public static stripTrailingWatermark(text: string): string {
-    return text.replace(TRAILING_DOMAIN_RE, '').trim();
+    return text.replace(TRAILING_DOMAIN_RE, '').replace(TRAILING_READ_BANNER_RE, '').trim();
   }
 
   public static filterRawLines(

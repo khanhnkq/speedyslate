@@ -19,35 +19,55 @@ export class LineSegmenter {
       const w = box.width;
       const h = box.height;
 
-      // 1. Otsu binarization: find the luma threshold maximizing between-class
-      // variance inside this box, then treat the MINORITY class as text
-      // (ink is always the smaller area on both light and dark backgrounds).
+      // 1. Otsu binarization with multi-tone light/dark cloud refinement:
+      // a 2-tone background (e.g. pale-grey cloud ~212 on white panel ~254) can
+      // trick single-pass Otsu into splitting white vs cloud instead of cloud vs ink.
       const hist = new Int32Array(256);
       const lumaAt = (i: number): number =>
         (data[i * 4] * 299 + data[i * 4 + 1] * 587 + data[i * 4 + 2] * 114) / 1000;
       const total = w * h;
       for (let i = 0; i < total; i++) hist[Math.round(lumaAt(i))]++;
 
-      let sumAll = 0;
-      for (let t = 0; t < 256; t++) sumAll += t * hist[t];
-      let sumB = 0;
-      let wB = 0;
-      let maxVar = -1;
-      let otsuT = 128;
-      for (let t = 0; t < 256; t++) {
-        wB += hist[t];
-        if (wB === 0) continue;
-        const wF = total - wB;
-        if (wF === 0) break;
-        sumB += t * hist[t];
-        const mB = sumB / wB;
-        const mF = (sumAll - sumB) / wF;
-        const v = wB * wF * (mB - mF) * (mB - mF);
-        if (v > maxVar) { maxVar = v; otsuT = t; }
-      }
+      let otsuT = LineSegmenter.otsuRange(hist, 0, 255);
+      const p03 = LineSegmenter.histQuantile(hist, total, 0.03);
+      const p25 = LineSegmenter.histQuantile(hist, total, 0.25);
+      const p50 = LineSegmenter.histQuantile(hist, total, 0.5);
+      const p75 = LineSegmenter.histQuantile(hist, total, 0.75);
+      const p97 = LineSegmenter.histQuantile(hist, total, 0.97);
+
       let below = 0;
       for (let t = 0; t <= otsuT; t++) below += hist[t];
-      const textIsDark = below <= total / 2;
+      const textIsDark =
+        p50 >= 145 && p03 < p50 - 35
+          ? true
+          : p50 <= 110 && p97 > p50 + 35
+            ? false
+            : below <= total / 2;
+
+      if (textIsDark) {
+        for (let pass = 0; pass < 3 && otsuT >= 165; pass++) {
+          const belowMed = LineSegmenter.histRangeMedian(hist, 0, otsuT);
+          if (belowMed < 155) break;
+          const nextT = LineSegmenter.otsuRange(hist, 0, otsuT);
+          if (nextT >= otsuT) break;
+          otsuT = nextT;
+        }
+        // Require dark ink to deviate cleanly below light-grey paper/clouds
+        if (p75 >= 190 && p03 <= 135) {
+          otsuT = Math.min(otsuT, 165);
+        }
+      } else {
+        for (let pass = 0; pass < 3 && otsuT <= 90; pass++) {
+          const aboveMed = LineSegmenter.histRangeMedian(hist, otsuT + 1, 255);
+          if (aboveMed > 100) break;
+          const nextT = LineSegmenter.otsuRange(hist, otsuT + 1, 255);
+          if (nextT <= otsuT) break;
+          otsuT = nextT;
+        }
+        if (p25 <= 65 && p97 >= 120) {
+          otsuT = Math.max(otsuT, 95);
+        }
+      }
       const isTextPx = (luma: number): boolean => (textIsDark ? luma <= otsuT : luma > otsuT);
 
       // 2. Count text-like pixels per row, ignoring the outer 8% columns —
@@ -207,23 +227,38 @@ export class LineSegmenter {
           }
           if (runs.length === 0) runs.push({ x0: 0, x1: w - 1 });
         }
-        // No intruder and tightening collapses (<50% width) -> unreliable
-        // minority-class guess on art/stylized glyphs -> keep full width.
+        // No intruder and tightening collapses to a tiny speck (<14% width or <20px) ->
+        // unreliable minority-class guess on art/stylized glyphs -> keep full width.
         if (blocks.length === 0 && runs.length === 1 &&
-            runs[0].x1 - runs[0].x0 < w * 0.5) {
+            runs[0].x1 - runs[0].x0 < Math.max(20, w * 0.14)) {
           runs[0] = { x0: 0, x1: w - 1 };
         }
 
-        const padX = 6;
+        const padX = 7;
         const kept = runs.filter((r) => r.x1 - r.x0 >= 10);
         if (kept.length === 0) kept.push({ x0: 0, x1: w - 1 });
+        const lineY0 = box.y + l.startY;
         return kept
           .map((r) => {
+            let finalX0 = box.x + r.x0 - padX;
+            if (finalX0 < box.x) {
+              finalX0 = LineSegmenter.extendEdgeWithoutWall(
+                ctx, box.x - 1, box.x - Math.max(0, finalX0), -1,
+                lineY0, l.height, canvasW, canvasH, textIsDark
+              );
+            }
+            let finalX1 = box.x + r.x1 + padX;
+            if (finalX1 >= box.x + w) {
+              finalX1 = LineSegmenter.extendEdgeWithoutWall(
+                ctx, box.x + w, Math.min(canvasW - 1, finalX1) - (box.x + w) + 1, 1,
+                lineY0, l.height, canvasW, canvasH, textIsDark
+              );
+            }
             const clamped = ImageUtils.clampBox(
               {
-                x: Math.max(box.x, box.x + r.x0 - padX),
-                y: box.y + l.startY,
-                width: r.x1 - r.x0 + 1 + padX * 2,
+                x: finalX0,
+                y: lineY0,
+                width: finalX1 - finalX0 + 1,
                 height: l.height,
                 confidence: box.confidence
               },
@@ -237,5 +272,123 @@ export class LineSegmenter {
     } catch {
       return [box];
     }
+  }
+
+  private static otsuRange(hist: Int32Array, lo: number, hi: number): number {
+    let tot = 0;
+    let sumAll = 0;
+    for (let t = lo; t <= hi; t++) {
+      tot += hist[t];
+      sumAll += t * hist[t];
+    }
+    if (tot === 0) return Math.round((lo + hi) * 0.5);
+    let sumB = 0;
+    let wB = 0;
+    let maxVar = -1;
+    let bestT = Math.round((lo + hi) * 0.5);
+    for (let t = lo; t <= hi; t++) {
+      wB += hist[t];
+      if (wB === 0) continue;
+      const wF = tot - wB;
+      if (wF === 0) break;
+      sumB += t * hist[t];
+      const mB = sumB / wB;
+      const mF = (sumAll - sumB) / wF;
+      const v = wB * wF * (mB - mF) * (mB - mF);
+      if (v > maxVar) { maxVar = v; bestT = t; }
+    }
+    return bestT;
+  }
+
+  private static histQuantile(hist: Int32Array, total: number, q: number): number {
+    const target = Math.floor(Math.max(0, total - 1) * q);
+    let seen = 0;
+    for (let t = 0; t < 256; t++) {
+      seen += hist[t];
+      if (seen > target) return t;
+    }
+    return 255;
+  }
+
+  private static histRangeMedian(hist: Int32Array, lo: number, hi: number): number {
+    let tot = 0;
+    for (let t = lo; t <= hi; t++) tot += hist[t];
+    if (tot === 0) return Math.round((lo + hi) * 0.5);
+    const target = tot >> 1;
+    let seen = 0;
+    for (let t = lo; t <= hi; t++) {
+      seen += hist[t];
+      if (seen > target) return t;
+    }
+    return hi;
+  }
+
+  /**
+   * Probes up to `steps` columns outward from `startOutsideX` in direction `dir` (-1 left, +1 right),
+   * returning the farthest safe coordinate before any bubble wall column.
+   */
+  private static extendEdgeWithoutWall(
+    ctx: OffscreenCanvasRenderingContext2D,
+    startOutsideX: number,
+    steps: number,
+    dir: -1 | 1,
+    y0: number,
+    lh: number,
+    canvasW: number,
+    canvasH: number,
+    textIsDark: boolean
+  ): number {
+    if (steps <= 0) return startOutsideX - dir;
+    const minX = dir === -1 ? Math.max(0, startOutsideX - steps + 1) : startOutsideX;
+    const maxX = dir === -1 ? startOutsideX : Math.min(canvasW - 1, startOutsideX + steps - 1);
+    const probeW = maxX - minX + 1;
+    if (probeW <= 0) return startOutsideX - dir;
+
+    const py0 = Math.max(0, y0 - 3);
+    const py1 = Math.min(canvasH - 1, y0 + lh + 2);
+    const probeH = py1 - py0 + 1;
+    const { data } = ctx.getImageData(minX, py0, probeW, probeH);
+
+    const bandStart = y0 - py0;
+    const bandEnd = Math.min(probeH, bandStart + lh);
+    let bestX = startOutsideX - dir;
+    for (let s = 0; s < steps; s++) {
+      const x = startOutsideX + dir * s;
+      if (x < 0 || x >= canvasW) break;
+      const colX = x - minX;
+      if (LineSegmenter.isWallColumn(data, probeW, probeH, colX, bandStart, bandEnd, textIsDark)) {
+        break;
+      }
+      bestX = x;
+    }
+    return bestX;
+  }
+
+  private static isWallColumn(
+    data: Uint8ClampedArray,
+    probeW: number,
+    probeH: number,
+    colX: number,
+    bandStart: number,
+    bandEnd: number,
+    textIsDark: boolean
+  ): boolean {
+    let bandHits = 0;
+    let aboveHits = 0;
+    let belowHits = 0;
+    let totalHits = 0;
+    for (let y = 0; y < probeH; y++) {
+      const p = (y * probeW + colX) * 4;
+      const l = (data[p] * 299 + data[p + 1] * 587 + data[p + 2] * 114) / 1000;
+      const isWall = textIsDark ? l <= 125 : l >= 145;
+      if (!isWall) continue;
+      totalHits++;
+      if (y < bandStart) aboveHits++;
+      else if (y >= bandEnd) belowHits++;
+      else bandHits++;
+    }
+    const bandFrac = bandHits / Math.max(1, bandEnd - bandStart);
+    const totalFrac = totalHits / Math.max(1, probeH);
+    return bandFrac >= 0.55 && ((aboveHits > 0 && belowHits > 0) || totalFrac >= 0.75);
   }
 }

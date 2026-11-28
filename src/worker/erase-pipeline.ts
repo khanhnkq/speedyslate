@@ -5,6 +5,33 @@ import { BubbleAggregator } from './bubble-aggregator';
 import { PagePixelBuffer } from './bubble-wall-detector';
 import { BubbleChamberExtractor } from './bubble-chamber';
 
+function boxEnclosesOtherCluster(
+  candidate: BoundingBox,
+  bubbles: DialogueItem[],
+  selfIdx: number
+): boolean {
+  const cX1 = candidate.x + candidate.width;
+  const cY1 = candidate.y + candidate.height;
+  return bubbles.some((other, otherIdx) => {
+    if (otherIdx === selfIdx) return false;
+    const ocx = other.box.x + other.box.width * 0.5;
+    const ocy = other.box.y + other.box.height * 0.5;
+    if (ocx >= candidate.x && ocx <= cX1 && ocy >= candidate.y && ocy <= cY1) {
+      return true;
+    }
+    const ix0 = Math.max(candidate.x, other.box.x);
+    const iy0 = Math.max(candidate.y, other.box.y);
+    const ix1 = Math.min(cX1, other.box.x + other.box.width);
+    const iy1 = Math.min(cY1, other.box.y + other.box.height);
+    if (ix1 > ix0 && iy1 > iy0) {
+      const interArea = (ix1 - ix0) * (iy1 - iy0);
+      const otherArea = Math.max(1, other.box.width * other.box.height);
+      if (interArea >= otherArea * 0.5) return true;
+    }
+    return false;
+  });
+}
+
 export function findBubbleMember(
   lb: BoundingBox,
   boxToItem: Map<BoundingBox, DialogueItem>,
@@ -79,28 +106,34 @@ export function attachErasePatches(
         const member = findBubbleMember(lb, boxToItem, items);
         if (member) member.bubbleClusterId = bIdx;
       }
-      // Search window generous enough horizontally to capture oval CJK chambers
-      const padX = Math.max(24, Math.min(180, Math.round(Math.max(b.box.width * 1.6, b.box.height * 0.85))));
-      const padY = Math.max(16, Math.min(120, Math.round(b.box.height * 0.45)));
+      // Search window generous enough horizontally and vertically to enclose tall oval manhwa bubbles
+      const padX = Math.max(48, Math.min(200, Math.round(Math.max(b.box.width * 1.6, b.box.height * 0.85))));
+      const padY = Math.max(90, Math.min(240, Math.round(Math.max(b.box.height * 1.6, b.box.width * 0.9))));
       const cx = Math.max(0, b.box.x - padX);
       const cy = Math.max(0, b.box.y - padY);
-      const cw = Math.min(canvas.width - cx, b.box.width + padX * 2);
-      const ch = Math.min(canvas.height - cy, b.box.height + padY * 2);
+      const cw = Math.min(canvas.width - cx, b.box.width + (b.box.x - cx) + padX);
+      const ch = Math.min(canvas.height - cy, b.box.height + (b.box.y - cy) + padY);
       let chamberBox: BoundingBox | undefined;
+      let mergedWithOtherCluster = false;
       if (b.kind === 'dialogue' && cw >= 20 && ch >= 20) {
         const cImg = ctx.getImageData(cx, cy, cw, ch);
         const chamber = BubbleChamberExtractor.extractChamber(cImg, cx, cy, b.box);
         if (chamber) {
-          chamberBox = chamber.chamberBox;
-          for (const lb of b.lineBoxes || []) {
-            const member = findBubbleMember(lb, boxToItem, items);
-            if (member) {
-              member.chamberBox = chamber.chamberBox;
-              member.isOvalChamber = chamber.isOval;
+          if (boxEnclosesOtherCluster(chamber.chamberBox, bubbles, bIdx)) {
+            mergedWithOtherCluster = true;
+          } else {
+            chamberBox = chamber.chamberBox;
+            for (const lb of b.lineBoxes || []) {
+              const member = findBubbleMember(lb, boxToItem, items);
+              if (member) {
+                member.chamberBox = chamber.chamberBox;
+                member.isOvalChamber = chamber.isOval;
+              }
             }
           }
         }
       }
+      if (mergedWithOtherCluster) continue;
 
       const useChamberCrop =
         chamberBox !== undefined &&
@@ -114,7 +147,7 @@ export function attachErasePatches(
       if (bw < 12 || bh < 12) continue;
       const img = ctx.getImageData(bx, by, bw, bh);
       const patch = BubbleFiller.buildBubblePatch(img, bx, by, b.lineBoxes, useChamberCrop ? chamberBox : undefined);
-      if (!patch) continue;
+      if (!patch || boxEnclosesOtherCluster(patch, bubbles, bIdx)) continue;
       for (const lb of b.lineBoxes || []) {
         const member = findBubbleMember(lb, boxToItem, items);
         if (member) member.bubblePatch = patch;

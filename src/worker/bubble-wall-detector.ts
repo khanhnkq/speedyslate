@@ -20,11 +20,11 @@ export class BubbleWallDetector {
     const gapY1 = Math.ceil(botBox.y);
     if (gapY1 - gapY0 < 4) return false;
 
-    const paperLuma = this.resolveSharedPaperLuma(img, topBox, botBox);
-    if (typeof paperLuma === 'boolean') return paperLuma;
+    const shared = this.resolveSharedPaperLuma(img, topBox, botBox);
+    if (typeof shared === 'boolean') return shared;
 
     const span = this.computeProbeSpan(topBox.x, topBox.width, botBox.x, botBox.width, img.width);
-    return span ? this.scanGapForWall(img, paperLuma, span[0], span[1], gapY0 + 1, gapY1 - 2, true) : false;
+    return span ? this.scanGapForWall(img, shared.paperLuma, shared.isLightPair, span[0], span[1], gapY0 + 1, gapY1 - 2, true) : false;
   }
 
   /** Returns true if a vertical wall or opposite-polarity background separates colA and colB. */
@@ -34,17 +34,18 @@ export class BubbleWallDetector {
     const gapX1 = Math.ceil(rightCol.x);
     if (gapX1 - gapX0 < 4) return false;
 
-    const paperLuma = this.resolveSharedPaperLuma(img, leftCol, rightCol);
-    if (typeof paperLuma === 'boolean') return paperLuma;
+    const shared = this.resolveSharedPaperLuma(img, leftCol, rightCol);
+    if (typeof shared === 'boolean') return shared;
 
     const span = this.computeProbeSpan(leftCol.y, leftCol.height, rightCol.y, rightCol.height, img.height);
-    return span ? this.scanGapForWall(img, paperLuma, span[0], span[1], gapX0 + 1, gapX1 - 2, false) : false;
+    return span ? this.scanGapForWall(img, shared.paperLuma, shared.isLightPair, span[0], span[1], gapX0 + 1, gapX1 - 2, false) : false;
   }
 
   /** Scans gap rows (horizontal) or columns (vertical) for >=60% non-paper pixels across the probe span. */
   private static scanGapForWall(
     img: PagePixelBuffer,
     paperLuma: number,
+    isLightPair: boolean,
     spanStart: number,
     spanEnd: number,
     gapStart: number,
@@ -58,19 +59,40 @@ export class BubbleWallDetector {
 
     for (let g = g0; g <= g1; g++) {
       let nonPaperCount = 0;
+      let darkStrokeCount = 0;
+      let sum = 0;
+      let sumSq = 0;
       for (let s = spanStart; s <= spanEnd; s++) {
         const luma = horizontal
           ? this.pixelLuma(img.data, img.width, s, g)
           : this.pixelLuma(img.data, img.width, g, s);
         if (Math.abs(luma - paperLuma) > 45) nonPaperCount++;
+        if (luma <= 110) darkStrokeCount++;
+        sum += luma;
+        sumSq += luma * luma;
       }
-      if (nonPaperCount / spanLen >= 0.60) return true;
+      if (nonPaperCount / spanLen >= 0.60) {
+        if (isLightPair) {
+          // Clean uniform light cloud/tint rows (e.g. pale-grey cloud on white panel)
+          // lack dark strokes, dark gutters, or high-variance panel art.
+          const mean = sum / spanLen;
+          const stddev = Math.sqrt(Math.max(0, sumSq / spanLen - mean * mean));
+          if (mean >= 155 && stddev <= 25 && darkStrokeCount / spanLen < 0.15) {
+            continue;
+          }
+        }
+        return true;
+      }
     }
     return false;
   }
 
   /** Resolves shared paper luma; returns true for opposite polarities and false for unknown. */
-  private static resolveSharedPaperLuma(img: PagePixelBuffer, boxA: BoundingBox, boxB: BoundingBox): number | boolean {
+  private static resolveSharedPaperLuma(
+    img: PagePixelBuffer,
+    boxA: BoundingBox,
+    boxB: BoundingBox
+  ): { paperLuma: number; isLightPair: boolean } | boolean {
     const classA = this.classifyPaper(img, boxA);
     const classB = this.classifyPaper(img, boxB);
     if (
@@ -80,7 +102,10 @@ export class BubbleWallDetector {
       return true;
     }
     if (classA.polarity === 'unknown' || classB.polarity === 'unknown') return false;
-    return (classA.paperLuma + classB.paperLuma) * 0.5;
+    return {
+      paperLuma: (classA.paperLuma + classB.paperLuma) * 0.5,
+      isLightPair: classA.polarity === 'light' && classB.polarity === 'light'
+    };
   }
 
   /** Classifies box interior paper polarity via luma p25/p75 histogram quantiles. */

@@ -2,6 +2,7 @@ import { ErasePatch } from '../shared/types';
 import { computeCurvedBorderShield, InnerTextRect } from './border-shield';
 import {
   buildDarkProximityMask,
+  featherTeleaAlpha,
   fillEnclosedBrightCores,
   filterMask,
   resolveInnerLocalBg
@@ -256,6 +257,7 @@ export class EraseMasker {
     }
 
     const inpainted = InpaintSolver.teleaInpaint(data, dil, dil, w, h, 4);
+    featherTeleaAlpha(inpainted, mask, w, h);
     return {
       x,
       y,

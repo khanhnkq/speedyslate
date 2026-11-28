@@ -118,7 +118,10 @@ export function attachErasePatches(
       let mergedWithOtherCluster = false;
       if (b.kind === 'dialogue' && cw >= 20 && ch >= 20) {
         const cImg = ctx.getImageData(cx, cy, cw, ch);
-        const chamber = BubbleChamberExtractor.extractChamber(cImg, cx, cy, b.box);
+        const chamber = BubbleChamberExtractor.extractChamber(cImg, cx, cy, b.box, {
+          width: canvas.width,
+          height: canvas.height
+        });
         if (chamber) {
           if (boxEnclosesOtherCluster(chamber.chamberBox, bubbles, bIdx)) {
             mergedWithOtherCluster = true;

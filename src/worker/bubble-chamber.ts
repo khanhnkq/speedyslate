@@ -18,11 +18,19 @@ export class BubbleChamberExtractor {
     img: { data: Uint8ClampedArray; width: number; height: number },
     cropOriginX: number,
     cropOriginY: number,
-    textBox: BoundingBox
+    textBox: BoundingBox,
+    pageDims?: { width: number; height: number }
   ): ChamberResult | null {
     const { data, width: w, height: h } = img;
     const total = w * h;
     if (w < 20 || h < 20 || textBox.width < 8 || textBox.height < 8) return null;
+
+    const seamTop = cropOriginY <= 1 && textBox.y <= 8;
+    const seamBottom = Boolean(
+      pageDims &&
+      cropOriginY + h >= pageDims.height - 1 &&
+      textBox.y + textBox.height >= pageDims.height - 8
+    );
 
     const tx0 = Math.max(0, Math.floor(textBox.x - cropOriginX));
     const ty0 = Math.max(0, Math.floor(textBox.y - cropOriginY));
@@ -86,6 +94,7 @@ export class BubbleChamberExtractor {
     if (qt < 12) return null;
 
     let fx0 = w, fy0 = h, fx1 = 0, fy1 = 0, borderHits = 0;
+    let leftEdgeHits = 0, rightEdgeHits = 0, topEdgeHits = 0, botEdgeHits = 0;
     while (qh < qt) {
       const i = q[qh++];
       const x = i % w;
@@ -94,7 +103,13 @@ export class BubbleChamberExtractor {
       if (x > fx1) fx1 = x;
       if (y < fy0) fy0 = y;
       if (y > fy1) fy1 = y;
-      if (x === 0 || x === w - 1 || y === 0 || y === h - 1) borderHits++;
+      if (x === 0) leftEdgeHits++;
+      if (x === w - 1) rightEdgeHits++;
+      if (y === 0) topEdgeHits++;
+      if (y === h - 1) botEdgeHits++;
+      if (x === 0 || x === w - 1 || (y === 0 && !seamTop) || (y === h - 1 && !seamBottom)) {
+        borderHits++;
+      }
 
       if (x > 0 && paper[i - 1] && !flood[i - 1]) { flood[i - 1] = 1; q[qt++] = i - 1; }
       if (x < w - 1 && paper[i + 1] && !flood[i + 1]) { flood[i + 1] = 1; q[qt++] = i + 1; }
@@ -106,6 +121,11 @@ export class BubbleChamberExtractor {
     const perimeter = 2 * (w + h);
     if (borderHits > perimeter * 0.35) return null;
     if (fx1 - fx0 + 1 >= w * 0.96 && fy1 - fy0 + 1 >= h * 0.96) return null;
+    if (seamTop || seamBottom) {
+      if (leftEdgeHits > Math.max(24, h * 0.35) || rightEdgeHits > Math.max(24, h * 0.35)) return null;
+      if (!seamTop && topEdgeHits > Math.max(24, w * 0.25)) return null;
+      if (!seamBottom && botEdgeHits > Math.max(24, w * 0.25)) return null;
+    }
 
     // 3. Fill interior glyph holes so erosion only shrinks from outer bubble border
     const outside = new Uint8Array(total);
@@ -113,7 +133,8 @@ export class BubbleChamberExtractor {
     const seedOut = (i: number) => {
       if (!flood[i] && !outside[i]) { outside[i] = 1; q[qt++] = i; }
     };
-    for (let x = 0; x < w; x++) { seedOut(x); seedOut((h - 1) * w + x); }
+    if (!seamTop) for (let x = 0; x < w; x++) seedOut(x);
+    if (!seamBottom) for (let x = 0; x < w; x++) seedOut((h - 1) * w + x);
     for (let y = 0; y < h; y++) { seedOut(y * w); seedOut(y * w + w - 1); }
     while (qh < qt) {
       const i = q[qh++];
@@ -129,7 +150,7 @@ export class BubbleChamberExtractor {
     for (let i = 0; i < total; i++) solid[i] = outside[i] ? 0 : 1;
 
     // 4. Chamfer 3-4 distance to !solid + morphological opening to sever tails
-    const distToEdge = BubbleChamberExtractor.chamferDistance(solid, w, h, 0);
+    const distToEdge = BubbleChamberExtractor.chamferDistance(solid, w, h, 0, seamTop, seamBottom);
     const minSpan = Math.min(fx1 - fx0 + 1, fy1 - fy0 + 1);
     let erodeR = Math.max(6, Math.min(14, Math.round(minSpan * 0.11)));
 
@@ -173,13 +194,26 @@ export class BubbleChamberExtractor {
     const minOverX = Math.min(overL, overR);
     const maxOverY = Math.max(overT, overB);
     const minOverY = Math.min(overT, overB);
+    const isSeamClippedTop = seamTop && cy0 <= 4;
+    const isSeamClippedBot = seamBottom && cy1 >= h - 5;
     const asymLeakX =
       maxOverX > Math.max(48, minOverX * 2.4) && maxOverX > (tx1 - tx0) * 0.75;
-    const asymLeakY =
+    const asymLeakYRaw =
       maxOverY > Math.max(64, minOverY * 2.4) && maxOverY > (ty1 - ty0) * 1.25;
+    const allowTopAsym = isSeamClippedTop && overB >= overT;
+    const allowBotAsym = isSeamClippedBot && overT >= overB;
+    const asymLeakY = asymLeakYRaw && !allowTopAsym && !allowBotAsym;
+    const badChamCy =
+      isSeamClippedTop && !isSeamClippedBot
+        ? chamCy - textCy > ch * 0.49 || textCy - chamCy > ch * 0.18
+        : isSeamClippedBot && !isSeamClippedTop
+          ? textCy - chamCy > ch * 0.49 || chamCy - textCy > ch * 0.18
+          : isSeamClippedTop && isSeamClippedBot
+            ? Math.abs(chamCy - textCy) > ch * 0.49
+            : Math.abs(chamCy - textCy) > ch * 0.18;
     if (
       Math.abs(chamCx - textCx) > cw * 0.16 ||
-      Math.abs(chamCy - textCy) > ch * 0.18 ||
+      badChamCy ||
       asymLeakX ||
       asymLeakY
     ) {
@@ -205,17 +239,27 @@ export class BubbleChamberExtractor {
 
   /**
    * 2-pass Chamfer 3-4 distance transform to pixels matching `zeroTarget` (`0` or `1`).
+   * When `zeroTarget === 0`, non-seam crop edges are also initialized to `0` so
+   * leaks are eroded away while cut page seams stay open.
    */
   private static chamferDistance(
     mask: Uint8Array,
     w: number,
     h: number,
-    zeroTarget: 0 | 1
+    zeroTarget: 0 | 1,
+    exemptTop = false,
+    exemptBottom = false
   ): Int32Array {
     const total = w * h;
     const d = new Int32Array(total);
-    for (let i = 0; i < total; i++) {
-      d[i] = mask[i] === zeroTarget ? 0 : INF_DIST;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        const onNonSeamEdge =
+          zeroTarget === 0 &&
+          (x === 0 || x === w - 1 || (y === 0 && !exemptTop) || (y === h - 1 && !exemptBottom));
+        d[i] = mask[i] === zeroTarget || onNonSeamEdge ? 0 : INF_DIST;
+      }
     }
 
     for (let y = 0; y < h; y++) {

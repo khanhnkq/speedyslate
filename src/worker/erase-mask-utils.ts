@@ -357,3 +357,78 @@ export function fillEnclosedBrightCores(
     }
   }
 }
+
+/**
+ * Applies a smooth 2px inward alpha falloff (255 -> 210 -> 140 -> 0) along the
+ * outer boundary of a Telea inpaint patch while keeping the erased stroke core
+ * `mask` and a 1px safety border around it strictly opaque (alpha = 255).
+ */
+export function featherTeleaAlpha(
+  pixels: Uint8ClampedArray,
+  mask: Uint8Array,
+  w: number,
+  h: number
+): void {
+  const total = w * h;
+  if (w <= 0 || h <= 0 || pixels.length < total * 4 || mask.length < total) return;
+
+  const coreSafe = new Uint8Array(total);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!mask[y * w + x]) continue;
+      const y0 = Math.max(0, y - 1);
+      const y1 = Math.min(h - 1, y + 1);
+      const x0 = Math.max(0, x - 1);
+      const x1 = Math.min(w - 1, x + 1);
+      for (let ny = y0; ny <= y1; ny++) {
+        for (let nx = x0; nx <= x1; nx++) {
+          coreSafe[ny * w + nx] = 1;
+        }
+      }
+    }
+  }
+
+  const ring1 = new Uint8Array(total);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (pixels[i * 4 + 3] === 0) continue;
+      if (
+        (x > 0 && pixels[(i - 1) * 4 + 3] === 0) ||
+        (x < w - 1 && pixels[(i + 1) * 4 + 3] === 0) ||
+        (y > 0 && pixels[(i - w) * 4 + 3] === 0) ||
+        (y < h - 1 && pixels[(i + w) * 4 + 3] === 0)
+      ) {
+        ring1[i] = 1;
+      }
+    }
+  }
+
+  const ring2 = new Uint8Array(total);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (pixels[i * 4 + 3] === 0 || ring1[i]) continue;
+      if (
+        (x > 0 && ring1[i - 1]) ||
+        (x < w - 1 && ring1[i + 1]) ||
+        (y > 0 && ring1[i - w]) ||
+        (y < h - 1 && ring1[i + w])
+      ) {
+        ring2[i] = 1;
+      }
+    }
+  }
+
+  for (let i = 0; i < total; i++) {
+    const aIdx = i * 4 + 3;
+    if (pixels[aIdx] === 0) continue;
+    if (coreSafe[i]) {
+      pixels[aIdx] = 255;
+    } else if (ring1[i]) {
+      pixels[aIdx] = 140;
+    } else if (ring2[i]) {
+      pixels[aIdx] = 210;
+    }
+  }
+}

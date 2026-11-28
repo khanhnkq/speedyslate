@@ -167,11 +167,13 @@ export class StripSlicer {
   }
 
   /**
-   * Finds y-ranges holding dark pixels (mean cell luma < 90) whose centers are
-   * not inside any detected box — candidate regions for white-on-dark text.
-   * Contiguous dark rows are merged (gaps < 80px) and ranges < 48px dropped.
+   * Finds y-ranges holding dark background regions (luma <= 70) that ALSO contain
+   * high-contrast bright text foreground strokes (bright core >= 215 adjacent to
+   * dark bg <= 70 with meaningful foreground density), avoiding wasted inverted
+   * ONNX passes on plain dark artwork, gutters, margins, or panel borders.
+   * Contiguous dark rows are merged (gaps <= 80px) and ranges < 48px dropped.
    */
-  private static findDarkRanges(
+  public static findDarkRanges(
     canvas: OffscreenCanvas,
     width: number,
     height: number,
@@ -179,32 +181,93 @@ export class StripSlicer {
   ): { startY: number; h: number }[] {
     const src = canvas.getContext('2d');
     if (!src) return [];
+    const img = src.getImageData(0, 0, width, height).data;
+    return this.findDarkRangesFromImageData(img, width, height, boxes);
+  }
+
+  /**
+   * Pure pixel-buffer implementation of contrast-gated dark-range detection.
+   */
+  public static findDarkRangesFromImageData(
+    img: Uint8ClampedArray,
+    width: number,
+    height: number,
+    boxes: BoundingBox[]
+  ): { startY: number; h: number }[] {
     const step = 16;
     const cols = Math.ceil(width / step);
     const rows = Math.ceil(height / step);
-    const img = src.getImageData(0, 0, width, height).data;
 
     const rowDark = new Int32Array(rows);
+    const rowContrast = new Int32Array(rows);
     let darkTotal = 0;
+
+    const lumaAt = (x: number, y: number): number => {
+      const i = (y * width + x) * 4;
+      return (img[i] * 299 + img[i + 1] * 587 + img[i + 2] * 114) / 1000;
+    };
+
     for (let gy = 0; gy < rows; gy++) {
-      const cy = Math.min(height - 1, gy * step + (step >> 1));
+      const y0 = gy * step;
+      const y1 = Math.min(height, y0 + step);
+      const cy = Math.min(height - 1, y0 + (step >> 1));
+
       for (let gx = 0; gx < cols; gx++) {
-        const cx = Math.min(width - 1, gx * step + (step >> 1));
-        const i = (cy * width + cx) * 4;
-        const luma = (img[i] * 299 + img[i + 1] * 587 + img[i + 2] * 114) / 1000;
-        if (luma >= 90) continue;
+        const x0 = gx * step;
+        const x1 = Math.min(width, x0 + step);
+        const cx = Math.min(width - 1, x0 + (step >> 1));
+
         const covered = boxes.some(
           (b) => cx >= b.x && cx <= b.x + b.width && cy >= b.y && cy <= b.y + b.height
         );
         if (covered) continue;
-        rowDark[gy]++;
-        darkTotal++;
+
+        let samples = 0;
+        let darkBg = 0;
+        let brightCore = 0;
+        let flankedContrastPx = 0;
+        let horizFlankedPx = 0;
+
+        for (let y = y0; y < y1; y += 2) {
+          for (let x = x0; x < x1; x += 2) {
+            samples++;
+            const l = lumaAt(x, y);
+            if (l <= 70) {
+              darkBg++;
+              continue;
+            }
+            if (l < 215) continue;
+            brightCore++;
+
+            const darkL = (x >= 2 && lumaAt(x - 2, y) <= 70) || (x >= 4 && lumaAt(x - 4, y) <= 70);
+            const darkR = (x + 2 < width && lumaAt(x + 2, y) <= 70) || (x + 4 < width && lumaAt(x + 4, y) <= 70);
+            const darkU = (y >= 2 && lumaAt(x, y - 2) <= 70) || (y >= 4 && lumaAt(x, y - 4) <= 70);
+            const darkD = (y + 2 < height && lumaAt(x, y + 2) <= 70) || (y + 4 < height && lumaAt(x, y + 4) <= 70);
+
+            if (darkL && darkR) {
+              flankedContrastPx++;
+              horizFlankedPx++;
+            } else if (darkU && darkD) {
+              flankedContrastPx++;
+            }
+          }
+        }
+
+        if (samples > 0 && darkBg >= Math.max(4, samples * 0.5)) {
+          rowDark[gy]++;
+          darkTotal++;
+          if (brightCore <= samples * 0.45 && flankedContrastPx >= 2 && horizFlankedPx >= 1) {
+            rowContrast[gy]++;
+          }
+        }
       }
     }
 
     if (darkTotal < 8) return [];
 
-    // Rows with >= 2 uncovered dark cells count as dark-uncovered rows
+    // Group contiguous dark rows (gaps <= 5 rows = 80px) and gate each band
+    // on meaningful bright-on-dark foreground density (>= 2 rows with >= 3 contrast cells,
+    // >= 5 cells in peak row, and >= 10 total contrast cells across the band).
     const ranges: { startY: number; h: number }[] = [];
     let rangeStart = -1;
     let lastDarkRow = -1;
@@ -216,7 +279,20 @@ export class StripSlicer {
       } else if (rangeStart >= 0 && (gy === rows || gy - lastDarkRow > 5)) {
         const y = rangeStart * step;
         const h = (lastDarkRow + 1) * step - y;
-        if (h >= 48) ranges.push({ startY: y, h: Math.min(h, height - y) });
+        if (h >= 48) {
+          let bandContrastRows = 0;
+          let bandContrastCells = 0;
+          let peakRowCells = 0;
+          for (let r = rangeStart; r <= lastDarkRow; r++) {
+            const c = rowContrast[r];
+            if (c >= 3) bandContrastRows++;
+            if (c > peakRowCells) peakRowCells = c;
+            bandContrastCells += c;
+          }
+          if (bandContrastRows >= 2 && peakRowCells >= 5 && bandContrastCells >= 10) {
+            ranges.push({ startY: y, h: Math.min(h, height - y) });
+          }
+        }
         rangeStart = -1;
       }
     }

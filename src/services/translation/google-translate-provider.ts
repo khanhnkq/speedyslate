@@ -1,6 +1,7 @@
 import { DialogueTranslateContext } from '../../shared/types';
 import { ITranslationProvider } from './translation-provider.interface';
 import { KeyedJson } from './keyed-json';
+import { normalizeOcrForTranslation } from '../../worker/ocr-text-normalizer';
 
 const GTX_SEPARATOR = '\n⟪991⟫\n';
 const GTX_SPLIT_RE = /\s*⟪991⟫\s*/;
@@ -65,12 +66,13 @@ export class GoogleFreeProvider implements ITranslationProvider {
         outputs[idx] = '';
         return;
       }
-      if (KeyedJson.isPassthroughOnly(raw)) {
-        outputs[idx] = raw.trim();
+      const normalized = normalizeOcrForTranslation(raw);
+      if (KeyedJson.isPassthroughOnly(normalized)) {
+        outputs[idx] = normalized;
         return;
       }
       sendIndices.push(idx);
-      sendTexts.push(raw.trim());
+      sendTexts.push(normalized);
     });
 
     if (sendTexts.length === 0) return outputs;

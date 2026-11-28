@@ -118,7 +118,8 @@ export async function handleOcrImage(msg: any): Promise<any> {
     const { dialogues, width, height } = await ocrWorkerClient.runOcr({
       dataUrl: ocrDataUrl,
       imageUrl,
-      sourceLang: settings.sourceLanguage
+      sourceLang: settings.sourceLanguage,
+      translateSfx: settings.translateSfx ?? false
     });
     return { success: true, cached: false, dialogues, naturalWidth: width, naturalHeight: height };
   } catch (err: any) {
@@ -199,7 +200,12 @@ export async function handleTranslateImage(msg: any): Promise<any> {
   let width: number;
   let height: number;
   try {
-    const res = await ocrWorkerClient.runOcr({ dataUrl, imageUrl, sourceLang: settings.sourceLanguage });
+    const res = await ocrWorkerClient.runOcr({
+      dataUrl,
+      imageUrl,
+      sourceLang: settings.sourceLanguage,
+      translateSfx: settings.translateSfx ?? false
+    });
     dialogues = res.dialogues;
     width = res.width;
     height = res.height;

@@ -217,8 +217,10 @@ export class OcrWorkerClient {
     width?: number;
     height?: number;
     sourceLang?: string;
+    translateSfx?: boolean;
   }): Promise<{ dialogues: DialogueItem[]; width: number; height: number }> {
     try {
+      const translateSfx = params.translateSfx ?? false;
       if (this.isServiceWorker) {
         // Chrome MV3: Offscreen Document takes care of fetching, creating bitmap, and running OCR
         await ensureOffscreen();
@@ -231,7 +233,8 @@ export class OcrWorkerClient {
           imageUrl: params.imageUrl,
           width: params.width,
           height: params.height,
-          sourceLang: params.sourceLang
+          sourceLang: params.sourceLang,
+          translateSfx
         });
 
         if (!resp?.success) {
@@ -263,7 +266,8 @@ export class OcrWorkerClient {
         const result = await this.sendMessageDirect({
           _reqId: this.nextReqId(),
           type: 'PROCESS_IMAGE',
-          imageBitmap: bitmap
+          imageBitmap: bitmap,
+          translateSfx
         } as any, [bitmap]);
 
         const rawLines = (result as any).dialogues as DialogueItem[];

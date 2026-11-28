@@ -2,6 +2,7 @@ import { DialogueItem } from '../shared/types';
 
 const THOUGHT_TAIL_RE = /^[0oO○●⊙◯°.\s]+$/;
 const SPEEDLINE_STROKE_RE = /^[一丨丶─│|/\\_=~—–-]+$/;
+const REPEATED_CHAR_NOISE_RE = /^([a-zA-Z0-9])\1{2,}$/;
 const KANA_ONLY_RE = /^[\u3040-\u309F\u30A0-\u30FFー・\s]+$/;
 const HAS_KANJI_RE = /[\u4E00-\u9FFF]/;
 
@@ -50,9 +51,11 @@ export class OcrNoiseFilter {
         continue;
       }
 
-      // 3. Thought-bubble circle tails & speedline stroke artifacts
+      // 3. Thought-bubble circle tails, speedline stroke artifacts, & repeated-char hallucinations
       if (THOUGHT_TAIL_RE.test(rawText)) continue;
       if (SPEEDLINE_STROKE_RE.test(rawText)) continue;
+      if (REPEATED_CHAR_NOISE_RE.test(rawText) && (item.confidence ?? 1) < 0.72) continue;
+      if ((item.confidence ?? 1) < 0.42 && !/\s/.test(rawText) && !/[.!?]$/.test(rawText)) continue;
 
       // 4. Standalone page numbers in extreme top/bottom 3% margins
       const inExtremeVerticalMargin = box.y < imageHeight * 0.03 || box.y + box.height > imageHeight * 0.97;

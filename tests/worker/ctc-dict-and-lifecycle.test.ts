@@ -239,4 +239,103 @@ describe('PaddleRecEngine CTC space decoding & RecCropCleaner', () => {
     expect(data[sp]).toBeGreaterThan(150); // isolated speckle cleared
     expect(data[(10 * w + 12) * 4]).toBeLessThan(30); // thin 1px stroke kept
   });
+
+  it('RecCropCleaner.padClippedImageData clamps and replicates edge rows on page-clipped crops', () => {
+    const w = 10;
+    const h = 4;
+    const data = new Uint8ClampedArray(w * h * 4).fill(255);
+    // Top row has dark clipped glyph stem at x=4
+    const p0 = 4 * 4;
+    data[p0] = 15;
+    data[p0 + 1] = 15;
+    data[p0 + 2] = 15;
+
+    const padded = RecCropCleaner.padClippedImageData({ data, width: w, height: h }, 0, 3, 0, 0);
+    expect(padded.width).toBe(10);
+    expect(padded.height).toBe(7);
+    // Replicated top rows y=0..2 preserve the clipped stem at x=4 instead of severing it with white
+    expect(padded.data[(0 * 10 + 4) * 4]).toBe(15);
+    expect(padded.data[(2 * 10 + 4) * 4]).toBe(15);
+    expect(padded.data[(0 * 10 + 1) * 4]).toBe(255);
+  });
+
+  it('RecCropCleaner.measureBgLumaStd distinguishes flat paper from textured foliage', () => {
+    const w = 24;
+    const h = 16;
+    const flat = new Uint8ClampedArray(w * h * 4).fill(250);
+    const noisy = new Uint8ClampedArray(w * h * 4);
+    const foliageTones = [30, 85, 140, 200];
+    for (let i = 0; i < w * h; i++) {
+      const v = foliageTones[i % foliageTones.length];
+      noisy[i * 4] = v;
+      noisy[i * 4 + 1] = v + 25;
+      noisy[i * 4 + 2] = v;
+      noisy[i * 4 + 3] = 255;
+    }
+    expect(RecCropCleaner.measureBgLumaStd({ data: flat, width: w, height: h })).toBeLessThan(5);
+    expect(RecCropCleaner.measureBgLumaStd({ data: noisy, width: w, height: h })).toBeGreaterThan(20);
+  });
+
+  it('PaddleRecEngine.recognizeBoxes rejects low-conf (<0.45) hallucinations on textured crops', async () => {
+    const origOffscreen = (globalThis as any).OffscreenCanvas;
+    const origImageData = (globalThis as any).ImageData;
+    const w = 48;
+    const h = 48;
+    const noisyData = new Uint8ClampedArray(w * h * 4);
+    const foliageTones = [30, 85, 140, 200];
+    for (let i = 0; i < w * h; i++) {
+      const v = foliageTones[i % foliageTones.length];
+      noisyData[i * 4] = v;
+      noisyData[i * 4 + 1] = v + 25;
+      noisyData[i * 4 + 2] = v;
+      noisyData[i * 4 + 3] = 255;
+    }
+    (globalThis as any).ImageData = class {
+      constructor(public data: Uint8ClampedArray, public width: number, public height: number) {}
+    };
+    (globalThis as any).OffscreenCanvas = class {
+      constructor(public width: number, public height: number) {}
+      getContext() {
+        return {
+          drawImage: () => {},
+          putImageData: () => {},
+          getImageData: (_x: number, _y: number, gw: number, gh: number) => ({
+            data: new Uint8ClampedArray(noisyData.subarray(0, gw * gh * 4)),
+            width: gw,
+            height: gh
+          })
+        };
+      }
+    };
+
+    try {
+      const dict = 'A\nL\nR\n ';
+      const numClasses = 5; // blank=0, A=1, L=2, R=3, ' '=4
+      const makeLogits = (conf: number) => {
+        const seq = 5;
+        const arr = new Float32Array(seq * numClasses).fill(-10);
+        [1, 1, 2, 1, 3].forEach((cls, t) => {
+          arr[t * numClasses + cls] = conf;
+        });
+        return arr;
+      };
+      const lowSession: any = {
+        inputNames: ['x'],
+        outputNames: ['out'],
+        run: vi.fn(async () => ({
+          out: { data: makeLogits(0.35), dims: [1, 5, numClasses], dispose: () => {} }
+        })),
+        release: vi.fn(async () => {})
+      };
+      const engLow = new PaddleRecEngine(lowSession, dict);
+      const resLow = await engLow.recognizeBoxes(
+        new (globalThis as any).OffscreenCanvas(w, h),
+        [{ x: 0, y: 0, width: 32, height: 16 }]
+      );
+      expect(resLow).toEqual([]);
+    } finally {
+      (globalThis as any).OffscreenCanvas = origOffscreen;
+      (globalThis as any).ImageData = origImageData;
+    }
+  });
 });

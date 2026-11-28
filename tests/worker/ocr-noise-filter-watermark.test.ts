@@ -55,4 +55,18 @@ describe('OcrNoiseFilter watermark & site banner filtering', () => {
     expect(kept[0].box.width).toBeLessThan(320);
     expect(kept[1].box.width).toBeLessThan(420);
   });
+
+  it('filters low-confidence repeated single-char starburst hallucinations and sub-0.42 noise while keeping real expressions', () => {
+    const items: DialogueItem[] = [
+      { id: 'n1', originalText: 'wwww', box: { x: 143, y: 868, width: 194, height: 23 }, confidence: 0.515 },
+      { id: 'n2', originalText: 'llll', box: { x: 100, y: 200, width: 80, height: 20 }, confidence: 0.62 },
+      { id: 'n3', originalText: 'AALAR', box: { x: 168, y: 1321, width: 372, height: 17 }, confidence: 0.353 },
+      { id: 'r1', originalText: 'Zzz...', box: { x: 200, y: 300, width: 60, height: 22 }, confidence: 0.88 },
+      { id: 'r2', originalText: 'Shhh!', box: { x: 200, y: 350, width: 65, height: 22 }, confidence: 0.85 },
+      { id: 'r3', originalText: 'Mmm', box: { x: 200, y: 400, width: 65, height: 22 }, confidence: 0.91 }
+    ];
+
+    const kept = OcrNoiseFilter.filterRawLines(items, 800, 1600);
+    expect(kept.map((item) => item.originalText)).toEqual(['Zzz...', 'Shhh!', 'Mmm']);
+  });
 });

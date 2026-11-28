@@ -15,6 +15,7 @@ interface PreparedCrop {
   inverted: boolean;
   isDark: boolean;
   bgColor: string;
+  bgLumaStdDev: number;
   isVertical: boolean;
   text: string;
   confidence: number;
@@ -93,9 +94,11 @@ export class PaddleRecEngine {
       // Ignore noise, empty text, or non-alphanumeric graphic artifacts (e.g. "--", "..", "|")
       const hasLetterOrDigit = /[\p{L}\p{N}]/u.test(cleanText);
       // 1-2 char results are overwhelmingly artifacts (hearts→"4", art edges→"R"/"8");
-      // real short words ("YES", "ahh") decode well above 0.65
+      // real short words ("YES", "ahh") decode well above 0.65.
+      // Textured art/foliage crops require higher confidence (>=0.45) than flat bubbles (>=0.34).
       const suspiciousShort = cleanText.length <= 2 && crop.confidence < 0.65;
-      if (cleanText.length > 0 && hasLetterOrDigit && !suspiciousShort && crop.confidence > 0.28) {
+      const minConfidence = crop.bgLumaStdDev > 20 ? 0.45 : 0.34;
+      if (cleanText.length > 0 && hasLetterOrDigit && !suspiciousShort && crop.confidence >= minConfidence) {
         results.push({
           id: `bubble-${Date.now()}-${crop.index}`,
           box: crop.box,
@@ -150,25 +153,45 @@ export class PaddleRecEngine {
     }
 
     // 2. Add crisp padding along and across the reading axis
-    const padX = isVertical
+    let padX = isVertical
       ? Math.max(3, Math.min(6, Math.round(bw0 * 0.2)))
       : Math.max(6, Math.min(12, Math.round(bh0 * 0.35)));
-    const padY = isVertical
+    let padY = isVertical
       ? Math.max(6, Math.min(12, Math.round(bw0 * 0.3)))
       : Math.max(3, Math.min(6, Math.round(bh0 * 0.25)));
 
-    const srcX = Math.max(0, bx - padX);
-    const srcY = Math.max(0, by - padY);
-    const srcW = Math.max(1, Math.min(sourceCanvas.width - srcX, bx + bw0 + padX - srcX));
-    const srcH = Math.max(1, Math.min(sourceCanvas.height - srcY, by + bh0 + padY - srcY));
+    // Vertically clipped lines at page top/bottom need extra unclipped breathing room
+    // so short 11-13px slices don't over-stretch and collapse inter-word spaces.
+    const clippedTop = by === 0;
+    const clippedBottom = by + bh0 >= sourceCanvas.height;
+    const extraBottom = clippedTop && !clippedBottom && bh0 < 16 ? Math.max(padY, Math.min(7, 20 - bh0 - Math.min(3, padY))) : padY;
+    const extraTop = clippedBottom && !clippedTop && bh0 < 16 ? Math.max(padY, Math.min(7, 20 - bh0 - Math.min(3, padY))) : padY;
 
-    // 3. Build the native-res crop, deskew if tilted, mask outer border walls,
-    // and clean high-variance screentone/art backgrounds.
+    const srcX = Math.max(0, bx - padX);
+    const srcY = Math.max(0, by - extraTop);
+    const srcW = Math.max(1, Math.min(sourceCanvas.width - srcX, bx + bw0 + padX - srcX));
+    const srcH = Math.max(1, Math.min(sourceCanvas.height - srcY, by + bh0 + extraBottom - srcY));
+
+    // 3. Build the native-res crop, extend any page-edge-clipped sides with
+    // clamped edge pixels, deskew if tilted, and clean textured backgrounds.
     let nativeCanvas = new OffscreenCanvas(srcW, srcH);
     let nativeCtx = nativeCanvas.getContext('2d');
     if (!nativeCtx) return null;
     nativeCtx.drawImage(sourceCanvas, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
     let nativeData = nativeCtx.getImageData(0, 0, srcW, srcH);
+
+    const edgePadL = bx === 0 ? padX : 0;
+    const edgePadR = bx + bw0 >= sourceCanvas.width ? padX : 0;
+    const edgePadT = clippedTop ? Math.min(3, padY) : 0;
+    const edgePadB = clippedBottom ? Math.min(3, padY) : 0;
+    if (!willWarp && (edgePadL > 0 || edgePadR > 0 || edgePadT > 0 || edgePadB > 0)) {
+      const padded = RecCropCleaner.padClippedImageData(nativeData, edgePadL, edgePadT, edgePadR, edgePadB);
+      nativeCanvas = new OffscreenCanvas(padded.width, padded.height);
+      nativeCtx = nativeCanvas.getContext('2d');
+      if (!nativeCtx) return null;
+      nativeData = new ImageData(new Uint8ClampedArray(padded.data), padded.width, padded.height);
+      nativeCtx.putImageData(nativeData, 0, 0);
+    }
 
     // Perspective deskew for tilted comic lettering (>= 10 deg)
     if (willWarp && box.quad) {
@@ -183,12 +206,13 @@ export class PaddleRecEngine {
       }
     }
 
+    const rawBgLumaStdDev = RecCropCleaner.measureBgLumaStd(nativeData);
     if (nativeData.width >= 16 && nativeData.height >= 12) {
       if (!willWarp) {
         RecCropCleaner.maskBorderWallsInPadding(
           nativeData,
-          bx - srcX,
-          srcX + srcW - (bx + bw0)
+          edgePadL > 0 ? edgePadL : bx - srcX,
+          edgePadR > 0 ? edgePadR : srcX + srcW - (bx + bw0)
         );
       }
       RecCropCleaner.cleanCropToMask(nativeData);
@@ -242,6 +266,7 @@ export class PaddleRecEngine {
       inverted,
       isDark: sample.isDark,
       bgColor: sample.bgHex,
+      bgLumaStdDev: Math.max(rawBgLumaStdDev, sample.lumaStdDev),
       isVertical,
       text: '',
       confidence: 0,

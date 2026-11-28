@@ -23,7 +23,7 @@ interface PreparedCrop {
 }
 
 export function parseCtcDictionary(keysText: string): string[] {
-  const trimmed = keysText.replace(/(?:\r?\n)+$/, '');
+  const trimmed = keysText.replace(/^\uFEFF/, '').replace(/(?:\r?\n)+$/, '');
   if (!trimmed) return [' '];
   const chars = trimmed.split(/\r?\n/);
   while (chars.length > 0 && chars[0] === '') {
@@ -145,7 +145,7 @@ export class PaddleRecEngine {
           bx += bounds.minX;
           bw0 = inkW;
         }
-        if (inkH > 6 && bh0 >= 28 && inkH < bh0 * 0.65) {
+        if (inkH > 6 && bh0 >= 20 && inkH < bh0 * 0.78) {
           by += bounds.minY;
           bh0 = inkH;
         }

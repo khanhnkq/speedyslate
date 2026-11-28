@@ -57,6 +57,14 @@ export interface WorkerMessageOut {
 
 type WorkerMessageInWithReqId = WorkerMessageIn & { _reqId?: string };
 
+function boxContainment(a: BoundingBox, b: BoundingBox): number {
+  const ix = Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x));
+  const iy = Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y));
+  const inter = ix * iy;
+  if (inter <= 0) return 0;
+  return inter / Math.max(1, Math.min(a.width * a.height, b.width * b.height));
+}
+
 async function tryCreateWebGpuSession(
   buffer: ArrayBuffer,
   opts: ort.InferenceSession.SessionOptions,
@@ -231,6 +239,14 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
               ? rawBoxes
               : rawBoxes.filter((b) => {
                   if (b.kind === 'sfx') return false;
+                  if (
+                    isComicDet &&
+                    (b.confidence ?? 1) < 0.55 &&
+                    !SfxGate.isCleanFlatBackground(fullPageImg, b) &&
+                    !SfxGate.hasFlatNeutralInterior(fullPageImg, b)
+                  ) {
+                    return false;
+                  }
                   if (!isComicDet && !SfxGate.isCleanFlatBackground(fullPageImg, b)) {
                     if (SfxGate.isStylizedVisualSfx(fullPageImg, b)) return false;
                     if (SfxGate.isTiltedQuad(b)) return false;
@@ -244,7 +260,7 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
             if (det2Engine) {
               const supBoxes = await StripSlicer.detectWithSlicing(canvas, width, height, det2Engine, { textMapOut: textMap });
               for (const sb of supBoxes) {
-                if (boxes.some((b) => StripSlicer.calculateIoU(b, sb) > 0.5)) continue;
+                if (boxes.some((b) => StripSlicer.calculateIoU(b, sb) > 0.35 || boxContainment(b, sb) >= 0.65)) continue;
                 const cands =
                   sb.height >= 34 && sb.width >= 28
                     ? LineSegmenter.segmentLines(ctx, sb, width, height)
@@ -267,7 +283,7 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
               }
             }
             boxes.length = 0;
-            boxes.push(...lineBoxes);
+            boxes.push(...ComicDetEngine.suppressOverlappingBoxes(lineBoxes));
 
             const gapBoxes = ChamberGapScanner.recoverMissedLines(fullPageImg, boxes);
             if (gapBoxes.length > 0) boxes.push(...gapBoxes);

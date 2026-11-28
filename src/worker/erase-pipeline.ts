@@ -16,7 +16,7 @@ function boxEnclosesOtherCluster(
     if (otherIdx === selfIdx) return false;
     const ocx = other.box.x + other.box.width * 0.5;
     const ocy = other.box.y + other.box.height * 0.5;
-    if (ocx >= candidate.x && ocx <= cX1 && ocy >= candidate.y && ocy <= cY1) {
+    if (ocx >= candidate.x - 18 && ocx <= cX1 + 18 && ocy >= candidate.y - 18 && ocy <= cY1 + 18) {
       return true;
     }
     const ix0 = Math.max(candidate.x, other.box.x);
@@ -24,9 +24,10 @@ function boxEnclosesOtherCluster(
     const ix1 = Math.min(cX1, other.box.x + other.box.width);
     const iy1 = Math.min(cY1, other.box.y + other.box.height);
     if (ix1 > ix0 && iy1 > iy0) {
+      if (ix1 - ix0 >= 8 && iy1 - iy0 >= 8) return true;
       const interArea = (ix1 - ix0) * (iy1 - iy0);
       const otherArea = Math.max(1, other.box.width * other.box.height);
-      if (interArea >= otherArea * 0.5) return true;
+      if (interArea >= otherArea * 0.25) return true;
     }
     return false;
   });

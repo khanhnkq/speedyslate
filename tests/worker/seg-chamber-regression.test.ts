@@ -3,6 +3,10 @@ import { LineSegmenter } from '../../src/worker/line-segmenter';
 import { BubbleWallDetector, PagePixelBuffer } from '../../src/worker/bubble-wall-detector';
 import { BubbleAggregator } from '../../src/worker/bubble-aggregator';
 import { attachErasePatches } from '../../src/worker/erase-pipeline';
+import { ComicDetEngine } from '../../src/worker/comic-det';
+import { ChamberGapScanner } from '../../src/worker/chamber-gap-scanner';
+import { BubbleChamberExtractor } from '../../src/worker/bubble-chamber';
+import { SfxGate } from '../../src/worker/sfx-gate';
 import { BoundingBox, DialogueItem } from '../../src/shared/types';
 
 function makeBuffer(width: number, height: number, r = 255, g = 255, b = 255): PagePixelBuffer {
@@ -234,5 +238,82 @@ describe('ErasePipeline tall chamber & touching-box regression', () => {
     expect(items[1].bubblePatch).toBeUndefined();
     expect(items[0].erasePatch).toBeDefined();
     expect(items[1].erasePatch).toBeDefined();
+  });
+
+  it('rejects extreme one-sided starburst lobe leaks in BubbleChamberExtractor and encroaching chambers in ErasePipeline', () => {
+    const w = 520;
+    const h = 420;
+    const buf = makeBuffer(w, h, 200, 200, 200);
+    // Asymmetric double-lobe chamber: narrow left lobe around text + huge 175px right lobe leak
+    paintRectRgb(buf, 66, 56, 368, 208, 12, 12, 12);
+    paintRectRgb(buf, 70, 60, 360, 200, 252, 252, 252);
+    const smallText: BoundingBox = { x: 105, y: 120, width: 130, height: 32, kind: 'dialogue' };
+    paintGlyphBand(buf, 110, 124, 230, 18, 15);
+
+    const leaked = BubbleChamberExtractor.extractChamber(buf, 0, 0, smallText);
+    expect(leaked).toBeNull();
+
+    // Encroaching chamber touching a second bubble's box by >= 8px
+    const items: DialogueItem[] = [
+      { id: 's1', box: smallText, originalText: 'IS THAT..?', kind: 'dialogue' },
+      { id: 's2', box: { x: 250, y: 245, width: 150, height: 40, kind: 'dialogue' }, originalText: 'AN EXIT!', kind: 'dialogue' }
+    ];
+    paintGlyphBand(buf, 260, 252, 390, 20, 15);
+    const { canvas } = makeMockCanvas(buf);
+    attachErasePatches(canvas, items, undefined, buf);
+    expect(items[0].chamberBox).toBeUndefined();
+  });
+});
+
+describe('ComicDetEngine overlap NMS & ChamberGapScanner starburst rim rejection', () => {
+  it('suppresses overlapping/containing lower-confidence duplicate RT-DETR boxes (05_1_2 & 11_3_2)', () => {
+    const kept05 = ComicDetEngine.suppressOverlappingBoxes([
+      { x: 235, y: 601, width: 246, height: 39, confidence: 0.683, kind: 'dialogue' },
+      { x: 261, y: 612, width: 194, height: 16, confidence: 0.929, kind: 'dialogue' },
+      { x: 246, y: 638, width: 225, height: 16, confidence: 0.929, kind: 'dialogue' }
+    ]);
+    expect(kept05).toHaveLength(2);
+    expect(kept05.every((b) => (b.confidence ?? 0) > 0.9)).toBe(true);
+
+    const kept11 = ComicDetEngine.suppressOverlappingBoxes([
+      { x: 269, y: 753, width: 181, height: 15, confidence: 0.295, kind: 'dialogue' },
+      { x: 284, y: 761, width: 153, height: 16, confidence: 0.896, kind: 'dialogue' },
+      { x: 278, y: 786, width: 165, height: 16, confidence: 0.896, kind: 'dialogue' }
+    ]);
+    expect(kept11).toHaveLength(2);
+    expect(kept11.every((b) => (b.confidence ?? 0) > 0.8)).toBe(true);
+  });
+
+  it('rejects radial starburst spike rims attached to the outer burst ring (26_8_2) while keeping interior lines', () => {
+    const w = 280;
+    const h = 240;
+    const buf = makeBuffer(w, h, 255, 255, 255);
+    // Draw starburst chamber x=30..250, y=30..200 with solid dark outer ring + inward spikes on y=172..195
+    paintRectRgb(buf, 30, 30, 220, 170, 12, 12, 12);
+    paintRectRgb(buf, 36, 36, 208, 158, 254, 254, 254);
+    for (let x = 44; x <= 236; x += 6) {
+      for (let y = 172; y <= 194; y++) {
+        const halfW = y >= 186 ? 2 : y >= 179 ? 1 : 0;
+        paintRectRgb(buf, x - halfW, y, halfW * 2 + 1, 1, 14, 14, 14);
+      }
+    }
+    paintGlyphBand(buf, 75, 80, 205, 20, 14);
+    const existing: BoundingBox[] = [{ x: 72, y: 78, width: 136, height: 24, kind: 'dialogue' }];
+
+    const recovered = ChamberGapScanner.recoverMissedLines(buf, existing);
+    expect(recovered).toHaveLength(0);
+  });
+
+  it('identifies noisy chromatic foliage box for low-conf ComicDet filtering (18_5_3 pattern)', () => {
+    const buf = makeBuffer(440, 100, 47, 76, 7);
+    for (let y = 0; y < 100; y++) {
+      for (let x = 0; x < 440; x++) {
+        const v = ((x * 37 + y * 17) % 5) * 18;
+        paintRectRgb(buf, x, y, 1, 1, 35 + v, 65 + v, 10 + (v >> 1));
+      }
+    }
+    const foliageBox: BoundingBox = { x: 40, y: 40, width: 360, height: 18, confidence: 0.41, kind: 'dialogue' };
+    expect(SfxGate.isCleanFlatBackground(buf, foliageBox)).toBe(false);
+    expect(SfxGate.hasFlatNeutralInterior(buf, foliageBox)).toBe(false);
   });
 });

@@ -149,7 +149,7 @@ export class ComicDetEngine implements ITextDetector {
       }
     }
 
-    const rawCandidates = textCandidates;
+    const rawCandidates = ComicDetEngine.suppressOverlappingBoxes(textCandidates);
 
     // 6. Split multi-line paragraph bubbles into individual text lines
     const finalBoxes: BoundingBox[] = [];
@@ -166,8 +166,41 @@ export class ComicDetEngine implements ITextDetector {
       finalBoxes.push(box);
     }
 
-    // 7. Sort detected boxes top-to-bottom for natural reading order
-    return finalBoxes.sort((a, b) => a.y - b.y);
+    // 7. Suppress any remaining overlapping split lines and sort top-to-bottom
+    return ComicDetEngine.suppressOverlappingBoxes(finalBoxes).sort((a, b) => a.y - b.y);
+  }
+
+  /**
+   * NMS + containment suppression: drops lower-confidence overlapping or
+   * containing duplicates while preserving distinct adjacent lines/SFX.
+   */
+  public static suppressOverlappingBoxes(boxes: BoundingBox[]): BoundingBox[] {
+    if (boxes.length <= 1) return boxes;
+    const ranked = [...boxes].sort((a, b) => {
+      const confDiff = (b.confidence ?? 0) - (a.confidence ?? 0);
+      if (Math.abs(confDiff) > 1e-4) return confDiff;
+      return a.width * a.height - b.width * b.height;
+    });
+    const kept: BoundingBox[] = [];
+    for (const cand of ranked) {
+      const cArea = Math.max(1, cand.width * cand.height);
+      const suppressed = kept.some((k) => {
+        if ((k.kind === 'sfx') !== (cand.kind === 'sfx')) return false;
+        const ix = Math.max(0, Math.min(k.x + k.width, cand.x + cand.width) - Math.max(k.x, cand.x));
+        const iy = Math.max(0, Math.min(k.y + k.height, cand.y + cand.height) - Math.max(k.y, cand.y));
+        const inter = ix * iy;
+        if (inter <= 0) return false;
+        const kArea = Math.max(1, k.width * k.height);
+        const iou = inter / Math.max(1, kArea + cArea - inter);
+        const contain = inter / Math.min(kArea, cArea);
+        if (iou > 0.35 || contain >= 0.65) return true;
+        const xOv = ix / Math.max(1, Math.min(k.width, cand.width));
+        const yOv = iy / Math.max(1, Math.min(k.height, cand.height));
+        return xOv >= 0.70 && yOv >= 0.40;
+      });
+      if (!suppressed) kept.push(cand);
+    }
+    return kept;
   }
 
 }

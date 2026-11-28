@@ -230,8 +230,8 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
             const isComicDet = detEngine instanceof ComicDetEngine;
             const textMap = new Float32Array(width * height);
             const rawBoxes = await StripSlicer.detectWithSlicing(canvas, width, height, detEngine, {
-              aspectCap: isComicDet ? (height <= 2200 ? 0.85 : 1.8) : undefined,
-              invertedPass: isComicDet,
+              aspectCap: isComicDet ? (height <= 2200 ? 1.05 : 1.8) : undefined,
+              invertedPass: true,
               textMapOut: textMap
             });
             const fullPageImg = ctx.getImageData(0, 0, width, height);
@@ -239,8 +239,8 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
               ? rawBoxes
               : rawBoxes.filter((b) => {
                   if (b.kind === 'sfx') return false;
+                  if (SfxGate.isStylizedVisualSfx(fullPageImg, b)) return false;
                   if (!isComicDet && !SfxGate.isCleanFlatBackground(fullPageImg, b)) {
-                    if (SfxGate.isStylizedVisualSfx(fullPageImg, b)) return false;
                     if (SfxGate.isTiltedQuad(b)) return false;
                     if (b.height >= 28 && !SfxGate.hasFlatNeutralInterior(fullPageImg, b)) return false;
                   }

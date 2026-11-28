@@ -10,6 +10,7 @@ import { VisionStripSlicer } from '../services/translation/vision-strip-slicer';
 import { MultiProviderRotator } from '../services/translation/multi-provider-rotator';
 import { DebugLogger } from '../shared/debug-logger';
 import { buildTranslateCtx, rememberChapterPairs } from './chapter-memory';
+import { normalizeOcrForTranslation } from '../worker/ocr-text-normalizer';
 
 function applyTranslatedStrings(dialogues: DialogueItem[], translations: string[]): DialogueItem[] {
   const validDialogues: DialogueItem[] = [];
@@ -134,7 +135,7 @@ export async function handleTranslateDialogues(msg: any): Promise<any> {
   }
 
   const settings = await StorageService.getSettings();
-  const texts = dialogues.map((d: DialogueItem) => d.originalText);
+  const texts = dialogues.map((d: DialogueItem) => normalizeOcrForTranslation(d.originalText));
   const provider = TranslationProviderFactory.createProvider(settings);
   const targetLang = settings.targetLanguage || 'Tiếng Việt';
   const sourceLang = settings.sourceLanguage || 'auto';
@@ -217,7 +218,7 @@ export async function handleTranslateImage(msg: any): Promise<any> {
     return { success: true, cached: false, dialogues: [], naturalWidth: width, naturalHeight: height };
   }
 
-  const texts = dialogues.map((d) => d.originalText);
+  const texts = dialogues.map((d) => normalizeOcrForTranslation(d.originalText));
   const provider = TranslationProviderFactory.createProvider(settings);
   const targetLang = settings.targetLanguage || 'Tiếng Việt';
   const sourceLang = settings.sourceLanguage || 'auto';

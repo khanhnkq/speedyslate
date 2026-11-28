@@ -1,6 +1,11 @@
 import { ErasePatch } from '../shared/types';
 import { computeCurvedBorderShield, InnerTextRect } from './border-shield';
-import { filterMask } from './erase-mask-utils';
+import {
+  buildDarkProximityMask,
+  fillEnclosedBrightCores,
+  filterMask,
+  resolveInnerLocalBg
+} from './erase-mask-utils';
 import { InpaintSolver } from './inpaint-solver';
 import { PolygonDeskew } from './polygon-deskew';
 
@@ -110,25 +115,12 @@ export class EraseMasker {
     }
 
     // Sample local background luma: when innerRect is known, use dominant mode inside innerRect
-    // so bloated boxes crossing outside art/screentone never hijack localBg; otherwise sample surround.
+    // (with fuchidori halo/fill protection) so bloated boxes never hijack localBg; otherwise sample surround.
     const bgRgb = EraseMasker.hexToRgb(bgHex);
+    const nearDark = innerRect ? buildDarkProximityMask(lumas, w, h, 75, 5) : undefined;
     let localBg: number;
-    if (innerRect) {
-      const bins = new Int32Array(16);
-      for (let yy = ry0; yy < ry1; yy++) {
-        for (let xx = rx0; xx < rx1; xx++) bins[lumas[yy * w + xx] >> 4]++;
-      }
-      let peakBin = 0;
-      for (let b = 1; b < 16; b++) if (bins[b] > bins[peakBin]) peakBin = b;
-      const modeSamples: number[] = [];
-      for (let yy = ry0; yy < ry1; yy++) {
-        for (let xx = rx0; xx < rx1; xx++) {
-          const l = lumas[yy * w + xx];
-          if (Math.abs((l >> 4) - peakBin) <= 1) modeSamples.push(l);
-        }
-      }
-      modeSamples.sort((a, b) => a - b);
-      localBg = modeSamples.length > 0 ? modeSamples[modeSamples.length >> 1] : 240;
+    if (innerRect && nearDark) {
+      localBg = resolveInnerLocalBg(lumas, nearDark, w, h, rx0, ry0, rx1, ry1);
     } else {
       const bgSamples: number[] = [];
       for (let yy = ry0; yy < ry1; yy++) {
@@ -151,13 +143,13 @@ export class EraseMasker {
     // AND build a per-row/per-col wall-bounded `inside` mask so trailing letters inside
     // curved/slanted bubbles are caught without ever crossing a bubble border!
     const { shield: borderShield, rowWallLeft, rowWallRight, colWallTop, colWallBot } =
-      computeCurvedBorderShield(lumas, tm, localBg, w, h, innerRect);
+      computeCurvedBorderShield(lumas, tm, localBg, w, h, innerRect, nearDark);
 
     if (innerRect) {
       inside.fill(0);
       for (let yy = ry0; yy < ry1; yy++) {
-        const effX0 = Math.max(rowWallLeft[yy] + 1, Math.max(1, rx0 - 5));
-        const effX1 = Math.min(rowWallRight[yy], Math.min(w - 1, rx1 + 6));
+        const effX0 = Math.max(rowWallLeft[yy] + 1, Math.max(0, rx0 - 5));
+        const effX1 = Math.min(rowWallRight[yy], Math.min(w, rx1 + 6));
         for (let xx = effX0; xx < effX1; xx++) {
           const i = yy * w + xx;
           if (yy > colWallTop[xx] && yy < colWallBot[xx] && !borderShield[i]) inside[i] = 1;
@@ -191,9 +183,10 @@ export class EraseMasker {
     }
 
     if (innerRect) {
+      fillEnclosedBrightCores(raw, lumas, localBg, otsuT, inside, borderShield, w, h);
       EraseMasker.completeClippedStrokes(
-        raw, lumas, localBg, isBgLight, w, h, rx0, ry0, rx1, ry1, boxH,
-        borderShield, rowWallLeft, rowWallRight, colWallTop, colWallBot
+        raw, lumas, localBg, otsuT, isBgLight, w, h, rx0, ry0, rx1, ry1, boxH,
+        borderShield, rowWallLeft, rowWallRight, colWallTop, colWallBot, nearDark
       );
     }
 
@@ -233,17 +226,23 @@ export class EraseMasker {
       ringL.sort((a, b) => a - b);
       const med = ringL[(ringL.length / 2) | 0];
       let nS = 0, accR = 0, accG = 0, accB = 0, sumL = 0, sumSq = 0;
+      let sqR = 0, sqG = 0, sqB = 0;
       for (let i = 0; i < total; i++) {
         if (!inPaperRing(i) || Math.abs(lumas[i] - med) > 22) continue;
         const p = i * 4;
-        accR += data[p]; accG += data[p + 1]; accB += data[p + 2];
+        const r = data[p], g = data[p + 1], b = data[p + 2];
+        accR += r; accG += g; accB += b;
+        sqR += r * r; sqG += g * g; sqB += b * b;
         sumL += lumas[i]; sumSq += lumas[i] * lumas[i];
         nS++;
       }
-      if (nS >= 12) {
+      if (nS >= 12 && nS >= ringL.length * 0.85) {
         const mean = sumL / nS;
         const stddev = Math.sqrt(Math.max(0, sumSq / nS - mean * mean));
-        if (stddev < 14) {
+        const stdR = Math.sqrt(Math.max(0, sqR / nS - (accR / nS) ** 2));
+        const stdG = Math.sqrt(Math.max(0, sqG / nS - (accG / nS) ** 2));
+        const stdB = Math.sqrt(Math.max(0, sqB / nS - (accB / nS) ** 2));
+        if (stddev < 11 && Math.max(stdR, stdG, stdB) < 12) {
           const out = new Uint8ClampedArray(total * 4);
           const r = accR / nS, g = accG / nS, b = accB / nS;
           for (let i = 0; i < total; i++) {
@@ -271,6 +270,7 @@ export class EraseMasker {
     raw: Uint8Array,
     lumas: Uint8Array,
     localBg: number,
+    otsuT: number,
     isBgLight: boolean,
     w: number,
     h: number,
@@ -283,12 +283,14 @@ export class EraseMasker {
     rowWallLeft: Int16Array,
     rowWallRight: Int16Array,
     colWallTop: Int16Array,
-    colWallBot: Int16Array
+    colWallBot: Int16Array,
+    nearDark?: Uint8Array
   ): void {
     const maxExtend = Math.min(18, Math.round(boxH * 0.75));
     if (maxExtend <= 0) return;
     const maxWidth = Math.max(8, Math.round(boxH * 2.5));
     const maxAdded = 400;
+    const haloExtend = Math.min(4, maxExtend);
 
     const runDir = (seedY: number, isUp: boolean): void => {
       const minY = isUp ? Math.max(0, seedY - maxExtend) : seedY;
@@ -331,11 +333,15 @@ export class EraseMasker {
                 if (!raw[ni]) continue;
               } else {
                 const l = lumas[ni];
-                const samePolarity = isBgLight ? l <= localBg - 26 : l >= localBg + 26;
-                if (!samePolarity) continue;
+                const darkThresh = Math.min(localBg - 32, Math.max(otsuT, localBg - 48));
+                const samePolarity = isBgLight ? l <= darkThresh : l >= localBg + 26;
+                const isHalo = isBgLight && nearDark && nearDark[ni] &&
+                  Math.abs(ny - seedY) <= haloExtend && l >= localBg + 26;
+                if (!samePolarity && !isHalo) continue;
                 const nextMinX = Math.min(compMinX, nx);
                 const nextMaxX = Math.max(compMaxX, nx);
-                if (nextMaxX - nextMinX + 1 > maxWidth || added >= maxAdded) continue;
+                if (!isHalo && (nextMaxX - nextMinX + 1 > maxWidth || added >= maxAdded)) continue;
+                if (added >= maxAdded * 2) continue;
                 compMinX = nextMinX;
                 compMaxX = nextMaxX;
                 if (!raw[ni]) {

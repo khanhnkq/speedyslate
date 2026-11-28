@@ -84,9 +84,9 @@ export class BubbleGeometry {
       item.kind !== 'sfx' &&
       chamber!.width >= item.box.width * 0.85 &&
       chamber!.height >= item.box.height * 0.85 &&
-      chamber!.width <= Math.max(item.box.width * 3.0, 180) &&
-      chamber!.height <= Math.max(item.box.height * 3.4, 160) &&
-      chamber!.width * chamber!.height <= natW * natH * 0.22;
+      chamber!.width <= Math.max(item.box.width * 3.2, 260) &&
+      chamber!.height <= Math.max(item.box.height * 4.5, 280) &&
+      chamber!.width * chamber!.height <= natW * natH * 0.25;
 
     if (item.normBox) {
       topPct = item.normBox.ymin / 10;

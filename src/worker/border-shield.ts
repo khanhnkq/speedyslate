@@ -1,3 +1,5 @@
+import { buildDarkProximityMask } from './erase-mask-utils';
+
 export interface InnerTextRect { x0: number; y0: number; x1: number; y1: number; }
 
 export interface BorderShieldResult {
@@ -127,7 +129,8 @@ function fillSinglePixelGaps(arr: Int16Array, emptyVal: number, takeMin: boolean
  * by tracing 8-connected perimeter stroke components anchored on their inner faces.
  */
 export function computeCurvedBorderShield(
-  lumas: Uint8Array, tm: Float32Array, localBg: number, w: number, h: number, innerRect?: InnerTextRect
+  lumas: Uint8Array, tm: Float32Array, localBg: number, w: number, h: number,
+  innerRect?: InnerTextRect, nearDark?: Uint8Array
 ): BorderShieldResult {
   const total = w * h;
   const shield = new Uint8Array(total);
@@ -136,8 +139,13 @@ export function computeCurvedBorderShield(
   const colWallTop = new Int16Array(w).fill(-1);
   const colWallBot = new Int16Array(w).fill(h);
 
-  const isCand = (i: number): boolean =>
-    Math.abs(lumas[i] - localBg) > (innerRect ? 28 : 50) && (innerRect ? true : tm[i] < 0.25);
+  const darkNear = innerRect && localBg > 127 ? (nearDark ?? buildDarkProximityMask(lumas, w, h, 75, 5)) : null;
+  const isCand = (i: number): boolean => {
+    const l = lumas[i];
+    if (Math.abs(l - localBg) <= (innerRect ? 38 : 50)) return false;
+    if (darkNear && l > localBg && darkNear[i]) return false;
+    return innerRect ? true : tm[i] < 0.25;
+  };
   const visited = new Uint8Array(total), queue = new Int32Array(total);
   const dilMargin = 5;
   const rY0 = innerRect ? Math.max(0, Math.min(h - 1, innerRect.y0)) : 0;
@@ -179,6 +187,10 @@ export function computeCurvedBorderShield(
       }
       let dualRows = 0;
       for (let y = 0; y < h; y++) if (lMax[y] >= 0 && rMin[y] < w && rMin[y] - lMax[y] > 8) dualRows++;
+
+      if (!c.touchLeft && !c.touchRight && spanX > 16 && dualRows < 4 && c.minX < innerRect.x1 - 12 && c.maxX > innerRect.x0 + 12) {
+        continue;
+      }
 
       if ((c.touchLeft && c.touchRight) || dualRows >= 4) {
         const leftPx: number[] = [], rightPx: number[] = [];

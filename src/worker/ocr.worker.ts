@@ -239,14 +239,6 @@ self.onmessage = (e: MessageEvent<WorkerMessageInWithReqId>) => {
               ? rawBoxes
               : rawBoxes.filter((b) => {
                   if (b.kind === 'sfx') return false;
-                  if (
-                    isComicDet &&
-                    (b.confidence ?? 1) < 0.55 &&
-                    !SfxGate.isCleanFlatBackground(fullPageImg, b) &&
-                    !SfxGate.hasFlatNeutralInterior(fullPageImg, b)
-                  ) {
-                    return false;
-                  }
                   if (!isComicDet && !SfxGate.isCleanFlatBackground(fullPageImg, b)) {
                     if (SfxGate.isStylizedVisualSfx(fullPageImg, b)) return false;
                     if (SfxGate.isTiltedQuad(b)) return false;

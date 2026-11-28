@@ -31,3 +31,12 @@ yarn-error.log*
 test-fixtures/
 test-harness/harness.bundle.js
 test-harness/results/
+test-harness/results_*/
+test-harness/images/
+test-harness/models/
+test-harness/chrome_profile/
+test-harness/chapter.html
+test-harness/urls.json
+test-harness/dl_list.txt
+test-harness/results.json
+test-harness/results_*.json

@@ -236,6 +236,9 @@ export class ChamberGapScanner {
       }
     }
     if (inkMaxX - inkMinX < 6 || totalInk < 8) return null;
+    if (this.isStarburstRimBand(lumas, w, h, sx0, sy0, ly0, ly1, ix0, ix1, med)) {
+      return null;
+    }
 
     const x = Math.max(0, sx0 + inkMinX - 4);
     const y = Math.max(0, sy0 + ly0 - 1);
@@ -249,6 +252,76 @@ export class ChamberGapScanner {
       confidence: 0.75,
       kind: 'dialogue'
     };
+  }
+
+  /**
+   * Rejects radial starburst/border spike rims (e.g. thick serrated burst lines
+   * attached directly to the outer dark ring, ramping in density toward the wall).
+   */
+  private static isStarburstRimBand(
+    lumas: Uint8Array,
+    w: number,
+    h: number,
+    sx0: number,
+    sy0: number,
+    ly0: number,
+    ly1: number,
+    ix0: number,
+    ix1: number,
+    med: number
+  ): boolean {
+    const x0 = sx0 + ix0;
+    const x1 = sx0 + ix1;
+    const span = Math.max(1, x1 - x0 + 1);
+    const bandH = ly1 - ly0 + 1;
+    if (bandH < 4) return false;
+
+    const midLy = (ly0 + ly1) * 0.5;
+    for (const checkBottom of [false, true]) {
+      const gyEdge = sy0 + (checkBottom ? ly1 : ly0);
+      const gyOut = gyEdge + (checkBottom ? 1 : -1);
+      if (gyOut < 0 || gyOut >= h) continue;
+
+      let outDark = 0;
+      let edgeInk = 0;
+      let connToWall = 0;
+      for (let gx = x0; gx <= x1; gx++) {
+        const isOutDark = Math.abs(lumas[gyOut * w + gx] - med) > 55;
+        if (isOutDark) outDark++;
+        if (Math.abs(lumas[gyEdge * w + gx] - med) > 55) {
+          edgeInk++;
+          if (isOutDark) connToWall++;
+        }
+      }
+      if (edgeInk === 0 || outDark / span < 0.35 || connToWall / edgeInk < 0.60) continue;
+
+      let innerInk = 0;
+      let outerInk = 0;
+      let maxTrans = 0;
+      for (let ly = ly0; ly <= ly1; ly++) {
+        const gy = sy0 + ly;
+        let rowInk = 0;
+        let trans = 0;
+        let prevInk = false;
+        for (let gx = x0; gx <= x1; gx++) {
+          const isInk = Math.abs(lumas[gy * w + gx] - med) > 55;
+          if (isInk) rowInk++;
+          if (gx > x0 && isInk !== prevInk) trans++;
+          prevInk = isInk;
+        }
+        const inOuterHalf = checkBottom ? ly >= midLy : ly <= midLy;
+        if (inOuterHalf) {
+          outerInk += rowInk;
+          if (trans > maxTrans) maxTrans = trans;
+        } else {
+          innerInk += rowInk;
+        }
+      }
+      if (edgeInk / span >= 0.30 || (maxTrans >= 12 && outerInk >= innerInk * 1.5)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static clusterVerticalStacks(boxes: BoundingBox[]): BoundingBox[][] {

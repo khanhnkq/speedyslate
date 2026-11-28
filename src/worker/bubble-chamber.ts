@@ -160,12 +160,29 @@ export class BubbleChamberExtractor {
     const ch = cy1 - cy0 + 1;
     const fillRatio = area / (cw * ch);
 
-    // Symmetry guard: reject asymmetric leaks into neighboring bubbles/gutters
+    // Symmetry & overhang guard: reject asymmetric leaks into neighboring bubbles/starburst lobes
     const textCx = (tx0 + tx1) * 0.5;
     const textCy = (ty0 + ty1) * 0.5;
     const chamCx = (cx0 + cx1) * 0.5;
     const chamCy = (cy0 + cy1) * 0.5;
-    if (Math.abs(chamCx - textCx) > cw * 0.3 || Math.abs(chamCy - textCy) > ch * 0.3) {
+    const overL = Math.max(0, tx0 - cx0);
+    const overR = Math.max(0, cx1 - tx1);
+    const overT = Math.max(0, ty0 - cy0);
+    const overB = Math.max(0, cy1 - ty1);
+    const maxOverX = Math.max(overL, overR);
+    const minOverX = Math.min(overL, overR);
+    const maxOverY = Math.max(overT, overB);
+    const minOverY = Math.min(overT, overB);
+    const asymLeakX =
+      maxOverX > Math.max(48, minOverX * 2.4) && maxOverX > (tx1 - tx0) * 0.75;
+    const asymLeakY =
+      maxOverY > Math.max(64, minOverY * 2.4) && maxOverY > (ty1 - ty0) * 1.25;
+    if (
+      Math.abs(chamCx - textCx) > cw * 0.16 ||
+      Math.abs(chamCy - textCy) > ch * 0.18 ||
+      asymLeakX ||
+      asymLeakY
+    ) {
       return null;
     }
 

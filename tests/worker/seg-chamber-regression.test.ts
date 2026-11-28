@@ -6,7 +6,6 @@ import { attachErasePatches } from '../../src/worker/erase-pipeline';
 import { ComicDetEngine } from '../../src/worker/comic-det';
 import { ChamberGapScanner } from '../../src/worker/chamber-gap-scanner';
 import { BubbleChamberExtractor } from '../../src/worker/bubble-chamber';
-import { SfxGate } from '../../src/worker/sfx-gate';
 import { BoundingBox, DialogueItem } from '../../src/shared/types';
 
 function makeBuffer(width: number, height: number, r = 255, g = 255, b = 255): PagePixelBuffer {
@@ -304,16 +303,12 @@ describe('ComicDetEngine overlap NMS & ChamberGapScanner starburst rim rejection
     expect(recovered).toHaveLength(0);
   });
 
-  it('identifies noisy chromatic foliage box for low-conf ComicDet filtering (18_5_3 pattern)', () => {
-    const buf = makeBuffer(440, 100, 47, 76, 7);
-    for (let y = 0; y < 100; y++) {
-      for (let x = 0; x < 440; x++) {
-        const v = ((x * 37 + y * 17) % 5) * 18;
-        paintRectRgb(buf, x, y, 1, 1, 35 + v, 65 + v, 10 + (v >> 1));
-      }
-    }
-    const foliageBox: BoundingBox = { x: 40, y: 40, width: 360, height: 18, confidence: 0.41, kind: 'dialogue' };
-    expect(SfxGate.isCleanFlatBackground(buf, foliageBox)).toBe(false);
-    expect(SfxGate.hasFlatNeutralInterior(buf, foliageBox)).toBe(false);
+  it('preserves low-confidence non-overlapping hatching/fuchidori dialogue boxes in suppressOverlappingBoxes (14_4_2 & 29_9_2)', () => {
+    const kept = ComicDetEngine.suppressOverlappingBoxes([
+      { x: 238, y: 1302, width: 245, height: 16, confidence: 0.176, kind: 'dialogue' },
+      { x: 190, y: 1328, width: 341, height: 16, confidence: 0.176, kind: 'dialogue' },
+      { x: 112, y: 1425, width: 231, height: 16, confidence: 0.193, kind: 'dialogue' }
+    ]);
+    expect(kept).toHaveLength(3);
   });
 });

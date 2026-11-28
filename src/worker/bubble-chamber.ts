@@ -59,20 +59,49 @@ export class BubbleChamberExtractor {
 
     const isDarkBubble = peakBin <= 5;
     const nearSamples: number[] = [];
+    const nearR: number[] = [];
+    const nearG: number[] = [];
+    const nearB: number[] = [];
     for (let y = ty0; y <= ty1; y++) {
       for (let x = tx0; x <= tx1; x++) {
-        const l = lumas[y * w + x];
-        if (Math.abs((l >> 4) - peakBin) <= 2) nearSamples.push(l);
+        const idx = y * w + x;
+        const l = lumas[idx];
+        if (Math.abs((l >> 4) - peakBin) <= 2) {
+          nearSamples.push(l);
+          const p = idx * 4;
+          nearR.push(data[p]);
+          nearG.push(data[p + 1]);
+          nearB.push(data[p + 2]);
+        }
       }
     }
     if (nearSamples.length < 8) return null;
     nearSamples.sort((a, b) => a - b);
-    const medL = nearSamples[nearSamples.length >> 1];
+    nearR.sort((a, b) => a - b);
+    nearG.sort((a, b) => a - b);
+    nearB.sort((a, b) => a - b);
+    const mid = nearSamples.length >> 1;
+    const medL = nearSamples[mid];
+    const medR = nearR[mid];
+    const medG = nearG[mid];
+    const medB = nearB[mid];
+    const medSat = Math.max(medR, medG, medB) - Math.min(medR, medG, medB);
 
     const paper = new Uint8Array(total);
     if (isDarkBubble) {
       const thresh = Math.min(85, medL + 22);
       for (let i = 0; i < total; i++) if (lumas[i] <= thresh) paper[i] = 1;
+    } else if (medSat >= 28) {
+      const thresh = Math.max(145, medL - 28);
+      const minSat = Math.max(20, medSat * 0.42);
+      for (let i = 0; i < total; i++) {
+        if (lumas[i] < thresh) continue;
+        const p = i * 4;
+        const r = data[p], g = data[p + 1], b = data[p + 2];
+        const sat = Math.max(r, g, b) - Math.min(r, g, b);
+        const maxCh = Math.max(Math.abs(r - medR), Math.abs(g - medG), Math.abs(b - medB));
+        if (sat >= minSat && maxCh <= 55) paper[i] = 1;
+      }
     } else {
       const thresh = Math.max(155, medL - 22);
       for (let i = 0; i < total; i++) if (lumas[i] >= thresh) paper[i] = 1;

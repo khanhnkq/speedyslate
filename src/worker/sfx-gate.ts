@@ -142,6 +142,16 @@ export class SfxGate {
 
     const bg = this.sampleBgSummary(pageImg, bx0, by0, bx1, by1);
     if (bg.sat < 25 && (bg.luma >= 215 || bg.luma <= 55) && bg.chromFrac < 0.15) return false;
+    if (
+      box.height < 36 &&
+      !this.isTiltedQuad(box, 12) &&
+      (bg.luma >= 145 || bg.luma <= 80) &&
+      bg.std <= 14 &&
+      bg.topBotDiff <= 14 &&
+      bg.edgeRatio <= 0.06
+    ) {
+      return false;
+    }
     if (box.height >= 52 && bg.sat >= 35 && (bg.topBotDiff >= 20 || bg.std >= 16)) return true;
     if (bg.sat >= 28 || (bg.luma >= 60 && bg.luma <= 205)) {
       return this.hasFuchidoriStrokes(data, w, bx0, by0, bx1, by1, bg.luma);
@@ -271,6 +281,7 @@ export class SfxGate {
       luma: useChrom ? medianSorted(chromL) : base.medLuma,
       sat: Math.max(base.medSat, useChrom ? medianSorted(chromS) : 0),
       std: Math.max(base.lumaStd, base.rgbStd, full.lumaStd, full.rgbStd),
+      edgeRatio: Math.max(base.edgeRatio, full.edgeRatio),
       topBotDiff,
       chromFrac
     };

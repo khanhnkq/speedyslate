@@ -108,8 +108,8 @@ export function attachErasePatches(
         if (member) member.bubbleClusterId = bIdx;
       }
       // Search window generous enough horizontally and vertically to enclose tall oval manhwa bubbles
-      const padX = Math.max(48, Math.min(200, Math.round(Math.max(b.box.width * 1.6, b.box.height * 0.85))));
-      const padY = Math.max(90, Math.min(240, Math.round(Math.max(b.box.height * 1.6, b.box.width * 0.9))));
+      const padX = Math.max(120, Math.min(220, Math.round(Math.max(b.box.width * 1.6, b.box.height * 0.85))));
+      const padY = Math.max(180, Math.min(240, Math.round(Math.max(b.box.height * 1.6, b.box.width * 0.9))));
       const cx = Math.max(0, b.box.x - padX);
       const cy = Math.max(0, b.box.y - padY);
       const cw = Math.min(canvas.width - cx, b.box.width + (b.box.x - cx) + padX);

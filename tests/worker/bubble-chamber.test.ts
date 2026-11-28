@@ -77,4 +77,51 @@ describe('BubbleChamberExtractor', () => {
     expect(res).not.toBeNull();
     expect(res!.chamberBox.x).toBeGreaterThanOrEqual(135); // never crosses gutter into left bubble (x <= 102)
   });
+
+  it('recovers a chromatic peach/pastel oval bubble on white page without leaking while rejecting unbounded peach wash', () => {
+    const w = 280, h = 240;
+    const buf = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const d2 = ((x - 140) / 85) ** 2 + ((y - 120) / 72) ** 2;
+        if (d2 <= 0.94) {
+          // Peach pastel interior (~250, 212, 193 -> sat ~57)
+          const shade = Math.round(((y - 48) / 144) * 10);
+          buf.set([252 - shade, 218 - shade, 198 - shade, 255], (y * w + x) * 4);
+        } else if (d2 <= 1.03) {
+          // Soft glowing peach rim (still light luma ~215)
+          buf.set([248, 224, 214, 255], (y * w + x) * 4);
+        } else {
+          // Pure white background page
+          buf.set([255, 255, 255, 255], (y * w + x) * 4);
+        }
+      }
+    }
+    const res = BubbleChamberExtractor.extractChamber(
+      { data: buf, width: w, height: h },
+      0,
+      0,
+      { x: 95, y: 108, width: 90, height: 24 },
+      { width: w, height: h }
+    );
+    expect(res).not.toBeNull();
+    expect(res!.isOval).toBe(true);
+    expect(res!.chamberBox.width).toBeGreaterThanOrEqual(140);
+    expect(res!.chamberBox.width).toBeLessThanOrEqual(190);
+    expect(res!.chamberBox.height).toBeGreaterThanOrEqual(120);
+
+    // Unbounded uniform peach wash across whole crop must still fail closed
+    const openPeach = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < w * h * 4; i += 4) {
+      openPeach[i] = 250; openPeach[i + 1] = 212; openPeach[i + 2] = 193; openPeach[i + 3] = 255;
+    }
+    const leak = BubbleChamberExtractor.extractChamber(
+      { data: openPeach, width: w, height: h },
+      0,
+      0,
+      { x: 95, y: 108, width: 90, height: 24 },
+      { width: w, height: h }
+    );
+    expect(leak).toBeNull();
+  });
 });

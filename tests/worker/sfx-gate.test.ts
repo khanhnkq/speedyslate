@@ -250,6 +250,26 @@ describe('SfxGate.isStylizedVisualSfx', () => {
     expect(SfxGate.isStylizedVisualSfx(dbImg, midLine)).toBe(false);
     expect(SfxGate.hasFlatNeutralInterior(dbImg, midLine)).toBe(true);
   });
+
+  it('keeps small outlined/fuchidori dialogue inside smooth pastel peach bubbles while catching large/noisy SFX', () => {
+    const peach = makeImg(320, 220, 255, 255, 255);
+    paintVerticalGradient(peach, 20, 20, 260, 160, [252, 222, 202], [244, 198, 178]);
+    const smallDlgBox: BoundingBox = { x: 80, y: 86, width: 112, height: 24 };
+    paintFuchidoriBars(peach, smallDlgBox);
+    expect(SfxGate.isStylizedVisualSfx(peach, smallDlgBox)).toBe(false);
+
+    // Large display SFX on smooth gradient still gets caught (height >= 36 / >= 52)
+    const largeSfxBox: BoundingBox = { x: 45, y: 45, width: 180, height: 48 };
+    paintFuchidoriBars(peach, largeSfxBox);
+    expect(SfxGate.isStylizedVisualSfx(peach, largeSfxBox)).toBe(true);
+
+    // Small outlined SFX on noisy foliage gets caught (edgeRatio/std high)
+    const foliage = makeImg(320, 220, 255, 255, 255);
+    paintNoisyFoliage(foliage, 0, 0, 320, 220);
+    const noisySmallBox: BoundingBox = { x: 60, y: 60, width: 120, height: 24 };
+    paintFuchidoriBars(foliage, noisySmallBox);
+    expect(SfxGate.isStylizedVisualSfx(foliage, noisySmallBox)).toBe(true);
+  });
 });
 
 describe('SfxGate.isBurstOnomatopoeia', () => {

@@ -84,6 +84,62 @@ export class RecCropCleaner {
   }
 
   /**
+   * Computes background luma standard deviation on the uncleaned crop
+   * so downstream confidence gating knows whether the line sits on flat
+   * bubble paper or textured art/foliage.
+   */
+  public static measureBgLumaStd(img: PixelRegion): number {
+    const total = img.width * img.height;
+    if (total === 0 || img.data.length < total * 4) return 0;
+    const { otsuT, textIsDark, lumas } = this.analyzeOtsu(img);
+    let lSum = 0;
+    let lSq = 0;
+    let bgCount = 0;
+    for (let i = 0; i < total; i++) {
+      const isText = textIsDark ? lumas[i] <= otsuT : lumas[i] > otsuT;
+      if (isText) continue;
+      lSum += lumas[i];
+      lSq += lumas[i] * lumas[i];
+      bgCount++;
+    }
+    if (bgCount === 0) return 0;
+    const mean = lSum / bgCount;
+    return Math.sqrt(Math.max(0, lSq / bgCount - mean * mean));
+  }
+
+  /**
+   * Extends a page-edge-clipped crop (e.g. y=0 top-sliced line) by clamping
+   * and replicating edge rows/columns into the clipped margin so sliced stems
+   * aren't severed by artificial white borders while keeping symmetric padding.
+   */
+  public static padClippedImageData(
+    src: PixelRegion,
+    padL: number,
+    padT: number,
+    padR: number,
+    padB: number
+  ): { data: Uint8ClampedArray; width: number; height: number } {
+    const sw = src.width;
+    const sh = src.height;
+    const dw = sw + padL + padR;
+    const dh = sh + padT + padB;
+    const out = new Uint8ClampedArray(dw * dh * 4);
+    for (let y = 0; y < dh; y++) {
+      const sy = Math.max(0, Math.min(sh - 1, y - padT));
+      for (let x = 0; x < dw; x++) {
+        const sx = Math.max(0, Math.min(sw - 1, x - padL));
+        const sp = (sy * sw + sx) * 4;
+        const dp = (y * dw + x) * 4;
+        out[dp] = src.data[sp];
+        out[dp + 1] = src.data[sp + 1];
+        out[dp + 2] = src.data[sp + 2];
+        out[dp + 3] = src.data[sp + 3];
+      }
+    }
+    return { data: out, width: dw, height: dh };
+  }
+
+  /**
    * Finds the tight bounding box of actual glyph ink inside a detected line box.
    * Strips wide horizontal bubble margins so PP-OCRv4 rec isn't fed 50-100px
    * of empty whitespace on either side of short words like "HOME." or "HERE.".
